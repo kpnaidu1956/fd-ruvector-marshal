@@ -187,11 +187,15 @@ thread_local! {
 }
 
 /// Get the thread-local arena
+/// Note: Commented out due to lifetime issues with RefCell::borrow() escaping closure
+/// Use THREAD_ARENA.with(|arena| { ... }) directly instead
+/*
 pub fn thread_arena() -> impl std::ops::Deref<Target = Arena> {
     THREAD_ARENA.with(|arena| {
         arena.borrow()
     })
 }
+*/
 
 #[cfg(test)]
 mod tests {

@@ -117,7 +117,7 @@ impl DeepHashEmbedding {
                 let dist = self.hamming_distance(&code_a, &code_b);
 
                 // If distance is too small, update towards dissimilarity
-                if dist as f32 < self.output_bits as f32 * 0.6 {
+                if (dist as f32) < self.output_bits as f32 * 0.6 {
                     self.update_weights(a, b, learning_rate, false);
                 }
             }

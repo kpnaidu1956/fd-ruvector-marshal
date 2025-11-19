@@ -188,8 +188,8 @@ impl HnswIndex {
             let idx = *entry.key();
             let id = entry.value();
             if let Some(vector) = state.vectors.iter().find(|(vid, _)| vid == id) {
-                let data_with_id = DataId::new(idx, vector.1.clone());
-                hnsw.insert(data_with_id);
+                // Use insert_data method with slice and idx
+                hnsw.insert_data(&vector.1, idx);
             }
         }
 
@@ -250,9 +250,8 @@ impl VectorIndex for HnswIndex {
         let idx = inner.next_idx;
         inner.next_idx += 1;
 
-        // Insert into HNSW graph
-        let data_with_id = DataId::new(idx, vector.clone());
-        inner.hnsw.insert(data_with_id);
+        // Insert into HNSW graph using insert_data
+        inner.hnsw.insert_data(&vector, idx);
 
         // Store mappings
         inner.vectors.insert(id.clone(), vector);
@@ -278,27 +277,29 @@ impl VectorIndex for HnswIndex {
         // Prepare batch data for parallel insertion
         use rayon::prelude::*;
 
-        // First, assign indices and collect DataId objects
+        // First, assign indices and collect vector data
         let data_with_ids: Vec<_> = entries
             .iter()
             .enumerate()
             .map(|(i, (id, vector))| {
                 let idx = inner.next_idx + i;
-                (id.clone(), idx, DataId::new(idx, vector.clone()))
+                (id.clone(), idx, vector.clone())
             })
             .collect();
 
         // Update next_idx
         inner.next_idx += entries.len();
 
-        // Insert into HNSW in parallel (internally hnsw_rs handles thread safety)
-        data_with_ids.par_iter().for_each(|(id, idx, data)| {
-            inner.hnsw.insert(data.clone());
-        });
+        // Insert into HNSW sequentially
+        // Note: Using sequential insertion to avoid Send requirements with RwLock guard
+        // For large batches, consider restructuring to use hnsw_rs parallel_insert
+        for (_id, idx, vector) in &data_with_ids {
+            inner.hnsw.insert_data(vector, *idx);
+        }
 
         // Store mappings
-        for (id, idx, data) in data_with_ids {
-            inner.vectors.insert(id.clone(), data.get_v().to_vec());
+        for (id, idx, vector) in data_with_ids {
+            inner.vectors.insert(id.clone(), vector);
             inner.id_to_idx.insert(id.clone(), idx);
             inner.idx_to_id.insert(idx, id);
         }

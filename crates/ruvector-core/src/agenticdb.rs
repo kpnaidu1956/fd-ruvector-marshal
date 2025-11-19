@@ -24,6 +24,7 @@ const CAUSAL_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("causal_
 const LEARNING_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("learning_sessions");
 
 /// Reflexion episode for self-critique memory
+/// Note: Serialized using JSON (not bincode) due to serde_json::Value in metadata field
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReflexionEpisode {
     pub id: String,
@@ -34,61 +35,6 @@ pub struct ReflexionEpisode {
     pub embedding: Vec<f32>,
     pub timestamp: i64,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
-}
-
-// Manual bincode implementation to work around serde_json::Value
-impl bincode::Encode for ReflexionEpisode {
-    fn encode<E: bincode::enc::Encoder>(
-        &self,
-        encoder: &mut E,
-    ) -> core::result::Result<(), bincode::error::EncodeError> {
-        bincode::Encode::encode(&self.id, encoder)?;
-        bincode::Encode::encode(&self.task, encoder)?;
-        bincode::Encode::encode(&self.actions, encoder)?;
-        bincode::Encode::encode(&self.observations, encoder)?;
-        bincode::Encode::encode(&self.critique, encoder)?;
-        bincode::Encode::encode(&self.embedding, encoder)?;
-        bincode::Encode::encode(&self.timestamp, encoder)?;
-        // Serialize metadata as JSON string
-        let metadata_json = self.metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default());
-        bincode::Encode::encode(&metadata_json, encoder)?;
-        Ok(())
-    }
-}
-
-impl bincode::Decode for ReflexionEpisode {
-    fn decode<D: bincode::de::Decoder>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        use bincode::Decode;
-        let id = String::decode(decoder)?;
-        let task = String::decode(decoder)?;
-        let actions = Vec::<String>::decode(decoder)?;
-        let observations = Vec::<String>::decode(decoder)?;
-        let critique = String::decode(decoder)?;
-        let embedding = Vec::<f32>::decode(decoder)?;
-        let timestamp = i64::decode(decoder)?;
-        let metadata_json = Option::<String>::decode(decoder)?;
-        let metadata = metadata_json.and_then(|s| serde_json::from_str(&s).ok());
-        Ok(Self {
-            id,
-            task,
-            actions,
-            observations,
-            critique,
-            embedding,
-            timestamp,
-            metadata,
-        })
-    }
-}
-
-impl<'de> bincode::BorrowDecode<'de> for ReflexionEpisode {
-    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
-        decoder: &mut D,
-    ) -> core::result::Result<Self, bincode::error::DecodeError> {
-        Self::decode(decoder)
-    }
 }
 
 /// Skill definition in the library
@@ -260,9 +206,10 @@ impl AgenticDB {
         let write_txn = self.db.begin_write()?;
         {
             let mut table = write_txn.open_table(REFLEXION_TABLE)?;
-            let data = bincode::encode_to_vec(&episode, bincode::config::standard())
+            // Use JSON encoding for ReflexionEpisode (contains serde_json::Value which isn't bincode-compatible)
+            let json = serde_json::to_vec(&episode)
                 .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
-            table.insert(id.as_str(), data.as_slice())?;
+            table.insert(id.as_str(), json.as_slice())?;
         }
         write_txn.commit()?;
 
@@ -308,8 +255,8 @@ impl AgenticDB {
                 if let Some(episode_id) = metadata.get("episode_id") {
                     let id = episode_id.as_str().unwrap();
                     if let Some(data) = table.get(id)? {
-                        let (episode, _): (ReflexionEpisode, usize) =
-                            bincode::decode_from_slice(data.value(), bincode::config::standard())
+                        // Use JSON decoding for ReflexionEpisode (contains serde_json::Value which isn't bincode-compatible)
+                        let episode: ReflexionEpisode = serde_json::from_slice(data.value())
                                 .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
                         episodes.push(episode);
                     }
