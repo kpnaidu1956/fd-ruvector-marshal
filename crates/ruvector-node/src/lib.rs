@@ -9,12 +9,12 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use ruvector_core::{
-    DbOptions, DistanceMetric, HnswConfig, QuantizationConfig, SearchQuery, SearchResult,
-    VectorDB as CoreVectorDB, VectorEntry, VectorId,
+    types::{DbOptions, HnswConfig, QuantizationConfig},
+    DistanceMetric, SearchQuery, SearchResult,
+    VectorDB as CoreVectorDB, VectorEntry,
 };
-use std::collections::HashMap;
 use std::sync::Arc;
-use parking_lot::RwLock;
+use std::sync::RwLock;
 
 /// Distance metric for similarity calculation
 #[napi(string_enum)]
@@ -126,64 +126,42 @@ impl From<JsDbOptions> for DbOptions {
     }
 }
 
-/// Vector entry with metadata
+/// Vector entry
 #[napi(object)]
-#[derive(Debug, Clone)]
 pub struct JsVectorEntry {
     /// Optional ID (auto-generated if not provided)
     pub id: Option<String>,
     /// Vector data as Float32Array or array of numbers
     pub vector: Float32Array,
-    /// Optional metadata as JSON object
-    pub metadata: Option<serde_json::Value>,
 }
 
 impl JsVectorEntry {
     fn to_core(&self) -> Result<VectorEntry> {
-        let metadata = self.metadata.as_ref().and_then(|m| {
-            if let serde_json::Value::Object(obj) = m {
-                Some(obj.clone())
-            } else {
-                None
-            }
-        });
-
         Ok(VectorEntry {
             id: self.id.clone(),
             vector: self.vector.to_vec(),
-            metadata,
+            metadata: None,
         })
     }
 }
 
 /// Search query parameters
 #[napi(object)]
-#[derive(Debug)]
 pub struct JsSearchQuery {
     /// Query vector as Float32Array or array of numbers
     pub vector: Float32Array,
     /// Number of results to return (top-k)
     pub k: u32,
-    /// Optional metadata filters as JSON object
-    pub filter: Option<serde_json::Value>,
     /// Optional ef_search parameter for HNSW
     pub ef_search: Option<u32>,
 }
 
 impl JsSearchQuery {
     fn to_core(&self) -> Result<SearchQuery> {
-        let filter = self.filter.as_ref().and_then(|f| {
-            if let serde_json::Value::Object(obj) = f {
-                Some(obj.clone())
-            } else {
-                None
-            }
-        });
-
         Ok(SearchQuery {
             vector: self.vector.to_vec(),
             k: self.k as usize,
-            filter,
+            filter: None,
             ef_search: self.ef_search.map(|v| v as usize),
         })
     }
@@ -197,21 +175,13 @@ pub struct JsSearchResult {
     pub id: String,
     /// Distance/similarity score (lower is better for distance metrics)
     pub score: f64,
-    /// Vector data (optional)
-    pub vector: Option<Vec<f32>>,
-    /// Metadata (optional)
-    pub metadata: Option<serde_json::Value>,
 }
 
 impl From<SearchResult> for JsSearchResult {
     fn from(result: SearchResult) -> Self {
-        let metadata = result.metadata.map(serde_json::Value::Object);
-
         JsSearchResult {
             id: result.id,
             score: f64::from(result.score),
-            vector: result.vector,
-            metadata,
         }
     }
 }
@@ -283,7 +253,7 @@ impl VectorDB {
         let db = self.inner.clone();
 
         tokio::task::spawn_blocking(move || {
-            let db = db.read();
+            let db = db.read().expect("RwLock poisoned");
             db.insert(core_entry)
         })
         .await
@@ -312,7 +282,7 @@ impl VectorDB {
         let db = self.inner.clone();
 
         tokio::task::spawn_blocking(move || {
-            let db = db.read();
+            let db = db.read().expect("RwLock poisoned");
             db.insert_batch(core_entries)
         })
         .await
@@ -338,7 +308,7 @@ impl VectorDB {
         let db = self.inner.clone();
 
         tokio::task::spawn_blocking(move || {
-            let db = db.read();
+            let db = db.read().expect("RwLock poisoned");
             db.search(core_query)
         })
         .await
@@ -360,7 +330,7 @@ impl VectorDB {
         let db = self.inner.clone();
 
         tokio::task::spawn_blocking(move || {
-            let db = db.read();
+            let db = db.read().expect("RwLock poisoned");
             db.delete(&id)
         })
         .await
@@ -384,7 +354,7 @@ impl VectorDB {
         let db = self.inner.clone();
 
         let result = tokio::task::spawn_blocking(move || {
-            let db = db.read();
+            let db = db.read().expect("RwLock poisoned");
             db.get(&id)
         })
         .await
@@ -392,11 +362,9 @@ impl VectorDB {
         .map_err(|e| Error::from_reason(format!("Get failed: {}", e)))?;
 
         Ok(result.map(|entry| {
-            let metadata = entry.metadata.map(serde_json::Value::Object);
             JsVectorEntry {
                 id: entry.id,
                 vector: Float32Array::new(entry.vector),
-                metadata,
             }
         }))
     }
@@ -413,7 +381,7 @@ impl VectorDB {
         let db = self.inner.clone();
 
         tokio::task::spawn_blocking(move || {
-            let db = db.read();
+            let db = db.read().expect("RwLock poisoned");
             db.len()
         })
         .await
@@ -435,7 +403,7 @@ impl VectorDB {
         let db = self.inner.clone();
 
         tokio::task::spawn_blocking(move || {
-            let db = db.read();
+            let db = db.read().expect("RwLock poisoned");
             db.is_empty()
         })
         .await

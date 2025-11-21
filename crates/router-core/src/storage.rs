@@ -48,7 +48,7 @@ impl Storage {
             let mut table = write_txn.open_table(VECTORS_TABLE)?;
 
             // Serialize vector as bytes
-            let vector_bytes = bincode::serialize(&entry.vector)
+            let vector_bytes = bincode::encode_to_vec(&entry.vector, bincode::config::standard())
                 .map_err(|e| VectorDbError::Serialization(e.to_string()))?;
 
             table.insert(entry.id.as_str(), vector_bytes.as_slice())?;
@@ -57,8 +57,8 @@ impl Storage {
         {
             let mut table = write_txn.open_table(METADATA_TABLE)?;
 
-            // Serialize metadata
-            let metadata_bytes = bincode::serialize(&entry.metadata)
+            // Serialize metadata (use JSON for serde_json::Value compatibility)
+            let metadata_bytes = serde_json::to_vec(&entry.metadata)
                 .map_err(|e| VectorDbError::Serialization(e.to_string()))?;
 
             table.insert(entry.id.as_str(), metadata_bytes.as_slice())?;
@@ -84,13 +84,13 @@ impl Storage {
 
             for entry in entries {
                 // Serialize vector
-                let vector_bytes = bincode::serialize(&entry.vector)
+                let vector_bytes = bincode::encode_to_vec(&entry.vector, bincode::config::standard())
                     .map_err(|e| VectorDbError::Serialization(e.to_string()))?;
 
                 vectors_table.insert(entry.id.as_str(), vector_bytes.as_slice())?;
 
-                // Serialize metadata
-                let metadata_bytes = bincode::serialize(&entry.metadata)
+                // Serialize metadata (use JSON for serde_json::Value compatibility)
+                let metadata_bytes = serde_json::to_vec(&entry.metadata)
                     .map_err(|e| VectorDbError::Serialization(e.to_string()))?;
 
                 metadata_table.insert(entry.id.as_str(), metadata_bytes.as_slice())?;
@@ -120,7 +120,7 @@ impl Storage {
         let table = read_txn.open_table(VECTORS_TABLE)?;
 
         if let Some(bytes) = table.get(id)? {
-            let vector: Vec<f32> = bincode::deserialize(bytes.value())
+            let (vector, _): (Vec<f32>, usize) = bincode::decode_from_slice(bytes.value(), bincode::config::standard())
                 .map_err(|e| VectorDbError::Serialization(e.to_string()))?;
 
             // Update cache
@@ -139,7 +139,7 @@ impl Storage {
 
         if let Some(bytes) = table.get(id)? {
             let metadata: HashMap<String, serde_json::Value> =
-                bincode::deserialize(bytes.value())
+                serde_json::from_slice(bytes.value())
                     .map_err(|e| VectorDbError::Serialization(e.to_string()))?;
 
             Ok(Some(metadata))

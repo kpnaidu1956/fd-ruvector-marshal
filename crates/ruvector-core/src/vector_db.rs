@@ -2,12 +2,21 @@
 
 use crate::error::Result;
 use crate::index::flat::FlatIndex;
+
+#[cfg(feature = "hnsw")]
 use crate::index::hnsw::HnswIndex;
+
 use crate::index::VectorIndex;
-use crate::storage::VectorStorage;
 use crate::types::*;
 use std::sync::Arc;
 use parking_lot::RwLock;
+
+// Import appropriate storage backend based on features
+#[cfg(feature = "storage")]
+use crate::storage::VectorStorage;
+
+#[cfg(not(feature = "storage"))]
+use crate::storage_memory::MemoryStorage as VectorStorage;
 
 /// Main vector database
 pub struct VectorDB {
@@ -19,18 +28,31 @@ pub struct VectorDB {
 impl VectorDB {
     /// Create a new vector database with the given options
     pub fn new(options: DbOptions) -> Result<Self> {
+        #[cfg(feature = "storage")]
         let storage = Arc::new(VectorStorage::new(
             &options.storage_path,
             options.dimensions,
         )?);
 
-        // Choose index based on configuration
+        #[cfg(not(feature = "storage"))]
+        let storage = Arc::new(VectorStorage::new(options.dimensions)?);
+
+        // Choose index based on configuration and available features
         let index: Box<dyn VectorIndex> = if let Some(hnsw_config) = &options.hnsw_config {
-            Box::new(HnswIndex::new(
-                options.dimensions,
-                options.distance_metric,
-                hnsw_config.clone(),
-            )?)
+            #[cfg(feature = "hnsw")]
+            {
+                Box::new(HnswIndex::new(
+                    options.dimensions,
+                    options.distance_metric,
+                    hnsw_config.clone(),
+                )?)
+            }
+            #[cfg(not(feature = "hnsw"))]
+            {
+                // Fall back to flat index if HNSW is not available
+                tracing::warn!("HNSW requested but not available (WASM build), using flat index");
+                Box::new(FlatIndex::new(options.dimensions, options.distance_metric))
+            }
         } else {
             Box::new(FlatIndex::new(options.dimensions, options.distance_metric))
         };

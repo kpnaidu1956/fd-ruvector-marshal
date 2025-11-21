@@ -14,12 +14,26 @@
 #![warn(clippy::all)]
 
 pub mod advanced_features;
+
+// AgenticDB requires storage feature
+#[cfg(feature = "storage")]
 pub mod agenticdb;
+
 pub mod distance;
 pub mod error;
 pub mod index;
 pub mod quantization;
+
+// Storage backends - conditional compilation based on features
+#[cfg(feature = "storage")]
 pub mod storage;
+
+#[cfg(not(feature = "storage"))]
+pub mod storage_memory;
+
+#[cfg(not(feature = "storage"))]
+pub use storage_memory as storage;
+
 pub mod types;
 pub mod vector_db;
 
@@ -37,7 +51,10 @@ pub use advanced_features::{
     BM25, ConformalConfig, ConformalPredictor, EnhancedPQ, FilterExpression, FilterStrategy,
     FilteredSearch, HybridConfig, HybridSearch, MMRConfig, MMRSearch, PQConfig, PredictionSet,
 };
+
+#[cfg(feature = "storage")]
 pub use agenticdb::AgenticDB;
+
 pub use error::{Result, RuvectorError};
 pub use types::{DistanceMetric, VectorEntry, VectorId, SearchQuery, SearchResult};
 pub use vector_db::VectorDB;

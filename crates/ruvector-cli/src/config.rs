@@ -33,7 +33,7 @@ pub struct DatabaseConfig {
     pub dimensions: usize,
 
     /// Distance metric
-    #[serde(default)]
+    #[serde(default = "default_distance_metric")]
     pub distance_metric: DistanceMetric,
 
     /// HNSW configuration
@@ -84,6 +84,10 @@ fn default_storage_path() -> String {
 
 fn default_dimensions() -> usize {
     384
+}
+
+fn default_distance_metric() -> DistanceMetric {
+    DistanceMetric::Cosine
 }
 
 fn default_true() -> bool {

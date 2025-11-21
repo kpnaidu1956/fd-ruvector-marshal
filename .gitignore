@@ -24,6 +24,14 @@ target
 node_modules/
 package-lock.json
 
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+credentials.json
+
 
 # Removed Windows wrapper files per user request
 hive-mind-prompt-*.txt

@@ -11,7 +11,7 @@ description = "NAPI-RS bindings for router-core vector database"
 crate-type = ["cdylib"]
 
 [dependencies]
-router-core = { path = "../router-core" }
+router-core = { version = "0.1.1", path = "../router-core" }
 
 # NAPI-RS dependencies
 napi = { workspace = true }

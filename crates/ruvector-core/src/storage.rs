@@ -1,11 +1,22 @@
 //! Storage layer with redb for metadata and memory-mapped vectors
+//!
+//! This module is only available when the "storage" feature is enabled.
+//! For WASM builds, use the in-memory storage backend instead.
 
+#[cfg(feature = "storage")]
 use crate::error::{Result, RuvectorError};
+#[cfg(feature = "storage")]
 use crate::types::{VectorEntry, VectorId};
+#[cfg(feature = "storage")]
 use redb::{Database, ReadableTable, ReadableTableMetadata, TableDefinition};
+#[cfg(feature = "storage")]
 use bincode::config;
+#[cfg(feature = "storage")]
 use serde_json;
+#[cfg(feature = "storage")]
 use std::path::Path;
+
+#[cfg(feature = "storage")]
 
 const VECTORS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("vectors");
 const METADATA_TABLE: TableDefinition<&str, &str> = TableDefinition::new("metadata");

@@ -12,7 +12,7 @@ description = "Node.js bindings for Ruvector via NAPI-RS"
 crate-type = ["cdylib"]
 
 [dependencies]
-ruvector-core = { path = "../ruvector-core" }
+ruvector-core = { version = "0.1.1", path = "../ruvector-core" }
 
 # Node.js bindings
 napi = { workspace = true }

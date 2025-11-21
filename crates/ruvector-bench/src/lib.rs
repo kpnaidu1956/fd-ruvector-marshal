@@ -270,7 +270,7 @@ impl MemoryProfiler {
     }
 
     pub fn system_memory_info() -> Result<(u64, u64)> {
-        use sysinfo::{System, SystemExt};
+        use sysinfo::System;
         let mut sys = System::new_all();
         sys.refresh_all();
         let total = sys.total_memory();

@@ -11,7 +11,7 @@ description = "WASM bindings for router-core"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-router-core = { path = "../router-core" }
+router-core = { version = "0.1.1", path = "../router-core" }
 
 # WASM dependencies
 wasm-bindgen = { workspace = true }
