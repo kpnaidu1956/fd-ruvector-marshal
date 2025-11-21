@@ -77,6 +77,13 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
+      - name: List built files (debug)
+        working-directory: npm/packages/core
+        run: |
+          echo "=== Looking for .node files ==="
+          find . -name "*.node" -type f || true
+          ls -R . | grep -E "\.node$" || true
+
       - name: Test native module (native platform only)
         if: |
           (matrix.settings.platform == 'linux-x64-gnu' && runner.os == 'Linux') ||
