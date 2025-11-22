@@ -147,14 +147,25 @@ export class ModelRouter {
     const chain: ModelRoute[] = [primary];
 
     if (this.config.fallbackChain) {
-      for (const provider of this.config.fallbackChain) {
-        const fallback = this.selectModel({
-          provider,
-          capabilities: primary.capabilities
-        });
+      // Only require essential capabilities for fallback models
+      // Filter out optimization flags like 'streaming', 'fast', 'efficient'
+      const essentialCapabilities = primary.capabilities.filter(
+        cap => !['streaming', 'fast', 'efficient', 'complex', 'reasoning'].includes(cap)
+      );
 
-        if (fallback.model !== primary.model) {
-          chain.push(fallback);
+      for (const provider of this.config.fallbackChain) {
+        try {
+          const fallback = this.selectModel({
+            provider,
+            capabilities: essentialCapabilities.length > 0 ? essentialCapabilities : undefined
+          });
+
+          if (fallback.model !== primary.model) {
+            chain.push(fallback);
+          }
+        } catch (error) {
+          // Skip this fallback provider if no suitable model found
+          console.warn(`No suitable fallback model found for provider ${provider}`);
         }
       }
     }

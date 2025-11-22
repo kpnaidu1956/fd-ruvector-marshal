@@ -31,19 +31,36 @@ export abstract class BaseGenerator<TOptions extends GeneratorOptions = Generato
       maxSize: 1000
     });
 
-    // Initialize router
+    // Initialize router with user configuration
+    // Respect user's fallback preferences instead of hardcoding
+    let fallbackChain: ModelProvider[] | undefined = undefined;
+
+    // Only use fallback if explicitly enabled (default: true)
+    if (config.enableFallback !== false) {
+      if (config.fallbackChain && config.fallbackChain.length > 0) {
+        // Use user-provided fallback chain
+        fallbackChain = config.fallbackChain;
+      } else {
+        // Use default fallback chain
+        // The router will still respect the user's primary provider choice
+        // Fallback only triggers if primary provider fails
+        fallbackChain = config.provider === 'gemini' ? ['openrouter'] : ['gemini'];
+      }
+    }
+
     this.router = new ModelRouter({
       defaultProvider: config.provider,
       providerKeys: {
-        gemini: config.apiKey,
+        gemini: config.apiKey || process.env.GEMINI_API_KEY,
         openrouter: process.env.OPENROUTER_API_KEY
       },
-      fallbackChain: config.provider === 'gemini' ? ['openrouter'] : ['gemini']
+      fallbackChain
     });
 
     // Initialize Gemini if needed
-    if (config.provider === 'gemini' && config.apiKey) {
-      this.gemini = new GoogleGenerativeAI(config.apiKey);
+    const geminiKey = config.apiKey || process.env.GEMINI_API_KEY;
+    if (config.provider === 'gemini' && geminiKey) {
+      this.gemini = new GoogleGenerativeAI(geminiKey);
     }
   }
 

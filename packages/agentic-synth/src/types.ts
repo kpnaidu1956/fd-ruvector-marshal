@@ -54,6 +54,8 @@ export interface SynthConfig {
   streaming?: boolean;
   automation?: boolean;
   vectorDB?: boolean;
+  enableFallback?: boolean;
+  fallbackChain?: ModelProvider[];
 }
 
 export const SynthConfigSchema = z.object({
@@ -66,7 +68,9 @@ export const SynthConfigSchema = z.object({
   timeout: z.number().optional().default(30000),
   streaming: z.boolean().optional().default(false),
   automation: z.boolean().optional().default(false),
-  vectorDB: z.boolean().optional().default(false)
+  vectorDB: z.boolean().optional().default(false),
+  enableFallback: z.boolean().optional().default(true),
+  fallbackChain: z.array(ModelProviderSchema).optional()
 });
 
 // Generator options
