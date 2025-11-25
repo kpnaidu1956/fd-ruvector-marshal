@@ -12,7 +12,7 @@ const platforms = [
 ];
 
 const basePackage = {
-  version: '0.1.1',
+  version: '0.1.2',
   repository: {
     type: 'git',
     url: 'https://github.com/ruvnet/ruvector.git'

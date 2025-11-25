@@ -1,6 +1,6 @@
 {
   "name": "@ruvector/core",
-  "version": "0.1.1",
+  "version": "0.1.14",
   "description": "High-performance Rust vector database for Node.js with HNSW indexing and SIMD optimizations",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,17 +16,13 @@
     "node": ">= 18"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:esm && npm run build:cjs && npm run build:rename-cjs",
+    "build:esm": "tsc --project tsconfig.json",
+    "build:cjs": "tsc --project tsconfig.cjs.json",
+    "build:rename-cjs": "mv dist-cjs/index.cjs.js dist/index.cjs && rm -rf dist-cjs",
     "prepublishOnly": "npm run build",
     "test": "node --test",
-    "clean": "rm -rf dist"
-  },
-  "optionalDependencies": {
-    "@ruvector/core-darwin-arm64": "0.1.2",
-    "@ruvector/core-darwin-x64": "0.1.2",
-    "@ruvector/core-linux-arm64-gnu": "0.1.2",
-    "@ruvector/core-linux-x64-gnu": "0.1.2",
-    "@ruvector/core-win32-x64-msvc": "0.1.2"
+    "clean": "rm -rf dist dist-cjs"
   },
   "devDependencies": {
     "@types/node": "^20.19.25",

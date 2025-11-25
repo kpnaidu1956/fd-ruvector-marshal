@@ -13,30 +13,25 @@ let implementationType: 'native' | 'wasm' = 'wasm';
 
 try {
   // Try to load native module first
-  implementation = require('ruvector-core');
+  implementation = require('@ruvector/core');
   implementationType = 'native';
 
   // Verify it's actually working
-  if (typeof implementation.VectorDb !== 'function') {
-    throw new Error('Native module loaded but VectorDb not found');
+  if (typeof implementation.VectorDB !== 'function') {
+    throw new Error('Native module loaded but VectorDB not found');
   }
 } catch (e: any) {
-  // Fallback to WASM
-  if (process.env.RUVECTOR_DEBUG) {
-    console.warn('[ruvector] Native module not available:', e.message);
-    console.warn('[ruvector] Falling back to WASM implementation');
-  }
-
-  try {
-    implementation = require('ruvector-wasm');
-    implementationType = 'wasm';
-  } catch (wasmError: any) {
-    throw new Error(
-      `Failed to load ruvector: Neither native nor WASM implementation available.\n` +
-      `Native error: ${e.message}\n` +
-      `WASM error: ${wasmError.message}`
-    );
-  }
+  // No WASM fallback available yet
+  throw new Error(
+    `Failed to load ruvector native module.\n` +
+    `Error: ${e.message}\n` +
+    `\nSupported platforms:\n` +
+    `- Linux x64/ARM64\n` +
+    `- macOS Intel/Apple Silicon\n` +
+    `- Windows x64\n` +
+    `\nIf you're on a supported platform, try:\n` +
+    `  npm install --force @ruvector/core`
+  );
 }
 
 /**
@@ -71,8 +66,8 @@ export function getVersion(): { version: string; implementation: string } {
   };
 }
 
-// Export the VectorDB class (note: native exports VectorDb, we re-export as VectorDB for consistency)
-export const VectorDB = implementation.VectorDb;
+// Export the VectorDB class
+export const VectorDB = implementation.VectorDB;
 
 // Export everything from the implementation
 export default implementation;
