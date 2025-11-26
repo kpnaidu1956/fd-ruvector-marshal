@@ -77,6 +77,11 @@ storage = ["redb", "memmap2"]  # File-based storage (not available in WASM)
 hnsw = ["hnsw_rs"]  # HNSW indexing (not available in WASM due to mmap dependency)
 memory-only = []  # Pure in-memory storage for WASM
 
+[[example]]
+name = "kuiper_belt_agenticdb"
+path = "../../examples/kuiper_belt/agenticdb_analysis.rs"
+required-features = ["storage"]
+
 [lib]
 crate-type = ["rlib"]
 bench = false
