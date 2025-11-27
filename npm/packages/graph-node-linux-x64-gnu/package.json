@@ -1,0 +1,11 @@
+{
+  "name": "@ruvector/graph-node-linux-x64-gnu",
+  "version": "0.1.0",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "main": "ruvector-graph.linux-x64-gnu.node",
+  "files": [
+    "ruvector-graph.linux-x64-gnu.node"
+  ],
+  "license": "MIT"
+}
