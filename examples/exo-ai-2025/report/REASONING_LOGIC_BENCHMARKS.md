@@ -1,5 +1,46 @@
 # Reasoning and Logic Benchmark Report
 
+## Overview
+
+This report evaluates the formal reasoning capabilities embedded in the EXO-AI 2025 cognitive substrate. Unlike traditional vector databases that only find "similar" patterns, EXO-AI reasons about *why* patterns are related, *when* they can interact causally, and *how* they maintain logical consistency.
+
+### The Reasoning Gap
+
+Traditional AI systems face a fundamental limitation:
+
+```
+Traditional Approach:
+  User asks: "What caused this error?"
+  System answers: "Here are similar errors" (no causal understanding)
+
+EXO-AI Approach:
+  User asks: "What caused this error?"
+  System reasons: "Pattern X preceded this error in the causal graph,
+                   within the past light-cone, with transitive distance 2"
+```
+
+### Reasoning Primitives
+
+EXO-AI implements four fundamental reasoning primitives:
+
+| Primitive | Question Answered | Mathematical Basis |
+|-----------|-------------------|-------------------|
+| **Causal Inference** | "What caused X?" | Directed graph path finding |
+| **Temporal Logic** | "When could X affect Y?" | Light-cone constraints |
+| **Consistency Check** | "Is this coherent?" | Sheaf theory (local→global) |
+| **Analogical Transfer** | "What's similar?" | Embedding cosine similarity |
+
+### Benchmark Summary
+
+| Reasoning Type | Throughput | Latency | Complexity |
+|----------------|------------|---------|------------|
+| Causal distance | 40,656/sec | 24.6µs | O(V+E) |
+| Transitive closure | 1,638/sec | 610µs | O(V+E) |
+| Light-cone filter | 37,142/sec | 26.9µs | O(n) |
+| Sheaf consistency | Varies | O(n²) | Formal |
+
+---
+
 ## Executive Summary
 
 This report evaluates the reasoning, logic, and comprehension capabilities of the EXO-AI 2025 cognitive substrate through systematic benchmarks measuring causal inference, temporal reasoning, consistency checking, and pattern comprehension.

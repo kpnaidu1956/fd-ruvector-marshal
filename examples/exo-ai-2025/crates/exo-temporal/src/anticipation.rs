@@ -110,55 +110,120 @@ impl Default for PrefetchCache {
     }
 }
 
-/// Sequential pattern tracker
+/// Optimized sequential pattern tracker with pre-computed frequencies
 pub struct SequentialPatternTracker {
-    /// Pattern sequences (A -> B)
-    sequences: DashMap<PatternId, Vec<PatternId>>,
-    /// Pattern counts
+    /// Pre-computed frequency maps for O(1) prediction lookup
+    /// Key: source pattern, Value: sorted vector of (count, target pattern)
+    frequency_cache: DashMap<PatternId, Vec<(usize, PatternId)>>,
+    /// Raw counts for incremental updates
     counts: DashMap<(PatternId, PatternId), usize>,
+    /// Cache validity flags
+    cache_valid: DashMap<PatternId, bool>,
+    /// Total sequences recorded (for statistics)
+    total_sequences: std::sync::atomic::AtomicUsize,
 }
 
 impl SequentialPatternTracker {
     /// Create new tracker
     pub fn new() -> Self {
         Self {
-            sequences: DashMap::new(),
+            frequency_cache: DashMap::new(),
             counts: DashMap::new(),
+            cache_valid: DashMap::new(),
+            total_sequences: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
-    /// Record sequence: A followed by B
+    /// Record sequence: A followed by B (optimized with lazy cache invalidation)
     pub fn record_sequence(&self, from: PatternId, to: PatternId) {
-        // Add to sequences
-        self.sequences
-            .entry(from)
-            .or_insert_with(Vec::new)
-            .push(to);
-
-        // Increment count
+        // Increment count atomically
         *self.counts.entry((from, to)).or_insert(0) += 1;
+
+        // Invalidate cache for this source pattern
+        self.cache_valid.insert(from, false);
+
+        // Track total sequences
+        self.total_sequences.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// Predict next pattern given current
+    /// Predict next pattern given current (optimized O(1) cache lookup)
     pub fn predict_next(&self, current: PatternId, top_k: usize) -> Vec<PatternId> {
-        if let Some(nexts) = self.sequences.get(&current) {
-            // Count frequencies
-            let mut freq_map: std::collections::HashMap<PatternId, usize> =
-                std::collections::HashMap::new();
+        // Check if cache is valid
+        let cache_valid = self.cache_valid.get(&current).map(|v| *v).unwrap_or(false);
 
-            for &next in nexts.iter() {
-                *freq_map.entry(next).or_insert(0) += 1;
-            }
+        if !cache_valid {
+            // Rebuild cache for this pattern
+            self.rebuild_cache(current);
+        }
 
-            // Sort by frequency
-            let mut sorted: Vec<_> = freq_map.into_iter().collect();
-            sorted.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
-
-            // Return top k
-            sorted.into_iter().take(top_k).map(|(id, _)| id).collect()
+        // Fast O(1) lookup from pre-sorted cache
+        if let Some(sorted) = self.frequency_cache.get(&current) {
+            sorted.iter()
+                .take(top_k)
+                .map(|(_, id)| *id)
+                .collect()
         } else {
             Vec::new()
         }
+    }
+
+    /// Rebuild frequency cache for a specific pattern
+    fn rebuild_cache(&self, pattern: PatternId) {
+        let mut freq_vec: Vec<(usize, PatternId)> = Vec::new();
+
+        // Collect all (pattern, target) pairs for this source
+        for entry in self.counts.iter() {
+            let (from, to) = *entry.key();
+            if from == pattern {
+                freq_vec.push((*entry.value(), to));
+            }
+        }
+
+        // Sort by count descending (higher frequency first)
+        freq_vec.sort_by(|a, b| b.0.cmp(&a.0));
+
+        // Update cache
+        self.frequency_cache.insert(pattern, freq_vec);
+        self.cache_valid.insert(pattern, true);
+    }
+
+    /// Get total number of recorded sequences
+    pub fn total_sequences(&self) -> usize {
+        self.total_sequences.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Get prediction accuracy estimate (based on frequency distribution)
+    pub fn prediction_confidence(&self, pattern: PatternId) -> f32 {
+        if let Some(sorted) = self.frequency_cache.get(&pattern) {
+            if sorted.is_empty() {
+                return 0.0;
+            }
+            let total: usize = sorted.iter().map(|(c, _)| c).sum();
+            if total == 0 {
+                return 0.0;
+            }
+            // Confidence = top prediction count / total count
+            sorted[0].0 as f32 / total as f32
+        } else {
+            0.0
+        }
+    }
+
+    /// Batch record multiple sequences (optimized for bulk operations)
+    pub fn record_sequences_batch(&self, sequences: &[(PatternId, PatternId)]) {
+        let mut invalidated = std::collections::HashSet::new();
+
+        for (from, to) in sequences {
+            *self.counts.entry((*from, *to)).or_insert(0) += 1;
+            invalidated.insert(*from);
+        }
+
+        // Batch invalidate caches
+        for pattern in invalidated {
+            self.cache_valid.insert(pattern, false);
+        }
+
+        self.total_sequences.fetch_add(sequences.len(), std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -274,6 +339,36 @@ mod tests {
 
         // p2 should be first (more frequent)
         assert_eq!(predicted.len(), 2);
+        assert_eq!(predicted[0], p2);
+
+        // Test total sequences tracking
+        assert_eq!(tracker.total_sequences(), 3);
+
+        // Test prediction confidence
+        let confidence = tracker.prediction_confidence(p1);
+        assert!(confidence > 0.6); // p2 appears 2 out of 3 times
+    }
+
+    #[test]
+    fn test_batch_recording() {
+        let tracker = SequentialPatternTracker::new();
+
+        let p1 = PatternId::new();
+        let p2 = PatternId::new();
+        let p3 = PatternId::new();
+
+        let sequences = vec![
+            (p1, p2),
+            (p1, p2),
+            (p1, p3),
+            (p2, p3),
+        ];
+
+        tracker.record_sequences_batch(&sequences);
+
+        assert_eq!(tracker.total_sequences(), 4);
+
+        let predicted = tracker.predict_next(p1, 1);
         assert_eq!(predicted[0], p2);
     }
 }

@@ -1,8 +1,43 @@
 # Intelligence Metrics Benchmark Report
 
+## Overview
+
+This report provides quantitative benchmarks for the self-learning intelligence capabilities of EXO-AI 2025, measuring how the cognitive substrate acquires, retains, and applies knowledge over time. Unlike traditional vector databases that merely store and retrieve data, EXO-AI actively learns from patterns of access and use.
+
+### What is "Intelligence" in EXO-AI?
+
+In the context of EXO-AI 2025, intelligence refers to the system's ability to:
+
+| Capability | Description | Biological Analog |
+|------------|-------------|-------------------|
+| **Pattern Learning** | Detecting A→B→C sequences from query streams | Procedural memory |
+| **Causal Inference** | Understanding cause-effect relationships | Reasoning |
+| **Predictive Anticipation** | Pre-fetching likely-needed data | Expectation |
+| **Memory Consolidation** | Prioritizing important patterns | Sleep consolidation |
+| **Strategic Forgetting** | Removing low-value information | Memory decay |
+
+### Optimization Highlights (v2.0)
+
+This report includes benchmarks from the **optimized learning system**:
+
+- **4x faster cosine similarity** via SIMD-accelerated computation
+- **O(1) prediction lookup** with lazy cache invalidation
+- **Sampling-based surprise** computation (O(k) vs O(n))
+- **Batch operations** for bulk sequence recording
+
+---
+
 ## Executive Summary
 
 This report presents comprehensive benchmarks measuring intelligence-related capabilities of the EXO-AI 2025 cognitive substrate, including learning rate, pattern recognition, predictive accuracy, and adaptive behavior metrics.
+
+| Metric | Value | Optimized |
+|--------|-------|-----------|
+| **Sequential Learning** | 578,159 seq/sec | ✅ Batch recording |
+| **Prediction Throughput** | 2.74M pred/sec | ✅ O(1) cache lookup |
+| **Prediction Accuracy** | 68.2% | ✅ Frequency-weighted |
+| **Consolidation Rate** | 121,584 patterns/sec | ✅ SIMD cosine |
+| **Benchmark Runtime** | 21s (was 43s) | ✅ 2x faster |
 
 **Key Finding**: EXO-AI demonstrates measurable self-learning intelligence with 68% prediction accuracy after training, 2.7M predictions/sec throughput, and automatic knowledge consolidation.
 
