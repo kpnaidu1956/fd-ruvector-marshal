@@ -1,0 +1,124 @@
+//! Query request types
+
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+/// Query request for RAG search
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueryRequest {
+    /// The question to answer
+    pub question: String,
+
+    /// Number of chunks to retrieve (default: 5)
+    #[serde(default = "default_top_k")]
+    pub top_k: usize,
+
+    /// Minimum similarity threshold (0.0-1.0, default: 0.3)
+    #[serde(default = "default_threshold")]
+    pub similarity_threshold: f32,
+
+    /// Whether to rerank results (default: true)
+    #[serde(default = "default_rerank")]
+    pub rerank: bool,
+
+    /// Filter by specific document IDs (optional)
+    #[serde(default)]
+    pub document_filter: Option<Vec<Uuid>>,
+
+    /// Include raw chunks in response (default: false)
+    #[serde(default)]
+    pub include_chunks: bool,
+
+    /// Stream the response (default: false)
+    #[serde(default)]
+    pub stream: bool,
+}
+
+fn default_top_k() -> usize {
+    10  // More chunks = more comprehensive context
+}
+
+fn default_threshold() -> f32 {
+    0.25  // Lower threshold to include more relevant content
+}
+
+fn default_rerank() -> bool {
+    true
+}
+
+impl Default for QueryRequest {
+    fn default() -> Self {
+        Self {
+            question: String::new(),
+            top_k: 10,  // More chunks for comprehensive answers
+            similarity_threshold: 0.25,  // Lower threshold to include more content
+            rerank: true,
+            document_filter: None,
+            include_chunks: false,
+            stream: false,
+        }
+    }
+}
+
+impl QueryRequest {
+    /// Create a new query
+    pub fn new(question: impl Into<String>) -> Self {
+        Self {
+            question: question.into(),
+            ..Default::default()
+        }
+    }
+
+    /// Set the number of results to retrieve
+    pub fn with_top_k(mut self, k: usize) -> Self {
+        self.top_k = k;
+        self
+    }
+
+    /// Set the similarity threshold
+    pub fn with_threshold(mut self, threshold: f32) -> Self {
+        self.similarity_threshold = threshold;
+        self
+    }
+
+    /// Filter by document IDs
+    pub fn with_documents(mut self, doc_ids: Vec<Uuid>) -> Self {
+        self.document_filter = Some(doc_ids);
+        self
+    }
+
+    /// Include raw chunks in response
+    pub fn with_chunks(mut self) -> Self {
+        self.include_chunks = true;
+        self
+    }
+}
+
+/// Ingest request options
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IngestOptions {
+    /// Custom chunk size (overrides config)
+    pub chunk_size: Option<usize>,
+
+    /// Custom chunk overlap (overrides config)
+    pub chunk_overlap: Option<usize>,
+
+    /// Extract images and run OCR
+    #[serde(default)]
+    pub extract_images: bool,
+
+    /// Custom metadata to attach to documents
+    #[serde(default)]
+    pub metadata: std::collections::HashMap<String, serde_json::Value>,
+}
+
+impl Default for IngestOptions {
+    fn default() -> Self {
+        Self {
+            chunk_size: None,
+            chunk_overlap: None,
+            extract_images: false,
+            metadata: std::collections::HashMap::new(),
+        }
+    }
+}
