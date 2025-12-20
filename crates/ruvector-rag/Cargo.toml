@@ -1,0 +1,93 @@
+[package]
+name = "ruvector-rag"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Full-stack RAG system with document ingestion, vector search, and LLM-powered answers with citations"
+keywords = ["rag", "vector-database", "embeddings", "llm", "citations"]
+categories = ["science", "machine-learning"]
+
+[dependencies]
+# Core ruvector
+ruvector-core = { path = "../ruvector-core" }
+
+# HTTP Server (Axum)
+axum = { version = "0.7", features = ["json", "multipart", "tokio"] }
+tokio = { workspace = true, features = ["full", "fs"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip", "limit", "fs"] }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# File Parsing
+pdf-extract = "0.8"
+lopdf = "0.34"
+docx-rs = "0.4"
+calamine = "0.26"
+scraper = "0.20"
+csv = "1.3"
+zip = "2.2"
+quick-xml = "0.37"
+
+# ONNX Embeddings
+ort = { version = "2.0.0-rc.9", features = ["download-binaries", "half"] }
+tokenizers = { version = "0.20", default-features = false, features = ["progressbar", "onig"] }
+ndarray = { workspace = true, features = ["rayon"] }
+half = "2.4"
+
+# HTTP Client (for Ollama)
+reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
+futures-util = "0.3"
+tokio-stream = "0.1"
+
+# Text Processing
+unicode-segmentation = "1.11"
+regex = "1.11"
+pulldown-cmark = "0.12"
+
+# Utilities
+uuid = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+sha2 = "0.10"
+hex = "0.4"
+walkdir = "2.5"
+mime_guess = "2.0"
+tempfile = "3.14"
+dirs = "5.0"
+bytes = "1.7"
+
+# Async utilities
+async-trait = "0.1"
+
+# Concurrency
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+
+# CLI (optional)
+clap = { workspace = true, optional = true }
+indicatif = { workspace = true, optional = true }
+console = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[features]
+default = ["pdf", "docx", "xlsx"]
+pdf = []
+docx = []
+xlsx = []
+cli = ["dep:clap", "dep:indicatif", "dep:console"]
+all-parsers = ["pdf", "docx", "xlsx"]
+
+[[bin]]
+name = "ruvector-rag-server"
+path = "src/bin/server.rs"
