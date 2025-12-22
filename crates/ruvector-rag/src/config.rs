@@ -121,6 +121,10 @@ pub struct LlmConfig {
     pub temperature: f32,
     /// Request timeout in seconds
     pub timeout_secs: u64,
+    /// Number of retries for failed requests
+    pub max_retries: u32,
+    /// Context window size (tokens)
+    pub context_size: usize,
 }
 
 impl Default for LlmConfig {
@@ -128,9 +132,11 @@ impl Default for LlmConfig {
         Self {
             base_url: "http://localhost:11434".to_string(),
             embed_model: "nomic-embed-text".to_string(),
-            generate_model: "llama3.2:1b".to_string(),
-            temperature: 0.7,
-            timeout_secs: 120,
+            generate_model: "command-r".to_string(),  // Best for RAG with citations
+            temperature: 0.3,  // Lower for more factual answers
+            timeout_secs: 300,  // 5 minutes for complex queries
+            max_retries: 3,
+            context_size: 128000,  // command-r supports 128k context
         }
     }
 }

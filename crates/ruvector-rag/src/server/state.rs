@@ -2,12 +2,14 @@
 
 use dashmap::DashMap;
 use parking_lot::RwLock;
+use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::config::RagConfig;
 use crate::error::Result;
 use crate::generation::OllamaClient;
+use crate::learning::KnowledgeStore;
 use crate::retrieval::VectorStore;
 use crate::types::Document;
 
@@ -24,6 +26,8 @@ struct AppStateInner {
     vector_store: VectorStore,
     /// Ollama client (used for both embeddings and generation)
     ollama: OllamaClient,
+    /// Knowledge store for learning
+    knowledge_store: KnowledgeStore,
     /// Document registry (in-memory for now)
     documents: DashMap<Uuid, Document>,
     /// Ready state
@@ -43,15 +47,30 @@ impl AppState {
         let ollama = OllamaClient::new(&config.llm);
         tracing::info!("Ollama client initialized (using {} for embeddings)", config.llm.embed_model);
 
+        // Initialize knowledge store for learning
+        let knowledge_path = config.vector_db.storage_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("knowledge.json");
+        let knowledge_store = KnowledgeStore::new(knowledge_path);
+        tracing::info!("Knowledge store initialized");
+
         Ok(Self {
             inner: Arc::new(AppStateInner {
                 config,
                 vector_store,
                 ollama,
+                knowledge_store,
                 documents: DashMap::new(),
                 ready: RwLock::new(true),
             }),
         })
+    }
+
+    /// Get knowledge store
+    pub fn knowledge_store(&self) -> &KnowledgeStore {
+        &self.inner.knowledge_store
     }
 
     /// Get configuration

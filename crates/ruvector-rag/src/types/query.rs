@@ -35,11 +35,11 @@ pub struct QueryRequest {
 }
 
 fn default_top_k() -> usize {
-    10  // More chunks = more comprehensive context
+    15  // More chunks for comprehensive context (GPU can handle larger context)
 }
 
 fn default_threshold() -> f32 {
-    0.25  // Lower threshold to include more relevant content
+    0.20  // Lower threshold to include more relevant content
 }
 
 fn default_rerank() -> bool {
@@ -50,8 +50,8 @@ impl Default for QueryRequest {
     fn default() -> Self {
         Self {
             question: String::new(),
-            top_k: 10,  // More chunks for comprehensive answers
-            similarity_threshold: 0.25,  // Lower threshold to include more content
+            top_k: 15,  // More chunks for comprehensive answers (GPU handles larger context)
+            similarity_threshold: 0.20,  // Lower threshold to include more content
             rerank: true,
             document_filter: None,
             include_chunks: false,

@@ -9,6 +9,7 @@ pub mod embeddings;
 pub mod error;
 pub mod generation;
 pub mod ingestion;
+pub mod learning;
 pub mod retrieval;
 pub mod server;
 pub mod types;
