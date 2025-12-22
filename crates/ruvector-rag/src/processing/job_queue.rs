@@ -31,6 +31,14 @@ pub enum JobStatus {
     Failed,
 }
 
+/// Error details for a file that failed to process
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileError {
+    pub filename: String,
+    pub error: String,
+    pub stage: ProcessingStage,
+}
+
 /// Progress information for a job
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobProgress {
@@ -39,10 +47,14 @@ pub struct JobProgress {
     pub stage: ProcessingStage,
     pub total_files: usize,
     pub files_processed: usize,
+    pub files_skipped: usize,
+    pub files_failed: usize,
     pub current_file: Option<String>,
     pub total_chunks: usize,
     pub chunks_embedded: usize,
     pub error: Option<String>,
+    pub file_errors: Vec<FileError>,
+    pub skipped_files: Vec<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -56,10 +68,14 @@ impl JobProgress {
             stage: ProcessingStage::Queued,
             total_files,
             files_processed: 0,
+            files_skipped: 0,
+            files_failed: 0,
             current_file: None,
             total_chunks: 0,
             chunks_embedded: 0,
             error: None,
+            file_errors: Vec::new(),
+            skipped_files: Vec::new(),
             created_at: now,
             updated_at: now,
         }
@@ -225,6 +241,28 @@ impl JobQueue {
     pub fn increment_chunks_embedded(&self, job_id: Uuid, count: usize) {
         if let Some(mut progress) = self.jobs.get_mut(&job_id) {
             progress.chunks_embedded += count;
+            progress.updated_at = chrono::Utc::now();
+        }
+    }
+
+    /// Add a file error
+    pub fn add_file_error(&self, job_id: Uuid, filename: &str, error: &str, stage: ProcessingStage) {
+        if let Some(mut progress) = self.jobs.get_mut(&job_id) {
+            progress.files_failed += 1;
+            progress.file_errors.push(FileError {
+                filename: filename.to_string(),
+                error: error.to_string(),
+                stage,
+            });
+            progress.updated_at = chrono::Utc::now();
+        }
+    }
+
+    /// Add a skipped file
+    pub fn add_skipped_file(&self, job_id: Uuid, filename: &str, reason: &str) {
+        if let Some(mut progress) = self.jobs.get_mut(&job_id) {
+            progress.files_skipped += 1;
+            progress.skipped_files.push(format!("{}: {}", filename, reason));
             progress.updated_at = chrono::Utc::now();
         }
     }
