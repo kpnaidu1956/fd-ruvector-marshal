@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::processing::{FileData, FileError, Job, ProcessingOptions};
+use crate::processing::{FileData, Job, ProcessingOptions};
 use crate::server::state::AppState;
 
 /// Response from async ingest

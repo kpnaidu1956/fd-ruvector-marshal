@@ -3,7 +3,7 @@
 pub mod routes;
 pub mod state;
 
-use axum::{extract::DefaultBodyLimit, routing::get, Router};
+use axum::{routing::get, Router};
 use std::net::SocketAddr;
 use tower_http::{
     compression::CompressionLayer,
