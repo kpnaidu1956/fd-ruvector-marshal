@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use crate::ingestion::ExternalParserConfig;
+
 /// Main RAG system configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RagConfig {
@@ -16,6 +18,8 @@ pub struct RagConfig {
     pub llm: LlmConfig,
     /// Vector database configuration
     pub vector_db: VectorDbConfig,
+    /// External parser configuration
+    pub external_parser: ExternalParserConfig,
 }
 
 impl Default for RagConfig {
@@ -26,6 +30,7 @@ impl Default for RagConfig {
             chunking: ChunkingConfig::default(),
             llm: LlmConfig::default(),
             vector_db: VectorDbConfig::default(),
+            external_parser: ExternalParserConfig::default(),
         }
     }
 }

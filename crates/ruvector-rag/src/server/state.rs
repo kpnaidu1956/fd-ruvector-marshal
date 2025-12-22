@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::config::RagConfig;
 use crate::error::Result;
 use crate::generation::OllamaClient;
+use crate::ingestion::ExternalParser;
 use crate::learning::KnowledgeStore;
 use crate::retrieval::VectorStore;
 use crate::types::Document;
@@ -26,6 +27,8 @@ struct AppStateInner {
     vector_store: VectorStore,
     /// Ollama client (used for both embeddings and generation)
     ollama: OllamaClient,
+    /// External parser for legacy formats
+    external_parser: ExternalParser,
     /// Knowledge store for learning
     knowledge_store: KnowledgeStore,
     /// Document registry (in-memory for now)
@@ -47,6 +50,10 @@ impl AppState {
         let ollama = OllamaClient::new(&config.llm);
         tracing::info!("Ollama client initialized (using {} for embeddings)", config.llm.embed_model);
 
+        // Initialize external parser for legacy formats
+        let external_parser = ExternalParser::new(config.external_parser.clone());
+        tracing::info!("External parser initialized (enabled: {})", config.external_parser.enabled);
+
         // Initialize knowledge store for learning
         let knowledge_path = config.vector_db.storage_path
             .parent()
@@ -61,11 +68,17 @@ impl AppState {
                 config,
                 vector_store,
                 ollama,
+                external_parser,
                 knowledge_store,
                 documents: DashMap::new(),
                 ready: RwLock::new(true),
             }),
         })
+    }
+
+    /// Get external parser
+    pub fn external_parser(&self) -> &ExternalParser {
+        &self.inner.external_parser
     }
 
     /// Get knowledge store

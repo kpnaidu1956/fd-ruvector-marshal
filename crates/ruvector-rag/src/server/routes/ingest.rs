@@ -8,7 +8,7 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::ingestion::IngestPipeline;
+use crate::ingestion::{ExternalParser, IngestPipeline};
 use crate::server::state::AppState;
 use crate::types::{
     query::IngestOptions,
@@ -65,8 +65,50 @@ pub async fn ingest_files(
 
         tracing::info!("Processing file: {} ({} bytes)", filename, data.len());
 
+        // Check if file needs conversion (legacy formats)
+        let (processed_filename, processed_data) = if ExternalParser::needs_conversion(&filename) {
+            tracing::info!("Converting legacy format: {}", filename);
+            match convert_legacy_format(&state, &filename, &data).await {
+                Ok((new_name, new_data)) => (new_name, new_data),
+                Err(e) => {
+                    tracing::warn!("Conversion failed, trying external parsing: {}", e);
+                    // Fall back to external parsing
+                    match parse_with_external(&state, &filename, &data).await {
+                        Ok(content) => {
+                            let new_name = format!("{}.txt", filename);
+                            (new_name, content.into_bytes())
+                        }
+                        Err(e2) => {
+                            errors.push(IngestError {
+                                filename,
+                                error: format!("Failed to process legacy format: {} / {}", e, e2),
+                            });
+                            continue;
+                        }
+                    }
+                }
+            }
+        } else if ExternalParser::needs_external_parsing(&filename) {
+            // Use external API for other unsupported formats
+            match parse_with_external(&state, &filename, &data).await {
+                Ok(content) => {
+                    let new_name = format!("{}.txt", filename);
+                    (new_name, content.into_bytes())
+                }
+                Err(e) => {
+                    errors.push(IngestError {
+                        filename,
+                        error: format!("External parsing failed: {}", e),
+                    });
+                    continue;
+                }
+            }
+        } else {
+            (filename.clone(), data.to_vec())
+        };
+
         // Process the file
-        match process_file(&state, &filename, &data, &options).await {
+        match process_file(&state, &processed_filename, &processed_data, &options).await {
             Ok((doc, chunk_count)) => {
                 total_chunks += chunk_count;
                 documents.push(DocumentSummary::from(&doc));
@@ -146,4 +188,47 @@ async fn process_file(
     );
 
     Ok((doc, chunk_count))
+}
+
+/// Convert legacy format (DOC, PPT, XLS) using LibreOffice
+async fn convert_legacy_format(
+    state: &AppState,
+    filename: &str,
+    data: &[u8],
+) -> Result<(String, Vec<u8>)> {
+    let converted = state
+        .external_parser()
+        .convert_with_libreoffice(filename, data)
+        .await?;
+
+    // Generate new filename with modern extension
+    let stem = std::path::Path::new(filename)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("document");
+
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+    let new_ext = match ext.as_str() {
+        "doc" => "docx",
+        "ppt" => "pptx",
+        "xls" => "xlsx",
+        _ => "docx",
+    };
+
+    let new_filename = format!("{}.{}", stem, new_ext);
+    Ok((new_filename, converted))
+}
+
+/// Parse document using external API (Unstructured.io)
+async fn parse_with_external(
+    state: &AppState,
+    filename: &str,
+    data: &[u8],
+) -> Result<String> {
+    let parsed = state
+        .external_parser()
+        .parse_with_unstructured(filename, data)
+        .await?;
+
+    Ok(parsed.content)
 }
