@@ -57,24 +57,6 @@ impl AppState {
         let external_parser = Arc::new(ExternalParser::new(config.external_parser.clone()));
         tracing::info!("External parser initialized (enabled: {})", config.external_parser.enabled);
 
-        // Initialize job queue and start workers
-        let worker_count = num_cpus::get().min(4);  // Max 4 workers
-        let (job_queue, receiver) = JobQueue::new(worker_count);
-        let job_queue = Arc::new(job_queue);
-        tracing::info!("Job queue initialized with {} workers", worker_count);
-
-        // Start background worker
-        let worker = ProcessingWorker::new(
-            config.clone(),
-            vector_store.clone(),
-            ollama.clone(),
-            external_parser.clone(),
-            job_queue.clone(),
-        );
-        tokio::spawn(async move {
-            worker.run(receiver).await;
-        });
-
         // Initialize knowledge store for learning
         let knowledge_path = config.vector_db.storage_path
             .parent()
@@ -84,18 +66,34 @@ impl AppState {
         let knowledge_store = KnowledgeStore::new(knowledge_path);
         tracing::info!("Knowledge store initialized");
 
-        Ok(Self {
+        // Initialize job queue and start workers
+        let worker_count = num_cpus::get().min(4);  // Max 4 workers
+        let (job_queue, receiver) = JobQueue::new(worker_count);
+        let job_queue = Arc::new(job_queue);
+        tracing::info!("Job queue initialized with {} workers", worker_count);
+
+        // Create the state first (without the worker running)
+        let state = Self {
             inner: Arc::new(AppStateInner {
                 config,
                 vector_store,
                 ollama,
                 external_parser,
-                job_queue,
+                job_queue: job_queue.clone(),
                 knowledge_store,
                 documents: DashMap::new(),
                 ready: RwLock::new(true),
             }),
-        })
+        };
+
+        // Start background worker with a clone of the state
+        let worker_state = state.clone();
+        let worker = ProcessingWorker::new(worker_state, job_queue);
+        tokio::spawn(async move {
+            worker.run(receiver).await;
+        });
+
+        Ok(state)
     }
 
     /// Get external parser
@@ -166,4 +164,71 @@ impl AppState {
             .map(|entry| entry.value().clone())
             .collect()
     }
+
+    /// Find document by filename
+    pub fn find_by_filename(&self, filename: &str) -> Option<Document> {
+        self.inner
+            .documents
+            .iter()
+            .find(|entry| entry.value().filename == filename)
+            .map(|entry| entry.value().clone())
+    }
+
+    /// Find document by content hash
+    pub fn find_by_hash(&self, content_hash: &str) -> Option<Document> {
+        self.inner
+            .documents
+            .iter()
+            .find(|entry| entry.value().content_hash == content_hash)
+            .map(|entry| entry.value().clone())
+    }
+
+    /// Check if file should be processed (returns action to take)
+    /// Returns: (should_process, existing_doc_to_delete)
+    pub fn check_file_status(&self, filename: &str, content_hash: &str) -> FileStatus {
+        // First, check if exact same content exists (by hash)
+        if let Some(existing) = self.find_by_hash(content_hash) {
+            if existing.filename == filename {
+                // Same file, same content - skip
+                return FileStatus::Unchanged(existing);
+            } else {
+                // Different filename, same content - could be a rename or duplicate
+                // We'll still skip since content is identical
+                return FileStatus::Duplicate(existing);
+            }
+        }
+
+        // Check if file with same name exists but different content
+        if let Some(existing) = self.find_by_filename(filename) {
+            // Same filename, different content - file was modified
+            return FileStatus::Modified(existing);
+        }
+
+        // New file
+        FileStatus::New
+    }
+
+    /// Delete document and its chunks
+    pub fn delete_document_with_chunks(&self, doc_id: &Uuid) -> crate::error::Result<usize> {
+        // Delete chunks from vector store
+        let deleted = self.inner.vector_store.delete_by_document(doc_id)?;
+
+        // Remove from document registry
+        self.inner.documents.remove(doc_id);
+
+        Ok(deleted)
+    }
+}
+
+/// Status of a file for deduplication
+#[derive(Debug, Clone)]
+pub enum FileStatus {
+    /// File is new, process it
+    New,
+    /// File exists with same content - skip processing
+    Unchanged(Document),
+    /// Same content exists under different filename - skip
+    Duplicate(Document),
+    /// File exists but content changed - delete old and reprocess
+    Modified(Document),
 }
