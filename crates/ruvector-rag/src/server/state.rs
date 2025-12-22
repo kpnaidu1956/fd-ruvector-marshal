@@ -11,6 +11,7 @@ use crate::error::Result;
 use crate::generation::OllamaClient;
 use crate::ingestion::ExternalParser;
 use crate::learning::KnowledgeStore;
+use crate::processing::{JobQueue, ProcessingWorker};
 use crate::retrieval::VectorStore;
 use crate::types::Document;
 
@@ -24,11 +25,13 @@ struct AppStateInner {
     /// Configuration
     config: RagConfig,
     /// Vector store for chunks
-    vector_store: VectorStore,
+    vector_store: Arc<VectorStore>,
     /// Ollama client (used for both embeddings and generation)
-    ollama: OllamaClient,
+    ollama: Arc<OllamaClient>,
     /// External parser for legacy formats
-    external_parser: ExternalParser,
+    external_parser: Arc<ExternalParser>,
+    /// Job queue for async processing
+    job_queue: Arc<JobQueue>,
     /// Knowledge store for learning
     knowledge_store: KnowledgeStore,
     /// Document registry (in-memory for now)
@@ -43,16 +46,34 @@ impl AppState {
         tracing::info!("Initializing RAG application state...");
 
         // Initialize vector store
-        let vector_store = VectorStore::new(&config)?;
+        let vector_store = Arc::new(VectorStore::new(&config)?);
         tracing::info!("Vector store initialized");
 
         // Initialize Ollama client (handles both embeddings and generation)
-        let ollama = OllamaClient::new(&config.llm);
+        let ollama = Arc::new(OllamaClient::new(&config.llm));
         tracing::info!("Ollama client initialized (using {} for embeddings)", config.llm.embed_model);
 
         // Initialize external parser for legacy formats
-        let external_parser = ExternalParser::new(config.external_parser.clone());
+        let external_parser = Arc::new(ExternalParser::new(config.external_parser.clone()));
         tracing::info!("External parser initialized (enabled: {})", config.external_parser.enabled);
+
+        // Initialize job queue and start workers
+        let worker_count = num_cpus::get().min(4);  // Max 4 workers
+        let (job_queue, receiver) = JobQueue::new(worker_count);
+        let job_queue = Arc::new(job_queue);
+        tracing::info!("Job queue initialized with {} workers", worker_count);
+
+        // Start background worker
+        let worker = ProcessingWorker::new(
+            config.clone(),
+            vector_store.clone(),
+            ollama.clone(),
+            external_parser.clone(),
+            job_queue.clone(),
+        );
+        tokio::spawn(async move {
+            worker.run(receiver).await;
+        });
 
         // Initialize knowledge store for learning
         let knowledge_path = config.vector_db.storage_path
@@ -69,6 +90,7 @@ impl AppState {
                 vector_store,
                 ollama,
                 external_parser,
+                job_queue,
                 knowledge_store,
                 documents: DashMap::new(),
                 ready: RwLock::new(true),
@@ -79,6 +101,11 @@ impl AppState {
     /// Get external parser
     pub fn external_parser(&self) -> &ExternalParser {
         &self.inner.external_parser
+    }
+
+    /// Get job queue
+    pub fn job_queue(&self) -> &Arc<JobQueue> {
+        &self.inner.job_queue
     }
 
     /// Get knowledge store
@@ -92,12 +119,12 @@ impl AppState {
     }
 
     /// Get vector store
-    pub fn vector_store(&self) -> &VectorStore {
+    pub fn vector_store(&self) -> &Arc<VectorStore> {
         &self.inner.vector_store
     }
 
     /// Get Ollama client (for embeddings and generation)
-    pub fn ollama(&self) -> &OllamaClient {
+    pub fn ollama(&self) -> &Arc<OllamaClient> {
         &self.inner.ollama
     }
 

@@ -71,6 +71,8 @@ async-trait = "0.1"
 # Concurrency
 parking_lot = { workspace = true }
 dashmap = { workspace = true }
+num_cpus = "1.16"
+futures = "0.3"
 
 # CLI (optional)
 clap = { workspace = true, optional = true }

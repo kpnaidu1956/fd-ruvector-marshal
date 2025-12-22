@@ -2,6 +2,7 @@
 
 pub mod documents;
 pub mod ingest;
+pub mod jobs;
 pub mod query;
 
 use axum::{
@@ -23,6 +24,14 @@ pub fn api_routes(max_upload_size: usize) -> Router<AppState> {
             "/ingest",
             post(ingest::ingest_files).layer(DefaultBodyLimit::max(max_upload_size)),
         )
+        // Async ingestion with progress tracking
+        .route(
+            "/ingest/async",
+            post(jobs::ingest_async).layer(DefaultBodyLimit::max(max_upload_size)),
+        )
+        // Job management
+        .route("/jobs", get(jobs::list_jobs))
+        .route("/jobs/:id", get(jobs::get_job_progress))
         // Query
         .route("/query", post(query::query_rag))
         // Info
@@ -36,7 +45,10 @@ async fn info() -> axum::Json<serde_json::Value> {
         "version": env!("CARGO_PKG_VERSION"),
         "description": "RAG system with document ingestion and citation-aware answers",
         "endpoints": {
-            "POST /api/ingest": "Upload and process documents",
+            "POST /api/ingest": "Upload and process documents (sync)",
+            "POST /api/ingest/async": "Upload documents for async processing",
+            "GET /api/jobs": "List all jobs and queue stats",
+            "GET /api/jobs/:id": "Get job progress",
             "POST /api/query": "Query with citations",
             "GET /api/documents": "List all documents",
             "GET /api/documents/:id": "Get document details",
