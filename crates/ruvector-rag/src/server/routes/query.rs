@@ -2,9 +2,11 @@
 
 use axum::{extract::State, Json};
 use std::time::Instant;
+use uuid::Uuid;
 
 use crate::error::Result;
 use crate::generation::PromptBuilder;
+use crate::learning::knowledge_store::QAInteraction;
 use crate::server::state::AppState;
 use crate::types::{query::QueryRequest, response::{Citation, QueryResponse}};
 
@@ -53,11 +55,27 @@ pub async fn query_rag(
     // Build context for LLM
     let context = PromptBuilder::build_context(&search_results);
 
-    // Generate answer using Ollama
-    let answer = state
-        .ollama()
-        .generate_answer(&request.question, &context, &citations)
-        .await?;
+    // Find similar past Q&A for learning
+    let similar_qa = state.knowledge_store().find_similar(&request.question, 3);
+    let past_qa: Vec<(String, String)> = similar_qa
+        .iter()
+        .filter(|qa| qa.feedback_score.unwrap_or(0) >= 0)  // Only use positive/neutral feedback
+        .map(|qa| (qa.question.clone(), qa.answer.clone()))
+        .collect();
+
+    // Generate answer using Ollama (with learning if available)
+    let answer = if past_qa.is_empty() {
+        state
+            .ollama()
+            .generate_answer(&request.question, &context, &citations)
+            .await?
+    } else {
+        tracing::info!("Using {} learned examples for better answer", past_qa.len());
+        state
+            .ollama()
+            .generate_with_learning(&request.question, &context, &citations, &past_qa)
+            .await?
+    };
 
     // Parse citations from answer and link them
     let (clean_answer, linked_citations) =
@@ -65,8 +83,22 @@ pub async fn query_rag(
 
     let processing_time_ms = start.elapsed().as_millis() as u64;
 
-    let mut response = QueryResponse::new(clean_answer, linked_citations, processing_time_ms);
+    let mut response = QueryResponse::new(clean_answer.clone(), linked_citations.clone(), processing_time_ms);
     response.chunks_retrieved = search_results.len();
+
+    // Store this Q&A for learning
+    let interaction = QAInteraction {
+        id: Uuid::new_v4(),
+        question: request.question.clone(),
+        answer: clean_answer,
+        citations_used: linked_citations.iter().map(|c| c.filename.clone()).collect(),
+        relevance_score: search_results.first().map(|r| r.similarity).unwrap_or(0.0),
+        feedback_score: None,  // Will be updated via feedback endpoint
+        created_at: chrono::Utc::now(),
+        document_ids: search_results.iter().map(|r| r.chunk.document_id).collect(),
+    };
+    let interaction_id = state.knowledge_store().store_interaction(interaction);
+    response.interaction_id = Some(interaction_id);
 
     // Include raw chunks if requested
     if request.include_chunks {

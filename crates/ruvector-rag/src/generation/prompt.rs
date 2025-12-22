@@ -95,6 +95,55 @@ Provide a comprehensive, well-structured answer with citations:"#,
             .join("\n")
     }
 
+    /// Build RAG prompt with learning from past Q&A
+    pub fn build_rag_prompt_with_learning(
+        question: &str,
+        context: &str,
+        citations: &[Citation],
+        past_qa: &[(String, String)],
+    ) -> String {
+        let past_examples = if past_qa.is_empty() {
+            String::new()
+        } else {
+            let examples: Vec<String> = past_qa
+                .iter()
+                .take(3)  // Limit to 3 examples to avoid context overflow
+                .map(|(q, a)| format!("Q: {}\nA: {}", q, a))
+                .collect();
+            format!(
+                "\nHERE ARE EXAMPLES OF WELL-ANSWERED SIMILAR QUESTIONS:\n{}\n\nNow answer the new question following the same comprehensive style:\n",
+                examples.join("\n\n---\n\n")
+            )
+        };
+
+        format!(
+            r#"You are a knowledgeable assistant that provides comprehensive, detailed answers based on provided documents.
+
+IMPORTANT INSTRUCTIONS:
+1. Provide a COMPREHENSIVE and DETAILED answer using information from the context below
+2. Synthesize information from MULTIPLE sources when available to give a complete picture
+3. Include relevant details, examples, and explanations found in the documents
+4. For each claim or fact, cite the source using the format [Source: filename, Page X] or [Source: filename, Lines X-Y]
+5. Structure your answer clearly with proper paragraphs when covering multiple aspects
+6. If information spans multiple documents, integrate it cohesively
+7. If the information is not in the context, say "I cannot find this information in the provided documents"
+{past_examples}
+CONTEXT FROM DOCUMENTS:
+{context}
+
+AVAILABLE SOURCES:
+{sources}
+
+QUESTION: {question}
+
+Provide a comprehensive, well-structured answer with citations:"#,
+            past_examples = past_examples,
+            context = context,
+            sources = Self::format_sources_list(citations),
+            question = question
+        )
+    }
+
     /// Build a simple question-answering prompt
     pub fn build_qa_prompt(question: &str, context: &str) -> String {
         format!(

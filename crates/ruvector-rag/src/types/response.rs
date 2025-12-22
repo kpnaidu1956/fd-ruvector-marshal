@@ -102,6 +102,9 @@ pub struct QueryResponse {
     pub chunks_retrieved: usize,
     /// Number of chunks used in answer
     pub chunks_used: usize,
+    /// Interaction ID for feedback/learning
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interaction_id: Option<Uuid>,
     /// Raw chunks (if include_chunks was true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_chunks: Option<Vec<Chunk>>,
@@ -124,6 +127,7 @@ impl QueryResponse {
             chunks_used: citations.len(),
             citations,
             processing_time_ms,
+            interaction_id: None,
             raw_chunks: None,
         }
     }
@@ -137,6 +141,7 @@ impl QueryResponse {
             processing_time_ms,
             chunks_retrieved: 0,
             chunks_used: 0,
+            interaction_id: None,
             raw_chunks: None,
         }
     }
