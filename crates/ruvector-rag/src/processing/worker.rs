@@ -2,14 +2,14 @@
 
 use futures_util::future::join_all;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Semaphore};
 
 use crate::error::Result;
 use crate::ingestion::{ExternalParser, IngestPipeline};
 use crate::server::state::{AppState, FileStatus};
 use crate::types::Document;
 
-use super::job_queue::{Job, JobQueue, JobStatus, ProcessingStage};
+use super::job_queue::{FileData, Job, JobQueue, JobStatus, ProcessingStage};
 
 /// Result of processing a file
 #[derive(Debug)]
@@ -26,24 +26,38 @@ pub enum FileProcessResult {
 pub struct ProcessingWorker {
     state: AppState,
     job_queue: Arc<JobQueue>,
+    parallel_files: usize,
     parallel_embeddings: usize,
 }
 
 impl ProcessingWorker {
     /// Create a new processing worker
     pub fn new(state: AppState, job_queue: Arc<JobQueue>) -> Self {
-        let parallel_embeddings = num_cpus::get().min(8);  // Max 8 parallel embeddings
+        let cpu_count = num_cpus::get();
+        let parallel_files = cpu_count.min(8);      // Process up to 8 files in parallel
+        let parallel_embeddings = cpu_count.min(4); // Embeddings per file
+
+        tracing::info!(
+            "Worker configured: {} parallel files, {} parallel embeddings per file",
+            parallel_files,
+            parallel_embeddings
+        );
 
         Self {
             state,
             job_queue,
+            parallel_files,
             parallel_embeddings,
         }
     }
 
     /// Start processing jobs from the queue
     pub async fn run(self, mut receiver: mpsc::Receiver<Job>) {
-        tracing::info!("Processing worker started with {} parallel embeddings", self.parallel_embeddings);
+        tracing::info!(
+            "Processing worker started: {} parallel files, {} embeddings/file",
+            self.parallel_files,
+            self.parallel_embeddings
+        );
 
         while let Some(job) = receiver.recv().await {
             let job_id = job.id;
@@ -51,7 +65,7 @@ impl ProcessingWorker {
 
             self.job_queue.update_status(job_id, JobStatus::Processing, None);
 
-            match self.process_job(job).await {
+            match self.process_job_parallel(job).await {
                 Ok(()) => {
                     self.job_queue.update_stage(job_id, ProcessingStage::Complete);
                     tracing::info!("Job {} completed successfully", job_id);
@@ -64,40 +78,70 @@ impl ProcessingWorker {
         }
     }
 
-    /// Process a single job
-    async fn process_job(&self, job: Job) -> Result<()> {
+    /// Process a job with parallel file processing
+    async fn process_job_parallel(&self, job: Job) -> Result<()> {
         let job_id = job.id;
-        let parallel = job.options.parallel_embeddings.max(1).min(self.parallel_embeddings);
+        let parallel_embeddings = job.options.parallel_embeddings.max(1).min(self.parallel_embeddings);
 
-        for file_data in job.files {
-            self.job_queue.update_current_file(job_id, &file_data.filename);
+        // Create semaphore to limit concurrent file processing
+        let semaphore = Arc::new(Semaphore::new(self.parallel_files));
 
-            // Process the file with deduplication
-            match self.process_file_with_dedup(&file_data.filename, &file_data.data, job_id, parallel).await {
+        // Create futures for all files
+        let file_futures: Vec<_> = job.files.into_iter().map(|file_data| {
+            let state = self.state.clone();
+            let job_queue = self.job_queue.clone();
+            let sem = semaphore.clone();
+            let filename = file_data.filename.clone();
+
+            async move {
+                // Acquire semaphore permit
+                let _permit = sem.acquire().await.unwrap();
+
+                tracing::info!("Starting parallel processing: {}", filename);
+                job_queue.update_current_file(job_id, &filename);
+
+                // Process the file
+                let result = Self::process_single_file(
+                    &state,
+                    &job_queue,
+                    job_id,
+                    file_data,
+                    parallel_embeddings,
+                ).await;
+
+                (filename, result)
+            }
+        }).collect();
+
+        // Wait for all files to complete
+        let results = join_all(file_futures).await;
+
+        // Process results
+        for (filename, result) in results {
+            match result {
                 Ok(FileProcessResult::New(doc)) => {
                     self.state.add_document(doc);
                     self.job_queue.increment_files_processed(job_id);
-                    tracing::info!("Processed new file: {}", file_data.filename);
+                    tracing::info!("Processed new file: {}", filename);
                 }
                 Ok(FileProcessResult::Updated(doc, old_chunks)) => {
                     self.state.add_document(doc);
                     self.job_queue.increment_files_processed(job_id);
-                    tracing::info!("Updated file: {}, deleted {} old chunks", file_data.filename, old_chunks);
+                    tracing::info!("Updated file: {}, deleted {} old chunks", filename, old_chunks);
                 }
                 Ok(FileProcessResult::Skipped(reason)) => {
-                    tracing::info!("Skipped {}: {}", file_data.filename, reason);
-                    self.job_queue.add_skipped_file(job_id, &file_data.filename, &reason);
+                    tracing::info!("Skipped {}: {}", filename, reason);
+                    self.job_queue.add_skipped_file(job_id, &filename, &reason);
                 }
                 Err(e) => {
                     let error_msg = e.to_string();
-                    tracing::error!("Failed to process {}: {}", file_data.filename, error_msg);
+                    tracing::error!("Failed to process {}: {}", filename, error_msg);
                     self.job_queue.add_file_error(
                         job_id,
-                        &file_data.filename,
+                        &filename,
                         &error_msg,
                         ProcessingStage::Parsing,
                     );
-                    // Continue with other files
                 }
             }
         }
@@ -105,19 +149,18 @@ impl ProcessingWorker {
         Ok(())
     }
 
-    /// Process a single file with deduplication check
-    async fn process_file_with_dedup(
-        &self,
-        filename: &str,
-        data: &[u8],
+    /// Process a single file (static method for parallel execution)
+    async fn process_single_file(
+        state: &AppState,
+        job_queue: &Arc<JobQueue>,
         job_id: uuid::Uuid,
-        parallel: usize,
+        file_data: FileData,
+        parallel_embeddings: usize,
     ) -> Result<FileProcessResult> {
-        // Stage: Parsing
-        self.job_queue.update_stage(job_id, ProcessingStage::Parsing);
-
-        let config = self.state.config();
-        let external_parser = self.state.external_parser();
+        let config = state.config();
+        let external_parser = state.external_parser();
+        let filename = &file_data.filename;
+        let data = &file_data.data;
 
         // Check if we need to convert legacy format
         let (processed_filename, processed_data) = if ExternalParser::needs_conversion(filename) {
@@ -137,7 +180,7 @@ impl ProcessingWorker {
                     (format!("{}.{}", stem, new_ext), converted)
                 }
                 Err(e) => {
-                    tracing::warn!("LibreOffice conversion failed: {}, trying external API", e);
+                    tracing::warn!("LibreOffice conversion failed for {}: {}, trying external API", filename, e);
                     let parsed = external_parser.parse_with_unstructured(filename, data).await?;
                     (format!("{}.txt", filename), parsed.content.into_bytes())
                 }
@@ -159,7 +202,7 @@ impl ProcessingWorker {
         let parsed = pipeline.parse_file(&processed_filename, &processed_data)?;
 
         // Check file status for deduplication
-        match self.state.check_file_status(&processed_filename, &parsed.content_hash) {
+        match state.check_file_status(&processed_filename, &parsed.content_hash) {
             FileStatus::Unchanged(existing) => {
                 return Ok(FileProcessResult::Skipped(format!(
                     "unchanged (hash: {}...)",
@@ -174,7 +217,7 @@ impl ProcessingWorker {
             }
             FileStatus::Modified(existing) => {
                 // Delete old document and its chunks
-                let deleted = self.state.delete_document_with_chunks(&existing.id)?;
+                let deleted = state.delete_document_with_chunks(&existing.id)?;
                 tracing::info!(
                     "File '{}' modified, deleted {} old chunks",
                     processed_filename,
@@ -182,48 +225,50 @@ impl ProcessingWorker {
                 );
 
                 // Process the new version
-                let doc = self.process_file_internal(
+                let doc = Self::process_file_content(
+                    state,
+                    job_queue,
+                    job_id,
                     &processed_filename,
                     &processed_data,
                     &parsed,
-                    job_id,
-                    parallel,
+                    parallel_embeddings,
                 ).await?;
                 return Ok(FileProcessResult::Updated(doc, deleted));
             }
             FileStatus::New => {
                 // Process new file
-                let doc = self.process_file_internal(
+                let doc = Self::process_file_content(
+                    state,
+                    job_queue,
+                    job_id,
                     &processed_filename,
                     &processed_data,
                     &parsed,
-                    job_id,
-                    parallel,
+                    parallel_embeddings,
                 ).await?;
                 return Ok(FileProcessResult::New(doc));
             }
         }
     }
 
-    /// Internal file processing (after dedup check)
-    async fn process_file_internal(
-        &self,
+    /// Process file content (chunking, embedding, storing)
+    async fn process_file_content(
+        state: &AppState,
+        job_queue: &Arc<JobQueue>,
+        job_id: uuid::Uuid,
         filename: &str,
         data: &[u8],
         parsed: &crate::ingestion::ParsedDocument,
-        job_id: uuid::Uuid,
-        parallel: usize,
+        parallel_embeddings: usize,
     ) -> Result<Document> {
-        let config = self.state.config();
+        let config = state.config();
 
         // Create pipeline
         let pipeline = IngestPipeline::new(
             config.chunking.chunk_size,
             config.chunking.chunk_overlap,
         );
-
-        // Stage: Chunking
-        self.job_queue.update_stage(job_id, ProcessingStage::Chunking);
 
         // Create document
         let mut doc = Document::new(
@@ -238,14 +283,9 @@ impl ProcessingWorker {
         let mut chunks = pipeline.create_chunks(&doc, parsed)?;
         let total_chunks = chunks.len();
 
-        self.job_queue.set_total_chunks(job_id, total_chunks);
-
-        // Stage: Embedding
-        self.job_queue.update_stage(job_id, ProcessingStage::Embedding);
-
         // Generate embeddings in parallel batches
-        let chunk_batches: Vec<_> = chunks.chunks_mut(parallel).collect();
-        let ollama = self.state.ollama();
+        let chunk_batches: Vec<_> = chunks.chunks_mut(parallel_embeddings).collect();
+        let ollama = state.ollama();
 
         for batch in chunk_batches {
             let embedding_futures: Vec<_> = batch
@@ -261,21 +301,18 @@ impl ProcessingWorker {
                         chunk.embedding = embedding;
                     }
                     Err(e) => {
-                        tracing::error!("Embedding failed for chunk: {}", e);
+                        tracing::error!("Embedding failed for chunk in {}: {}", filename, e);
                         // Use zero vector as fallback
                         chunk.embedding = vec![0.0; config.embeddings.dimensions];
                     }
                 }
             }
 
-            self.job_queue.increment_chunks_embedded(job_id, batch.len());
+            job_queue.increment_chunks_embedded(job_id, batch.len());
         }
 
-        // Stage: Storing
-        self.job_queue.update_stage(job_id, ProcessingStage::Storing);
-
         // Store chunks
-        let vector_store = self.state.vector_store();
+        let vector_store = state.vector_store();
         for chunk in &chunks {
             vector_store.insert_chunk(chunk)?;
         }

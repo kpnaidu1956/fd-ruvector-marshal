@@ -24,6 +24,7 @@ pub struct VectorStore {
     /// Underlying vector database
     db: VectorDB,
     /// Embedding dimensions
+    #[allow(dead_code)]
     dimensions: usize,
     /// Mapping from document IDs to chunk IDs for efficient deletion
     document_chunks: parking_lot::RwLock<HashMap<Uuid, Vec<String>>>,

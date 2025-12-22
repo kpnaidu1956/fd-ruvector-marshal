@@ -39,6 +39,7 @@ pub struct ExternalParser {
 #[derive(Debug, Deserialize)]
 struct UnstructuredElement {
     #[serde(rename = "type")]
+    #[allow(dead_code)]
     element_type: String,
     text: String,
     metadata: Option<UnstructuredMetadata>,
@@ -47,6 +48,7 @@ struct UnstructuredElement {
 #[derive(Debug, Deserialize)]
 struct UnstructuredMetadata {
     page_number: Option<u32>,
+    #[allow(dead_code)]
     filename: Option<String>,
 }
 

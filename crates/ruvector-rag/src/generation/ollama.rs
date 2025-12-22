@@ -307,6 +307,7 @@ impl OllamaClient {
         #[derive(Deserialize)]
         struct StreamChunk {
             response: String,
+            #[allow(dead_code)]
             done: bool,
         }
 

@@ -356,8 +356,6 @@ impl FileParser {
 
     /// Parse PowerPoint presentation (.pptx)
     fn parse_pptx(data: &[u8]) -> Result<ParsedDocument> {
-        use quick_xml::events::Event;
-        use quick_xml::Reader;
         use std::io::Read;
 
         let cursor = std::io::Cursor::new(data);
