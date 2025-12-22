@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::ingestion::{ExternalParser, IngestPipeline};
-use crate::server::state::AppState;
+use crate::server::state::{AppState, FileStatus};
 use crate::types::{
     query::IngestOptions,
     response::{DocumentSummary, IngestError, IngestResponse},
@@ -107,12 +107,28 @@ pub async fn ingest_files(
             (filename.clone(), data.to_vec())
         };
 
-        // Process the file
-        match process_file(&state, &processed_filename, &processed_data, &options).await {
-            Ok((doc, chunk_count)) => {
+        // Process the file with deduplication
+        match process_file_with_dedup(&state, &processed_filename, &processed_data, &options).await {
+            Ok(ProcessResult::New(doc, chunk_count)) => {
                 total_chunks += chunk_count;
                 documents.push(DocumentSummary::from(&doc));
                 state.add_document(doc);
+                tracing::info!("Ingested new file: {}", processed_filename);
+            }
+            Ok(ProcessResult::Updated(doc, chunk_count, old_chunks_deleted)) => {
+                total_chunks += chunk_count;
+                documents.push(DocumentSummary::from(&doc));
+                state.add_document(doc);
+                tracing::info!(
+                    "Updated file: {} (deleted {} old chunks, created {} new)",
+                    processed_filename,
+                    old_chunks_deleted,
+                    chunk_count
+                );
+            }
+            Ok(ProcessResult::Skipped(reason)) => {
+                tracing::info!("Skipped file: {} ({})", filename, reason);
+                // Not an error, but we don't add to documents list
             }
             Err(e) => {
                 tracing::error!("Failed to process {}: {}", filename, e);
@@ -135,11 +151,75 @@ pub async fn ingest_files(
     }))
 }
 
-/// Process a single file
-async fn process_file(
+/// Result of processing a file with deduplication
+enum ProcessResult {
+    /// New file, successfully processed
+    New(Document, u32),
+    /// File was modified, old chunks deleted and new ones created
+    Updated(Document, u32, usize),
+    /// File was skipped (unchanged or duplicate)
+    Skipped(String),
+}
+
+/// Process a single file with deduplication check
+async fn process_file_with_dedup(
     state: &AppState,
     filename: &str,
     data: &[u8],
+    options: &IngestOptions,
+) -> Result<ProcessResult> {
+    let config = state.config();
+
+    // Create ingestion pipeline
+    let pipeline = IngestPipeline::new(
+        options.chunk_size.unwrap_or(config.chunking.chunk_size),
+        options.chunk_overlap.unwrap_or(config.chunking.chunk_overlap),
+    );
+
+    // Parse the file to get content hash
+    let parsed = pipeline.parse_file(filename, data)?;
+
+    // Check file status for deduplication
+    match state.check_file_status(filename, &parsed.content_hash) {
+        FileStatus::Unchanged(existing) => {
+            return Ok(ProcessResult::Skipped(format!(
+                "unchanged (hash: {}...)",
+                &existing.content_hash[..12]
+            )));
+        }
+        FileStatus::Duplicate(existing) => {
+            return Ok(ProcessResult::Skipped(format!(
+                "duplicate of '{}'",
+                existing.filename
+            )));
+        }
+        FileStatus::Modified(existing) => {
+            // Delete old document and its chunks
+            let deleted = state.delete_document_with_chunks(&existing.id)?;
+            tracing::info!(
+                "File '{}' modified, deleted {} old chunks",
+                filename,
+                deleted
+            );
+
+            // Process the new version
+            let (doc, chunk_count) = process_file_internal(state, filename, data, &parsed, options).await?;
+            return Ok(ProcessResult::Updated(doc, chunk_count, deleted));
+        }
+        FileStatus::New => {
+            // Process new file
+            let (doc, chunk_count) = process_file_internal(state, filename, data, &parsed, options).await?;
+            return Ok(ProcessResult::New(doc, chunk_count));
+        }
+    }
+}
+
+/// Internal file processing (after dedup check)
+async fn process_file_internal(
+    state: &AppState,
+    filename: &str,
+    data: &[u8],
+    parsed: &crate::ingestion::ParsedDocument,
     options: &IngestOptions,
 ) -> Result<(Document, u32)> {
     let config = state.config();
@@ -149,9 +229,6 @@ async fn process_file(
         options.chunk_size.unwrap_or(config.chunking.chunk_size),
         options.chunk_overlap.unwrap_or(config.chunking.chunk_overlap),
     );
-
-    // Parse the file
-    let parsed = pipeline.parse_file(filename, data)?;
 
     // Create document record
     let mut doc = Document::new(
@@ -164,7 +241,7 @@ async fn process_file(
     doc.metadata = options.metadata.clone();
 
     // Create chunks
-    let mut chunks = pipeline.create_chunks(&doc, &parsed)?;
+    let mut chunks = pipeline.create_chunks(&doc, parsed)?;
 
     // Generate embeddings for all chunks using Ollama
     for chunk in chunks.iter_mut() {
@@ -181,7 +258,7 @@ async fn process_file(
     doc.total_chunks = chunk_count;
 
     tracing::info!(
-        "Ingested '{}': {} pages, {} chunks",
+        "Processed '{}': {} pages, {} chunks",
         filename,
         doc.total_pages.unwrap_or(1),
         chunk_count
