@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::processing::{FileData, Job, ProcessingOptions};
+use crate::processing::{FileData, FileError, Job, ProcessingOptions};
 use crate::server::state::AppState;
 
 /// Response from async ingest
@@ -96,6 +96,16 @@ pub async fn get_job_progress(
         .get_progress(job_id)
         .ok_or_else(|| Error::DocumentNotFound(format!("Job {} not found", job_id)))?;
 
+    let file_errors: Vec<FileErrorResponse> = progress
+        .file_errors
+        .iter()
+        .map(|e| FileErrorResponse {
+            filename: e.filename.clone(),
+            error: e.error.clone(),
+            stage: format!("{:?}", e.stage).to_lowercase(),
+        })
+        .collect();
+
     Ok(Json(JobProgressResponse {
         job_id: progress.job_id,
         status: format!("{:?}", progress.status).to_lowercase(),
@@ -103,10 +113,14 @@ pub async fn get_job_progress(
         percent_complete: progress.percent_complete(),
         total_files: progress.total_files,
         files_processed: progress.files_processed,
+        files_skipped: progress.files_skipped,
+        files_failed: progress.files_failed,
         current_file: progress.current_file,
         total_chunks: progress.total_chunks,
         chunks_embedded: progress.chunks_embedded,
         error: progress.error,
+        file_errors,
+        skipped_files: progress.skipped_files,
         created_at: progress.created_at.to_rfc3339(),
         updated_at: progress.updated_at.to_rfc3339(),
     }))
@@ -151,12 +165,23 @@ pub struct JobProgressResponse {
     pub percent_complete: f32,
     pub total_files: usize,
     pub files_processed: usize,
+    pub files_skipped: usize,
+    pub files_failed: usize,
     pub current_file: Option<String>,
     pub total_chunks: usize,
     pub chunks_embedded: usize,
     pub error: Option<String>,
+    pub file_errors: Vec<FileErrorResponse>,
+    pub skipped_files: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FileErrorResponse {
+    pub filename: String,
+    pub error: String,
+    pub stage: String,
 }
 
 #[derive(Debug, Serialize)]

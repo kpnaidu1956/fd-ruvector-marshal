@@ -7,6 +7,90 @@ use std::collections::HashMap;
 use crate::error::{Error, Result};
 use crate::types::FileType;
 
+/// Common Unicode glyph name mappings for PDF fonts
+/// Maps glyph names like "uni2010" to their Unicode characters
+fn get_unicode_glyph_map() -> HashMap<&'static str, char> {
+    let mut map = HashMap::new();
+    // Hyphens and dashes
+    map.insert("uni2010", '\u{2010}'); // Hyphen
+    map.insert("uni2011", '\u{2011}'); // Non-breaking hyphen
+    map.insert("uni2012", '\u{2012}'); // Figure dash
+    map.insert("uni2013", '\u{2013}'); // En dash
+    map.insert("uni2014", '\u{2014}'); // Em dash
+    map.insert("uni2015", '\u{2015}'); // Horizontal bar
+    // Quotation marks
+    map.insert("uni2018", '\u{2018}'); // Left single quote
+    map.insert("uni2019", '\u{2019}'); // Right single quote (apostrophe)
+    map.insert("uni201A", '\u{201A}'); // Single low-9 quote
+    map.insert("uni201C", '\u{201C}'); // Left double quote
+    map.insert("uni201D", '\u{201D}'); // Right double quote
+    map.insert("uni201E", '\u{201E}'); // Double low-9 quote
+    // Bullets and symbols
+    map.insert("uni2022", '\u{2022}'); // Bullet
+    map.insert("uni2026", '\u{2026}'); // Ellipsis
+    map.insert("uni2030", '\u{2030}'); // Per mille
+    // Spaces
+    map.insert("uni00A0", '\u{00A0}'); // Non-breaking space
+    map.insert("uni2002", '\u{2002}'); // En space
+    map.insert("uni2003", '\u{2003}'); // Em space
+    map.insert("uni2009", '\u{2009}'); // Thin space
+    // Mathematical
+    map.insert("uni2212", '\u{2212}'); // Minus sign
+    map.insert("uni00D7", '\u{00D7}'); // Multiplication sign
+    map.insert("uni00F7", '\u{00F7}'); // Division sign
+    // Currency
+    map.insert("uni20AC", '\u{20AC}'); // Euro
+    map.insert("uni00A3", '\u{00A3}'); // Pound
+    map.insert("uni00A5", '\u{00A5}'); // Yen
+    // Other common
+    map.insert("uni00AE", '\u{00AE}'); // Registered trademark
+    map.insert("uni2122", '\u{2122}'); // Trademark
+    map.insert("uni00A9", '\u{00A9}'); // Copyright
+    map.insert("fi", '\u{FB01}'); // fi ligature
+    map.insert("fl", '\u{FB02}'); // fl ligature
+    map
+}
+
+/// Clean up PDF text by replacing Unicode glyph names with actual characters
+fn cleanup_pdf_text(text: &str) -> String {
+    let glyph_map = get_unicode_glyph_map();
+    let mut result = text.to_string();
+
+    // Replace common problematic characters
+    for (glyph_name, char_value) in &glyph_map {
+        // Look for glyph references in various formats
+        let patterns = [
+            format!("({})", glyph_name),
+            format!("<{}>", glyph_name),
+            glyph_name.to_string(),
+        ];
+        for pattern in &patterns {
+            result = result.replace(pattern, &char_value.to_string());
+        }
+    }
+
+    // Replace common ASCII approximations
+    result = result
+        .replace('\u{2010}', "-")  // Hyphen -> regular hyphen
+        .replace('\u{2011}', "-")  // Non-breaking hyphen -> hyphen
+        .replace('\u{2013}', "-")  // En dash -> hyphen
+        .replace('\u{2014}', "--") // Em dash -> double hyphen
+        .replace('\u{2018}', "'")  // Left single quote -> apostrophe
+        .replace('\u{2019}', "'")  // Right single quote -> apostrophe
+        .replace('\u{201C}', "\"") // Left double quote -> quote
+        .replace('\u{201D}', "\"") // Right double quote -> quote
+        .replace('\u{2022}', "* ") // Bullet -> asterisk
+        .replace('\u{2026}', "...") // Ellipsis -> three dots
+        .replace('\u{00A0}', " ")  // Non-breaking space -> space
+        .replace('\u{FB01}', "fi") // fi ligature -> separate chars
+        .replace('\u{FB02}', "fl") // fl ligature -> separate chars
+        .replace('\u{FB00}', "ff") // ff ligature -> separate chars
+        .replace('\u{FB03}', "ffi") // ffi ligature -> separate chars
+        .replace('\u{FB04}', "ffl"); // ffl ligature -> separate chars
+
+    result
+}
+
 /// Parsed document with extracted text and metadata
 #[derive(Debug, Clone)]
 pub struct ParsedDocument {
@@ -70,8 +154,36 @@ impl FileParser {
 
     /// Parse PDF document
     fn parse_pdf(data: &[u8]) -> Result<ParsedDocument> {
-        let content = pdf_extract::extract_text_from_mem(data)
-            .map_err(|e| Error::file_parse("document.pdf", e.to_string()))?;
+        // Try primary extraction with pdf_extract
+        let content = match pdf_extract::extract_text_from_mem(data) {
+            Ok(text) => text,
+            Err(e) => {
+                let err_msg = e.to_string();
+                // Check if it's a font/glyph warning vs a fatal error
+                if err_msg.contains("unknown glyph") || err_msg.contains("glyph name") {
+                    tracing::warn!("PDF has unknown glyphs, attempting fallback extraction: {}", err_msg);
+                    // Try fallback extraction using lopdf
+                    Self::extract_pdf_text_fallback(data)?
+                } else {
+                    tracing::warn!("PDF extraction failed, trying fallback: {}", err_msg);
+                    Self::extract_pdf_text_fallback(data)?
+                }
+            }
+        };
+
+        // Clean up the content (handle Unicode glyphs, remove excessive whitespace, null chars)
+        let content = cleanup_pdf_text(&content);
+        let content = content
+            .replace('\0', "")
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if content.trim().is_empty() {
+            return Err(Error::file_parse("document.pdf", "No text content could be extracted from PDF"));
+        }
 
         // For simplicity, treat entire PDF as one page
         // In production, use lopdf to get page-by-page content
@@ -95,6 +207,98 @@ impl FileParser {
             pages,
             metadata: HashMap::new(),
         })
+    }
+
+    /// Fallback PDF text extraction using lopdf directly
+    fn extract_pdf_text_fallback(data: &[u8]) -> Result<String> {
+        use lopdf::Document;
+
+        let doc = Document::load_mem(data)
+            .map_err(|e| Error::file_parse("document.pdf", format!("Failed to load PDF: {}", e)))?;
+
+        let mut all_text = String::new();
+        let pages = doc.get_pages();
+
+        for (page_num, page_id) in pages {
+            // Try to extract text from each page
+            match doc.get_page_content(page_id) {
+                Ok(content) => {
+                    // Extract text from content stream
+                    let text = Self::extract_text_from_content(&content);
+                    if !text.is_empty() {
+                        all_text.push_str(&format!("\n--- Page {} ---\n", page_num));
+                        all_text.push_str(&text);
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!("Could not get content for page {}: {}", page_num, e);
+                }
+            }
+        }
+
+        // If we still couldn't extract text, try getting text from form XObjects
+        if all_text.trim().is_empty() {
+            tracing::warn!("Fallback extraction produced no text, PDF may be image-based or encrypted");
+            // Return a message indicating the PDF needs OCR
+            return Err(Error::file_parse(
+                "document.pdf",
+                "PDF appears to be image-based or has no extractable text. Consider using OCR or the external parser.",
+            ));
+        }
+
+        Ok(all_text)
+    }
+
+    /// Extract text from PDF content stream bytes
+    fn extract_text_from_content(content: &[u8]) -> String {
+        // Simple text extraction from PDF content stream
+        // Look for text between BT (begin text) and ET (end text) operators
+        let content_str = String::from_utf8_lossy(content);
+        let mut text = String::new();
+        let mut in_text_block = false;
+        let mut current_text = String::new();
+
+        for line in content_str.lines() {
+            let line = line.trim();
+
+            if line == "BT" {
+                in_text_block = true;
+                continue;
+            }
+
+            if line == "ET" {
+                in_text_block = false;
+                if !current_text.is_empty() {
+                    text.push_str(&current_text);
+                    text.push(' ');
+                    current_text.clear();
+                }
+                continue;
+            }
+
+            if in_text_block {
+                // Look for text show operators: Tj, TJ, ', "
+                if line.ends_with("Tj") || line.ends_with("TJ") {
+                    // Extract text from parentheses
+                    if let Some(start) = line.find('(') {
+                        if let Some(end) = line.rfind(')') {
+                            let extracted = &line[start + 1..end];
+                            // Decode basic PDF string escapes
+                            let decoded = extracted
+                                .replace("\\n", "\n")
+                                .replace("\\r", "\r")
+                                .replace("\\t", "\t")
+                                .replace("\\(", "(")
+                                .replace("\\)", ")")
+                                .replace("\\\\", "\\");
+                            current_text.push_str(&decoded);
+                        }
+                    }
+                }
+            }
+        }
+
+        text
     }
 
     /// Parse DOCX document

@@ -77,18 +77,26 @@ impl ProcessingWorker {
                 Ok(FileProcessResult::New(doc)) => {
                     self.state.add_document(doc);
                     self.job_queue.increment_files_processed(job_id);
+                    tracing::info!("Processed new file: {}", file_data.filename);
                 }
                 Ok(FileProcessResult::Updated(doc, old_chunks)) => {
                     self.state.add_document(doc);
                     self.job_queue.increment_files_processed(job_id);
-                    tracing::info!("Updated file, deleted {} old chunks", old_chunks);
+                    tracing::info!("Updated file: {}, deleted {} old chunks", file_data.filename, old_chunks);
                 }
                 Ok(FileProcessResult::Skipped(reason)) => {
                     tracing::info!("Skipped {}: {}", file_data.filename, reason);
-                    self.job_queue.increment_files_processed(job_id);
+                    self.job_queue.add_skipped_file(job_id, &file_data.filename, &reason);
                 }
                 Err(e) => {
-                    tracing::error!("Failed to process {}: {}", file_data.filename, e);
+                    let error_msg = e.to_string();
+                    tracing::error!("Failed to process {}: {}", file_data.filename, error_msg);
+                    self.job_queue.add_file_error(
+                        job_id,
+                        &file_data.filename,
+                        &error_msg,
+                        ProcessingStage::Parsing,
+                    );
                     // Continue with other files
                 }
             }
