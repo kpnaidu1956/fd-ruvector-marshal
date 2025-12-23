@@ -30,7 +30,7 @@ members = [
     "crates/ruvector-attention-wasm",
     "crates/ruvector-attention-node",
     "examples/refrag-pipeline",
-    "examples/scipix", "simple-rag",
+    "examples/scipix",
     "crates/goal-rag",
 ]
 resolver = "2"
