@@ -2,9 +2,11 @@
 
 use futures_util::future::join_all;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{mpsc, Semaphore};
+use tokio::time::timeout;
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::ingestion::{ExternalParser, IngestPipeline};
 use crate::server::state::{AppState, FileStatus};
 use crate::types::Document;
@@ -28,19 +30,26 @@ pub struct ProcessingWorker {
     job_queue: Arc<JobQueue>,
     parallel_files: usize,
     parallel_embeddings: usize,
+    file_timeout: Duration,
 }
 
 impl ProcessingWorker {
     /// Create a new processing worker
     pub fn new(state: AppState, job_queue: Arc<JobQueue>) -> Self {
         let cpu_count = num_cpus::get();
-        let parallel_files = cpu_count.min(8);      // Process up to 8 files in parallel
-        let parallel_embeddings = cpu_count.min(4); // Embeddings per file
+        let config = state.config();
+
+        let parallel_files = config.processing.parallel_files
+            .unwrap_or_else(|| cpu_count.min(8));
+        let parallel_embeddings = config.processing.parallel_embeddings
+            .unwrap_or_else(|| cpu_count.min(4));
+        let file_timeout = Duration::from_secs(config.processing.file_timeout_secs);
 
         tracing::info!(
-            "Worker configured: {} parallel files, {} parallel embeddings per file",
+            "Worker configured: {} parallel files, {} parallel embeddings per file, {}s timeout",
             parallel_files,
-            parallel_embeddings
+            parallel_embeddings,
+            config.processing.file_timeout_secs
         );
 
         Self {
@@ -48,6 +57,7 @@ impl ProcessingWorker {
             job_queue,
             parallel_files,
             parallel_embeddings,
+            file_timeout,
         }
     }
 
@@ -82,6 +92,7 @@ impl ProcessingWorker {
     async fn process_job_parallel(&self, job: Job) -> Result<()> {
         let job_id = job.id;
         let parallel_embeddings = job.options.parallel_embeddings.max(1).min(self.parallel_embeddings);
+        let file_timeout = self.file_timeout;
 
         // Create semaphore to limit concurrent file processing
         let semaphore = Arc::new(Semaphore::new(self.parallel_files));
@@ -92,22 +103,53 @@ impl ProcessingWorker {
             let job_queue = self.job_queue.clone();
             let sem = semaphore.clone();
             let filename = file_data.filename.clone();
+            let file_size = file_data.data.len();
 
             async move {
                 // Acquire semaphore permit
                 let _permit = sem.acquire().await.unwrap();
 
-                tracing::info!("Starting parallel processing: {}", filename);
+                tracing::info!("Starting parallel processing: {} ({} bytes)", filename, file_size);
                 job_queue.update_current_file(job_id, &filename);
+                let start_time = std::time::Instant::now();
 
-                // Process the file
-                let result = Self::process_single_file(
+                // Process the file with timeout
+                let process_future = Self::process_single_file(
                     &state,
                     &job_queue,
                     job_id,
                     file_data,
                     parallel_embeddings,
-                ).await;
+                );
+
+                let result = match timeout(file_timeout, process_future).await {
+                    Ok(inner_result) => inner_result,
+                    Err(_) => {
+                        let elapsed = start_time.elapsed();
+                        tracing::error!(
+                            "TIMEOUT processing '{}' after {:.1}s (limit: {}s, size: {} bytes). \
+                            Possible causes: large file, slow embedding service, or parsing hang.",
+                            filename,
+                            elapsed.as_secs_f64(),
+                            file_timeout.as_secs(),
+                            file_size
+                        );
+                        Err(Error::Internal(format!(
+                            "Processing timeout after {}s - file may be too large or complex (size: {} bytes)",
+                            file_timeout.as_secs(),
+                            file_size
+                        )))
+                    }
+                };
+
+                let elapsed = start_time.elapsed();
+                if elapsed.as_secs() > 60 {
+                    tracing::warn!(
+                        "Slow processing for '{}': took {:.1}s",
+                        filename,
+                        elapsed.as_secs_f64()
+                    );
+                }
 
                 (filename, result)
             }

@@ -20,6 +20,8 @@ pub struct RagConfig {
     pub vector_db: VectorDbConfig,
     /// External parser configuration
     pub external_parser: ExternalParserConfig,
+    /// Processing configuration
+    pub processing: ProcessingConfig,
 }
 
 impl Default for RagConfig {
@@ -31,6 +33,28 @@ impl Default for RagConfig {
             llm: LlmConfig::default(),
             vector_db: VectorDbConfig::default(),
             external_parser: ExternalParserConfig::default(),
+            processing: ProcessingConfig::default(),
+        }
+    }
+}
+
+/// Processing configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessingConfig {
+    /// Timeout for processing a single file in seconds (default: 300 = 5 minutes)
+    pub file_timeout_secs: u64,
+    /// Number of parallel file workers
+    pub parallel_files: Option<usize>,
+    /// Number of parallel embeddings per file
+    pub parallel_embeddings: Option<usize>,
+}
+
+impl Default for ProcessingConfig {
+    fn default() -> Self {
+        Self {
+            file_timeout_secs: 300, // 5 minutes
+            parallel_files: None,   // Auto-detect from CPU count
+            parallel_embeddings: None,
         }
     }
 }
