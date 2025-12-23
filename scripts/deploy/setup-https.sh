@@ -76,7 +76,7 @@ configure_caddy() {
     log_info "Configuring Caddy for domain: $DOMAIN"
 
     # Create log directory
-    mkdir -p /var/log/caddy
+    mkdir -p $HOME/fd-ruvector-marshal/logs
 
     # Backup existing Caddyfile if present
     if [[ -f /etc/caddy/Caddyfile ]]; then
@@ -107,7 +107,7 @@ $DOMAIN {
     encode gzip zstd
 
     log {
-        output file /var/log/caddy/rag-access.log {
+        output file $HOME/fd-ruvector-marshal/logs/caddy.log {
             roll_size 10MB
             roll_keep 5
         }
@@ -191,7 +191,7 @@ print_summary() {
     echo "  - Ingest:    https://$DOMAIN/api/ingest"
     echo "  - Documents: https://$DOMAIN/api/documents"
     echo ""
-    echo "Logs: /var/log/caddy/rag-access.log"
+    echo "Logs: ~/fd-ruvector-marshal/logs/caddy.log"
     echo ""
     echo "Commands:"
     echo "  - Status:  sudo systemctl status caddy"
