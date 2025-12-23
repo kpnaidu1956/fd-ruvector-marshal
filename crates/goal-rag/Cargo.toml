@@ -1,5 +1,5 @@
 [package]
-name = "ruvector-rag"
+name = "goal-rag"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -91,5 +91,5 @@ cli = ["dep:clap", "dep:indicatif", "dep:console"]
 all-parsers = ["pdf", "docx", "xlsx"]
 
 [[bin]]
-name = "ruvector-rag-server"
+name = "goal-rag-server"
 path = "src/bin/server.rs"
