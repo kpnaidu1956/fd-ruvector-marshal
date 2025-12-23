@@ -46,8 +46,27 @@ fn get_unicode_glyph_map() -> HashMap<&'static str, char> {
     map.insert("uni00AE", '\u{00AE}'); // Registered trademark
     map.insert("uni2122", '\u{2122}'); // Trademark
     map.insert("uni00A9", '\u{00A9}'); // Copyright
+    // Ligatures - common glyph names
     map.insert("fi", '\u{FB01}'); // fi ligature
     map.insert("fl", '\u{FB02}'); // fl ligature
+    map.insert("ff", '\u{FB00}'); // ff ligature
+    map.insert("ffi", '\u{FB03}'); // ffi ligature
+    map.insert("ffl", '\u{FB04}'); // ffl ligature
+    // Ligatures - alternate names
+    map.insert("f_i", '\u{FB01}');
+    map.insert("f_l", '\u{FB02}');
+    map.insert("f_f", '\u{FB00}');
+    map.insert("f_f_i", '\u{FB03}');
+    map.insert("f_f_l", '\u{FB04}');
+    // Latin extended chars that appear in fonts
+    map.insert("uni0131", '\u{0131}'); // Dotless i
+    map.insert("uni0152", '\u{0152}'); // OE ligature
+    map.insert("uni0153", '\u{0153}'); // oe ligature
+    map.insert("uni0160", '\u{0160}'); // S caron
+    map.insert("uni0161", '\u{0161}'); // s caron
+    map.insert("uni0178", '\u{0178}'); // Y diaeresis
+    map.insert("uni017D", '\u{017D}'); // Z caron
+    map.insert("uni017E", '\u{017E}'); // z caron
     map
 }
 
@@ -123,6 +142,47 @@ pub struct PageContent {
 pub struct FileParser;
 
 impl FileParser {
+    /// Extract PDF text with a sync timeout to prevent hangs on problematic fonts
+    fn extract_pdf_with_timeout(data: &[u8]) -> Result<String> {
+        use std::sync::mpsc;
+        use std::thread;
+        use std::time::Duration;
+
+        // Clone data for the thread
+        let data_vec = data.to_vec();
+        let (tx, rx) = mpsc::channel();
+
+        // Spawn extraction in a separate thread with timeout
+        let handle = thread::spawn(move || {
+            let result = pdf_extract::extract_text_from_mem(&data_vec);
+            let _ = tx.send(result);
+        });
+
+        // Wait up to 60 seconds for PDF extraction
+        match rx.recv_timeout(Duration::from_secs(60)) {
+            Ok(Ok(text)) => {
+                let _ = handle.join();
+                Ok(text)
+            }
+            Ok(Err(e)) => {
+                let _ = handle.join();
+                let err_msg = e.to_string();
+                tracing::warn!("pdf-extract failed: {}, trying fallback", err_msg);
+                Self::extract_pdf_text_fallback(&data_vec)
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // Thread is still running - can't kill it, but we can return an error
+                tracing::error!("PDF extraction timeout after 60s - PDF may have complex fonts");
+                // Try fallback which is often faster
+                Self::extract_pdf_text_fallback(data)
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                tracing::error!("PDF extraction thread crashed");
+                Self::extract_pdf_text_fallback(data)
+            }
+        }
+    }
+
     /// Parse a file based on its extension
     pub fn parse(filename: &str, data: &[u8]) -> Result<ParsedDocument> {
         let extension = filename
@@ -154,22 +214,9 @@ impl FileParser {
 
     /// Parse PDF document
     fn parse_pdf(data: &[u8]) -> Result<ParsedDocument> {
-        // Try primary extraction with pdf_extract
-        let content = match pdf_extract::extract_text_from_mem(data) {
-            Ok(text) => text,
-            Err(e) => {
-                let err_msg = e.to_string();
-                // Check if it's a font/glyph warning vs a fatal error
-                if err_msg.contains("unknown glyph") || err_msg.contains("glyph name") {
-                    tracing::warn!("PDF has unknown glyphs, attempting fallback extraction: {}", err_msg);
-                    // Try fallback extraction using lopdf
-                    Self::extract_pdf_text_fallback(data)?
-                } else {
-                    tracing::warn!("PDF extraction failed, trying fallback: {}", err_msg);
-                    Self::extract_pdf_text_fallback(data)?
-                }
-            }
-        };
+        // Suppress stderr temporarily to avoid font warning spam
+        // These warnings from pdf-extract are informational, not errors
+        let content = Self::extract_pdf_with_timeout(data)?;
 
         // Clean up the content (handle Unicode glyphs, remove excessive whitespace, null chars)
         let content = cleanup_pdf_text(&content);
