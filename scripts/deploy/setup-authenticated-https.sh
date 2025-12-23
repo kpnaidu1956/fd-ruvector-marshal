@@ -48,7 +48,7 @@ if ! command -v caddy &> /dev/null; then
 fi
 
 # Create directories
-mkdir -p /var/log/caddy
+mkdir -p $HOME/fd-ruvector-marshal/logs
 mkdir -p /etc/caddy
 
 # Backup existing config
@@ -108,7 +108,7 @@ $DOMAIN {
     encode gzip zstd
 
     log {
-        output file /var/log/caddy/rag-access.log {
+        output file $HOME/fd-ruvector-marshal/logs/caddy.log {
             roll_size 10MB
             roll_keep 5
         }
