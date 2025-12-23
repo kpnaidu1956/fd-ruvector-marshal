@@ -4,7 +4,8 @@ use axum::{
     extract::{Multipart, State},
     Json,
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
+use tokio::time::timeout;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
@@ -107,34 +108,64 @@ pub async fn ingest_files(
             (filename.clone(), data.to_vec())
         };
 
-        // Process the file with deduplication
-        match process_file_with_dedup(&state, &processed_filename, &processed_data, &options).await {
-            Ok(ProcessResult::New(doc, chunk_count)) => {
+        // Process the file with deduplication and timeout
+        let file_timeout = Duration::from_secs(state.config().processing.file_timeout_secs);
+        let file_size = processed_data.len();
+        let file_start = Instant::now();
+
+        let process_result = timeout(
+            file_timeout,
+            process_file_with_dedup(&state, &processed_filename, &processed_data, &options)
+        ).await;
+
+        match process_result {
+            Ok(Ok(ProcessResult::New(doc, chunk_count))) => {
                 total_chunks += chunk_count;
                 documents.push(DocumentSummary::from(&doc));
                 state.add_document(doc);
-                tracing::info!("Ingested new file: {}", processed_filename);
+                tracing::info!("Ingested new file: {} in {:.1}s", processed_filename, file_start.elapsed().as_secs_f64());
             }
-            Ok(ProcessResult::Updated(doc, chunk_count, old_chunks_deleted)) => {
+            Ok(Ok(ProcessResult::Updated(doc, chunk_count, old_chunks_deleted))) => {
                 total_chunks += chunk_count;
                 documents.push(DocumentSummary::from(&doc));
                 state.add_document(doc);
                 tracing::info!(
-                    "Updated file: {} (deleted {} old chunks, created {} new)",
+                    "Updated file: {} (deleted {} old chunks, created {} new) in {:.1}s",
                     processed_filename,
                     old_chunks_deleted,
-                    chunk_count
+                    chunk_count,
+                    file_start.elapsed().as_secs_f64()
                 );
             }
-            Ok(ProcessResult::Skipped(reason)) => {
+            Ok(Ok(ProcessResult::Skipped(reason))) => {
                 tracing::info!("Skipped file: {} ({})", filename, reason);
                 // Not an error, but we don't add to documents list
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 tracing::error!("Failed to process {}: {}", filename, e);
                 errors.push(IngestError {
                     filename,
                     error: e.to_string(),
+                });
+            }
+            Err(_) => {
+                // Timeout occurred
+                let elapsed = file_start.elapsed();
+                tracing::error!(
+                    "TIMEOUT processing '{}' after {:.1}s (limit: {}s, size: {} bytes). \
+                    Skipping file. Possible causes: large file, slow embedding service, or parsing hang.",
+                    filename,
+                    elapsed.as_secs_f64(),
+                    file_timeout.as_secs(),
+                    file_size
+                );
+                errors.push(IngestError {
+                    filename,
+                    error: format!(
+                        "Processing timeout after {}s - file may be too large or complex (size: {} bytes)",
+                        file_timeout.as_secs(),
+                        file_size
+                    ),
                 });
             }
         }
