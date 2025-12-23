@@ -1,8 +1,8 @@
 //! RAG Server binary
 //!
-//! Run with: cargo run -p ruvector-rag --bin ruvector-rag-server
+//! Run with: cargo run -p goal-rag --bin goal-rag-server
 
-use ruvector_rag::{config::RagConfig, server::RagServer};
+use goal_rag::{config::RagConfig, server::RagServer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -11,7 +11,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "ruvector_rag=info,tower_http=debug".into()),
+                .unwrap_or_else(|_| "goal_rag=info,tower_http=debug".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -19,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
     println!(
         r#"
 ╔═══════════════════════════════════════════════════════════╗
-║                    RuVector RAG System                    ║
+║                      Goal RAG System                      ║
 ║           Document Q&A with Source Citations              ║
 ╚═══════════════════════════════════════════════════════════╝
 "#
