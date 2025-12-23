@@ -148,13 +148,13 @@ impl FileParser {
         use std::thread;
         use std::time::Duration;
 
-        // Clone data for the thread
-        let data_vec = data.to_vec();
+        // Clone data for the thread (keep original for fallback)
+        let data_for_thread = data.to_vec();
         let (tx, rx) = mpsc::channel();
 
         // Spawn extraction in a separate thread with timeout
         let handle = thread::spawn(move || {
-            let result = pdf_extract::extract_text_from_mem(&data_vec);
+            let result = pdf_extract::extract_text_from_mem(&data_for_thread);
             let _ = tx.send(result);
         });
 
@@ -168,7 +168,7 @@ impl FileParser {
                 let _ = handle.join();
                 let err_msg = e.to_string();
                 tracing::warn!("pdf-extract failed: {}, trying fallback", err_msg);
-                Self::extract_pdf_text_fallback(&data_vec)
+                Self::extract_pdf_text_fallback(data)
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 // Thread is still running - can't kill it, but we can return an error
