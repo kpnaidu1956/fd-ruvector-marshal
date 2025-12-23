@@ -1,7 +1,14 @@
-//! External document parsing via APIs (for complex/legacy formats)
+//! External document parsing via APIs and local tools (for complex/legacy formats)
+//!
+//! Supports:
+//! - pdftotext (poppler-utils) - Fast, reliable PDF text extraction
+//! - pandoc - Universal document converter
+//! - LibreOffice - Legacy format conversion
+//! - Unstructured.io API - Cloud-based parsing fallback
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 use std::time::Duration;
 
 use crate::error::{Error, Result};
@@ -17,6 +24,8 @@ pub struct ExternalParserConfig {
     pub unstructured_url: String,
     /// Fallback to LibreOffice conversion
     pub use_libreoffice_fallback: bool,
+    /// Use local tools (pdftotext, pandoc) first before API
+    pub prefer_local_tools: bool,
 }
 
 impl Default for ExternalParserConfig {
@@ -26,6 +35,7 @@ impl Default for ExternalParserConfig {
             unstructured_api_key: None,
             unstructured_url: "https://api.unstructured.io/general/v0/general".to_string(),
             use_libreoffice_fallback: true,
+            prefer_local_tools: true, // Use local tools by default
         }
     }
 }
@@ -241,6 +251,209 @@ impl ExternalParser {
     pub fn needs_conversion(filename: &str) -> bool {
         let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
         matches!(ext.as_str(), "doc" | "ppt" | "xls")
+    }
+
+    /// Check if pdftotext is available
+    pub fn has_pdftotext() -> bool {
+        Command::new("pdftotext")
+            .arg("-v")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    /// Check if pandoc is available
+    pub fn has_pandoc() -> bool {
+        Command::new("pandoc")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    /// Convert PDF to text using pdftotext (poppler-utils)
+    /// Much faster and more reliable than Rust PDF libraries for complex fonts
+    pub fn convert_pdf_with_pdftotext(&self, data: &[u8]) -> Result<String> {
+        use std::fs;
+        use std::io::Write;
+        use std::process::Stdio;
+
+        // Try stdin/stdout first (faster, no temp files)
+        let mut child = Command::new("pdftotext")
+            .args([
+                "-layout",      // Maintain original layout
+                "-nopgbrk",     // Don't insert page breaks
+                "-enc", "UTF-8", // Output encoding
+                "-",            // Read from stdin
+                "-",            // Write to stdout
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| Error::Internal(format!("Failed to spawn pdftotext: {}", e)))?;
+
+        // Write PDF data to stdin
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(data)
+                .map_err(|e| Error::Internal(format!("Failed to write to pdftotext: {}", e)))?;
+        }
+
+        let output = child
+            .wait_with_output()
+            .map_err(|e| Error::Internal(format!("pdftotext failed: {}", e)))?;
+
+        if !output.status.success() {
+            // Fallback: use temp files (some pdftotext versions don't support stdin)
+            return self.convert_pdf_with_pdftotext_tempfile(data);
+        }
+
+        let text = String::from_utf8_lossy(&output.stdout).to_string();
+
+        if text.trim().is_empty() {
+            return Err(Error::Internal("pdftotext produced no output".to_string()));
+        }
+
+        Ok(text)
+    }
+
+    /// Fallback: Convert PDF using temp files
+    fn convert_pdf_with_pdftotext_tempfile(&self, data: &[u8]) -> Result<String> {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("goal-rag-pdf-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir)
+            .map_err(|e| Error::Internal(format!("Failed to create temp dir: {}", e)))?;
+
+        let input_path = temp_dir.join("input.pdf");
+        let output_path = temp_dir.join("output.txt");
+
+        fs::write(&input_path, data)
+            .map_err(|e| Error::Internal(format!("Failed to write temp PDF: {}", e)))?;
+
+        let output = Command::new("pdftotext")
+            .args([
+                "-layout",
+                "-nopgbrk",
+                "-enc", "UTF-8",
+                input_path.to_str().unwrap(),
+                output_path.to_str().unwrap(),
+            ])
+            .output()
+            .map_err(|e| Error::Internal(format!("pdftotext failed: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            fs::remove_dir_all(&temp_dir).ok();
+            return Err(Error::Internal(format!("pdftotext error: {}", stderr)));
+        }
+
+        let text = fs::read_to_string(&output_path)
+            .map_err(|e| Error::Internal(format!("Failed to read pdftotext output: {}", e)))?;
+
+        fs::remove_dir_all(&temp_dir).ok();
+
+        if text.trim().is_empty() {
+            return Err(Error::Internal("pdftotext produced no output".to_string()));
+        }
+
+        Ok(text)
+    }
+
+    /// Convert document to text using pandoc
+    /// Supports: docx, doc, pptx, odt, rtf, epub, html, and many more
+    pub fn convert_with_pandoc(&self, filename: &str, data: &[u8]) -> Result<String> {
+        use std::fs;
+
+        let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+
+        // Pandoc input formats
+        let input_format = match ext.as_str() {
+            "docx" => "docx",
+            "doc" => "doc",
+            "odt" => "odt",
+            "rtf" => "rtf",
+            "epub" => "epub",
+            "html" | "htm" => "html",
+            "md" | "markdown" => "markdown",
+            "tex" => "latex",
+            "rst" => "rst",
+            "pptx" => "pptx",
+            _ => return Err(Error::Internal(format!("Pandoc doesn't support .{}", ext))),
+        };
+
+        let temp_dir = std::env::temp_dir().join(format!("goal-rag-pandoc-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir)
+            .map_err(|e| Error::Internal(format!("Failed to create temp dir: {}", e)))?;
+
+        let input_path = temp_dir.join(filename);
+        fs::write(&input_path, data)
+            .map_err(|e| Error::Internal(format!("Failed to write temp file: {}", e)))?;
+
+        let output = Command::new("pandoc")
+            .args([
+                "-f", input_format,
+                "-t", "plain",           // Output plain text
+                "--wrap=none",           // Don't wrap lines
+                input_path.to_str().unwrap(),
+            ])
+            .output()
+            .map_err(|e| Error::Internal(format!("pandoc failed: {}", e)))?;
+
+        fs::remove_dir_all(&temp_dir).ok();
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(Error::Internal(format!("pandoc error: {}", stderr)));
+        }
+
+        let text = String::from_utf8_lossy(&output.stdout).to_string();
+
+        if text.trim().is_empty() {
+            return Err(Error::Internal("pandoc produced no output".to_string()));
+        }
+
+        Ok(text)
+    }
+
+    /// Smart conversion: try local tools first, then fall back to API/libraries
+    pub async fn convert_to_text(&self, filename: &str, data: &[u8]) -> Result<String> {
+        let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+
+        // For PDFs, try pdftotext first
+        if ext == "pdf" {
+            if Self::has_pdftotext() {
+                tracing::info!("[{}] Using pdftotext for PDF conversion", filename);
+                match self.convert_pdf_with_pdftotext(data) {
+                    Ok(text) => {
+                        tracing::info!("[{}] pdftotext extracted {} chars", filename, text.len());
+                        return Ok(text);
+                    }
+                    Err(e) => {
+                        tracing::warn!("[{}] pdftotext failed: {}, will try other methods", filename, e);
+                    }
+                }
+            }
+        }
+
+        // For other formats, try pandoc
+        if Self::has_pandoc() && matches!(ext.as_str(), "docx" | "doc" | "odt" | "rtf" | "pptx" | "epub") {
+            tracing::info!("[{}] Using pandoc for document conversion", filename);
+            match self.convert_with_pandoc(filename, data) {
+                Ok(text) => {
+                    tracing::info!("[{}] pandoc extracted {} chars", filename, text.len());
+                    return Ok(text);
+                }
+                Err(e) => {
+                    tracing::warn!("[{}] pandoc failed: {}, will try other methods", filename, e);
+                }
+            }
+        }
+
+        // Fall back to Unstructured API
+        tracing::info!("[{}] Falling back to Unstructured API", filename);
+        let parsed = self.parse_with_unstructured(filename, data).await?;
+        Ok(parsed.content)
     }
 }
 

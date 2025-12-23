@@ -210,6 +210,33 @@ impl ProcessingWorker {
 
         tracing::info!("[{}] Starting processing ({} bytes)", filename, file_size);
 
+        // Check file extension
+        let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+
+        // For PDFs, try pdftotext first (much faster and handles fonts better)
+        if ext == "pdf" && ExternalParser::has_pdftotext() {
+            tracing::info!("[{}] Using pdftotext for PDF extraction", filename);
+            match external_parser.convert_pdf_with_pdftotext(data) {
+                Ok(text) => {
+                    tracing::info!("[{}] pdftotext extracted {} chars", filename, text.len());
+                    // Create a text file from the extracted content
+                    let text_filename = format!("{}.txt", filename.trim_end_matches(".pdf"));
+                    return Self::process_text_content(
+                        state,
+                        job_queue,
+                        job_id,
+                        &text_filename,
+                        text.as_bytes(),
+                        parallel_embeddings,
+                    ).await.map(FileProcessResult::New);
+                }
+                Err(e) => {
+                    tracing::warn!("[{}] pdftotext failed: {}, falling back to Rust parser", filename, e);
+                    // Continue with normal processing
+                }
+            }
+        }
+
         // Check if we need to convert legacy format
         let (processed_filename, processed_data) = if ExternalParser::needs_conversion(filename) {
             tracing::info!("[{}] Converting legacy format with LibreOffice...", filename);
@@ -347,6 +374,129 @@ impl ProcessingWorker {
                 return Ok(FileProcessResult::New(doc));
             }
         }
+    }
+
+    /// Process pre-extracted text content (for pdftotext/pandoc output)
+    async fn process_text_content(
+        state: &AppState,
+        job_queue: &Arc<JobQueue>,
+        job_id: uuid::Uuid,
+        filename: &str,
+        text_data: &[u8],
+        parallel_embeddings: usize,
+    ) -> Result<Document> {
+        let config = state.config();
+        let content = String::from_utf8_lossy(text_data).to_string();
+
+        // Hash the content
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(content.as_bytes());
+        let content_hash = format!("{:x}", hasher.finalize());
+
+        // Check for duplicates
+        match state.check_file_status(filename, &content_hash) {
+            crate::server::state::FileStatus::Unchanged(existing) => {
+                tracing::info!("[{}] Unchanged, skipping", filename);
+                return Err(Error::Internal(format!("File unchanged: {}", existing.filename)));
+            }
+            crate::server::state::FileStatus::Duplicate(existing) => {
+                tracing::info!("[{}] Duplicate of {}, skipping", filename, existing.filename);
+                return Err(Error::Internal(format!("Duplicate of: {}", existing.filename)));
+            }
+            _ => {}
+        }
+
+        // Create document
+        let mut doc = Document::new(
+            filename.to_string(),
+            crate::types::FileType::Txt,
+            content_hash,
+            text_data.len() as u64,
+        );
+
+        // Create pipeline for chunking
+        let pipeline = IngestPipeline::new(
+            config.chunking.chunk_size,
+            config.chunking.chunk_overlap,
+        );
+
+        // Create a parsed document structure
+        let parsed = crate::ingestion::ParsedDocument {
+            file_type: crate::types::FileType::Txt,
+            content: content.clone(),
+            content_hash: doc.content_hash.clone(),
+            total_pages: Some(1),
+            pages: vec![crate::ingestion::PageContent {
+                page_number: 1,
+                content: content.clone(),
+                char_offset: 0,
+            }],
+            metadata: std::collections::HashMap::new(),
+        };
+
+        // Create chunks
+        tracing::info!("[{}] Creating chunks from extracted text...", filename);
+        let mut chunks = pipeline.create_chunks(&doc, &parsed)?;
+        let total_chunks = chunks.len();
+        tracing::info!("[{}] Created {} chunks, generating embeddings...", filename, total_chunks);
+
+        // Generate embeddings
+        let chunk_batches: Vec<_> = chunks.chunks_mut(parallel_embeddings).collect();
+        let ollama = state.ollama();
+        let embed_timeout = Duration::from_secs(60);
+        let mut batch_num = 0;
+        let total_batches = chunk_batches.len();
+
+        for batch in chunk_batches {
+            batch_num += 1;
+            let batch_start = std::time::Instant::now();
+
+            let embedding_futures: Vec<_> = batch
+                .iter()
+                .map(|chunk| ollama.embed(&chunk.content))
+                .collect();
+
+            let batch_result = timeout(embed_timeout, join_all(embedding_futures)).await;
+
+            match batch_result {
+                Ok(results) => {
+                    for (chunk, result) in batch.iter_mut().zip(results) {
+                        match result {
+                            Ok(embedding) => chunk.embedding = embedding,
+                            Err(e) => {
+                                tracing::warn!("[{}] Embedding failed: {}", filename, e);
+                                chunk.embedding = vec![0.0; config.embeddings.dimensions];
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    tracing::error!("[{}] Embedding batch {}/{} timed out", filename, batch_num, total_batches);
+                    for chunk in batch.iter_mut() {
+                        chunk.embedding = vec![0.0; config.embeddings.dimensions];
+                    }
+                }
+            }
+
+            if batch_start.elapsed().as_secs() > 10 {
+                tracing::info!("[{}] Batch {}/{} took {:.1}s", filename, batch_num, total_batches, batch_start.elapsed().as_secs_f64());
+            }
+
+            job_queue.increment_chunks_embedded(job_id, batch.len());
+        }
+
+        // Store chunks
+        tracing::info!("[{}] Storing {} chunks...", filename, total_chunks);
+        let vector_store = state.vector_store();
+        for chunk in &chunks {
+            vector_store.insert_chunk(chunk)?;
+        }
+
+        doc.total_chunks = total_chunks as u32;
+        tracing::info!("[{}] COMPLETE: {} chunks stored", filename, total_chunks);
+
+        Ok(doc)
     }
 
     /// Process file content (chunking, embedding, storing)
