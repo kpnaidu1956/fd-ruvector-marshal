@@ -203,11 +203,23 @@ impl ProcessingWorker {
         let external_parser = state.external_parser();
         let filename = &file_data.filename;
         let data = &file_data.data;
+        let file_size = data.len();
+
+        // Individual operation timeout (2 minutes for conversions/parsing)
+        let op_timeout = Duration::from_secs(120);
+
+        tracing::info!("[{}] Starting processing ({} bytes)", filename, file_size);
 
         // Check if we need to convert legacy format
         let (processed_filename, processed_data) = if ExternalParser::needs_conversion(filename) {
-            match external_parser.convert_with_libreoffice(filename, data).await {
-                Ok(converted) => {
+            tracing::info!("[{}] Converting legacy format with LibreOffice...", filename);
+            let convert_result = timeout(
+                op_timeout,
+                external_parser.convert_with_libreoffice(filename, data)
+            ).await;
+
+            match convert_result {
+                Ok(Ok(converted)) => {
                     let stem = std::path::Path::new(filename)
                         .file_stem()
                         .and_then(|s| s.to_str())
@@ -219,20 +231,63 @@ impl ProcessingWorker {
                         "xls" => "xlsx",
                         _ => "docx",
                     };
+                    tracing::info!("[{}] LibreOffice conversion successful", filename);
                     (format!("{}.{}", stem, new_ext), converted)
                 }
-                Err(e) => {
-                    tracing::warn!("LibreOffice conversion failed for {}: {}, trying external API", filename, e);
-                    let parsed = external_parser.parse_with_unstructured(filename, data).await?;
-                    (format!("{}.txt", filename), parsed.content.into_bytes())
+                Ok(Err(e)) => {
+                    tracing::warn!("[{}] LibreOffice conversion failed: {}, trying external API", filename, e);
+                    let parse_result = timeout(
+                        op_timeout,
+                        external_parser.parse_with_unstructured(filename, data)
+                    ).await;
+                    match parse_result {
+                        Ok(Ok(parsed)) => (format!("{}.txt", filename), parsed.content.into_bytes()),
+                        Ok(Err(e)) => {
+                            tracing::error!("[{}] External parser failed: {}", filename, e);
+                            return Err(e);
+                        }
+                        Err(_) => {
+                            tracing::error!("[{}] TIMEOUT: External parser took >{}s", filename, op_timeout.as_secs());
+                            return Err(Error::Internal(format!(
+                                "External parser timeout after {}s for '{}'", op_timeout.as_secs(), filename
+                            )));
+                        }
+                    }
+                }
+                Err(_) => {
+                    tracing::error!("[{}] TIMEOUT: LibreOffice conversion took >{}s", filename, op_timeout.as_secs());
+                    return Err(Error::Internal(format!(
+                        "LibreOffice conversion timeout after {}s for '{}'", op_timeout.as_secs(), filename
+                    )));
                 }
             }
         } else if ExternalParser::needs_external_parsing(filename) {
-            let parsed = external_parser.parse_with_unstructured(filename, data).await?;
-            (format!("{}.txt", filename), parsed.content.into_bytes())
+            tracing::info!("[{}] Using external parser...", filename);
+            let parse_result = timeout(
+                op_timeout,
+                external_parser.parse_with_unstructured(filename, data)
+            ).await;
+            match parse_result {
+                Ok(Ok(parsed)) => {
+                    tracing::info!("[{}] External parsing successful", filename);
+                    (format!("{}.txt", filename), parsed.content.into_bytes())
+                }
+                Ok(Err(e)) => {
+                    tracing::error!("[{}] External parser failed: {}", filename, e);
+                    return Err(e);
+                }
+                Err(_) => {
+                    tracing::error!("[{}] TIMEOUT: External parser took >{}s", filename, op_timeout.as_secs());
+                    return Err(Error::Internal(format!(
+                        "External parser timeout after {}s for '{}'", op_timeout.as_secs(), filename
+                    )));
+                }
+            }
         } else {
             (filename.to_string(), data.to_vec())
         };
+
+        tracing::info!("[{}] Parsing file content...", processed_filename);
 
         // Create pipeline
         let pipeline = IngestPipeline::new(
@@ -322,38 +377,78 @@ impl ProcessingWorker {
         doc.total_pages = parsed.total_pages;
 
         // Create chunks
+        tracing::info!("[{}] Creating chunks...", filename);
         let mut chunks = pipeline.create_chunks(&doc, parsed)?;
         let total_chunks = chunks.len();
+        tracing::info!("[{}] Created {} chunks, generating embeddings...", filename, total_chunks);
 
-        // Generate embeddings in parallel batches
+        // Generate embeddings in parallel batches with timeout
         let chunk_batches: Vec<_> = chunks.chunks_mut(parallel_embeddings).collect();
         let ollama = state.ollama();
+        let embed_timeout = Duration::from_secs(60); // 60s per batch
+        let mut batch_num = 0;
+        let total_batches = chunk_batches.len();
 
         for batch in chunk_batches {
+            batch_num += 1;
+            let batch_start = std::time::Instant::now();
+
             let embedding_futures: Vec<_> = batch
                 .iter()
                 .map(|chunk| ollama.embed(&chunk.content))
                 .collect();
 
-            let results = join_all(embedding_futures).await;
+            // Wrap the batch in a timeout
+            let batch_result = timeout(embed_timeout, join_all(embedding_futures)).await;
 
-            for (chunk, result) in batch.iter_mut().zip(results) {
-                match result {
-                    Ok(embedding) => {
-                        chunk.embedding = embedding;
+            match batch_result {
+                Ok(results) => {
+                    let mut failed_count = 0;
+                    for (chunk, result) in batch.iter_mut().zip(results) {
+                        match result {
+                            Ok(embedding) => {
+                                chunk.embedding = embedding;
+                            }
+                            Err(e) => {
+                                failed_count += 1;
+                                tracing::warn!("[{}] Embedding failed for chunk: {}", filename, e);
+                                // Use zero vector as fallback
+                                chunk.embedding = vec![0.0; config.embeddings.dimensions];
+                            }
+                        }
                     }
-                    Err(e) => {
-                        tracing::error!("Embedding failed for chunk in {}: {}", filename, e);
-                        // Use zero vector as fallback
+                    if failed_count > 0 {
+                        tracing::warn!(
+                            "[{}] Batch {}/{}: {} embeddings failed, using fallback",
+                            filename, batch_num, total_batches, failed_count
+                        );
+                    }
+                }
+                Err(_) => {
+                    tracing::error!(
+                        "[{}] TIMEOUT: Embedding batch {}/{} took >{}s, using fallback embeddings",
+                        filename, batch_num, total_batches, embed_timeout.as_secs()
+                    );
+                    // Use zero vectors for all chunks in this batch
+                    for chunk in batch.iter_mut() {
                         chunk.embedding = vec![0.0; config.embeddings.dimensions];
                     }
                 }
+            }
+
+            let batch_elapsed = batch_start.elapsed();
+            if batch_elapsed.as_secs() > 10 {
+                tracing::info!(
+                    "[{}] Batch {}/{} took {:.1}s",
+                    filename, batch_num, total_batches, batch_elapsed.as_secs_f64()
+                );
             }
 
             job_queue.increment_chunks_embedded(job_id, batch.len());
         }
 
         // Store chunks
+        tracing::info!("[{}] Storing {} chunks in vector database...", filename, total_chunks);
         let vector_store = state.vector_store();
         for chunk in &chunks {
             vector_store.insert_chunk(chunk)?;
@@ -362,7 +457,7 @@ impl ProcessingWorker {
         doc.total_chunks = total_chunks as u32;
 
         tracing::info!(
-            "Processed '{}': {} pages, {} chunks",
+            "[{}] COMPLETE: {} pages, {} chunks stored",
             filename,
             doc.total_pages.unwrap_or(1),
             total_chunks
