@@ -5,14 +5,19 @@
 
 set -e
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+# Reset terminal on exit
+trap 'tput sgr0 2>/dev/null || true' EXIT
 
-log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+# Simple logging without colors if not interactive
+if [[ -t 1 ]]; then
+    log_info() { echo "[INFO] $1"; }
+    log_warn() { echo "[WARN] $1"; }
+    log_error() { echo "[ERROR] $1"; }
+else
+    log_info() { echo "[INFO] $1"; }
+    log_warn() { echo "[WARN] $1"; }
+    log_error() { echo "[ERROR] $1"; }
+fi
 
 KEEP_CODE=false
 if [[ "$1" == "--keep-code" ]]; then
@@ -21,7 +26,7 @@ fi
 
 echo ""
 echo "=========================================="
-echo -e "${RED}COMPLETE VM CLEANUP${NC}"
+echo "COMPLETE VM CLEANUP"
 echo "=========================================="
 echo ""
 echo "This will DELETE:"
@@ -122,7 +127,7 @@ rm -rf ~/.cargo/registry/cache 2>/dev/null || true
 
 echo ""
 echo "=========================================="
-echo -e "${GREEN}CLEANUP COMPLETE${NC}"
+echo "CLEANUP COMPLETE"
 echo "=========================================="
 echo ""
 echo "Removed:"
