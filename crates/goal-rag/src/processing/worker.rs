@@ -467,9 +467,9 @@ impl ProcessingWorker {
         let total_chunks = chunks.len();
         tracing::info!("[{}] Created {} chunks, generating embeddings...", original_filename, total_chunks);
 
-        // Generate embeddings
+        // Generate embeddings using provider abstraction
         let chunk_batches: Vec<_> = chunks.chunks_mut(parallel_embeddings).collect();
-        let ollama = state.ollama();
+        let embedding_provider = state.embedding_provider();
         let embed_timeout = Duration::from_secs(60);
         let mut batch_num = 0;
         let total_batches = chunk_batches.len();
@@ -480,7 +480,7 @@ impl ProcessingWorker {
 
             let embedding_futures: Vec<_> = batch
                 .iter()
-                .map(|chunk| ollama.embed(&chunk.content))
+                .map(|chunk| embedding_provider.embed(&chunk.content))
                 .collect();
 
             let batch_result = timeout(embed_timeout, join_all(embedding_futures)).await;
@@ -571,9 +571,9 @@ impl ProcessingWorker {
         let total_chunks = chunks.len();
         tracing::info!("[{}] Created {} chunks, generating embeddings...", original_filename, total_chunks);
 
-        // Generate embeddings in parallel batches with timeout
+        // Generate embeddings in parallel batches with timeout (using provider abstraction)
         let chunk_batches: Vec<_> = chunks.chunks_mut(parallel_embeddings).collect();
-        let ollama = state.ollama();
+        let embedding_provider = state.embedding_provider();
         let embed_timeout = Duration::from_secs(60); // 60s per batch
         let mut batch_num = 0;
         let total_batches = chunk_batches.len();
@@ -584,7 +584,7 @@ impl ProcessingWorker {
 
             let embedding_futures: Vec<_> = batch
                 .iter()
-                .map(|chunk| ollama.embed(&chunk.content))
+                .map(|chunk| embedding_provider.embed(&chunk.content))
                 .collect();
 
             // Wrap the batch in a timeout

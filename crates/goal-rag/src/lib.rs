@@ -11,6 +11,7 @@ pub mod generation;
 pub mod ingestion;
 pub mod learning;
 pub mod processing;
+pub mod providers;
 pub mod retrieval;
 pub mod server;
 pub mod types;

@@ -8,6 +8,9 @@ use crate::ingestion::ExternalParserConfig;
 /// Main RAG system configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RagConfig {
+    /// Backend provider (local or gcp)
+    #[serde(default)]
+    pub backend: BackendProvider,
     /// Server configuration
     pub server: ServerConfig,
     /// Embedding configuration
@@ -22,11 +25,15 @@ pub struct RagConfig {
     pub external_parser: ExternalParserConfig,
     /// Processing configuration
     pub processing: ProcessingConfig,
+    /// GCP configuration (required when backend = gcp)
+    #[serde(default)]
+    pub gcp: Option<GcpConfig>,
 }
 
 impl Default for RagConfig {
     fn default() -> Self {
         Self {
+            backend: BackendProvider::default(),
             server: ServerConfig::default(),
             embeddings: EmbeddingConfig::default(),
             chunking: ChunkingConfig::default(),
@@ -34,6 +41,7 @@ impl Default for RagConfig {
             vector_db: VectorDbConfig::default(),
             external_parser: ExternalParserConfig::default(),
             processing: ProcessingConfig::default(),
+            gcp: None,
         }
     }
 }
@@ -198,4 +206,47 @@ impl Default for VectorDbConfig {
             hnsw_ef_search: 100,
         }
     }
+}
+
+/// Backend provider selection
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum BackendProvider {
+    /// Local backend (Ollama + HNSW + filesystem)
+    #[default]
+    Local,
+    /// Google Cloud Platform (Vertex AI + GCS)
+    Gcp,
+}
+
+/// Google Cloud Platform configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GcpConfig {
+    /// Path to service account JSON key file
+    pub service_account_key_path: PathBuf,
+    /// GCP project ID
+    pub project_id: String,
+    /// GCP region (e.g., "us-central1")
+    pub location: String,
+    /// GCS bucket for document storage
+    pub gcs_bucket: String,
+    /// Vertex AI Vector Search endpoint (full resource name)
+    /// e.g., "projects/my-project/locations/us-central1/indexEndpoints/123456"
+    pub vector_search_endpoint: String,
+    /// Deployed index ID within the endpoint
+    pub deployed_index_id: String,
+    /// Embedding model (default: "text-embedding-005")
+    #[serde(default = "default_embedding_model")]
+    pub embedding_model: String,
+    /// Generation model (default: "gemini-2.5-pro")
+    #[serde(default = "default_generation_model")]
+    pub generation_model: String,
+}
+
+fn default_embedding_model() -> String {
+    "text-embedding-005".to_string()
+}
+
+fn default_generation_model() -> String {
+    "gemini-2.5-pro".to_string()
 }
