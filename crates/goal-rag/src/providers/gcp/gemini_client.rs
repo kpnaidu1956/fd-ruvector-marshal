@@ -43,19 +43,27 @@ impl GeminiClient {
         )
     }
 
-    /// Build the RAG prompt with context and citations
+    /// Build the RAG prompt with strict grounding rules
     fn build_prompt(&self, question: &str, context: &str, citations: &[Citation]) -> String {
         let mut prompt = String::new();
 
-        prompt.push_str("You are a helpful assistant that answers questions based on the provided context. ");
-        prompt.push_str("Always cite your sources using [1], [2], etc. when referencing information from the context.\n\n");
+        // System instruction for grounded responses
+        prompt.push_str("You are a document-grounded assistant. You ONLY use information from the provided context.\n\n");
 
-        prompt.push_str("## Context\n\n");
+        prompt.push_str("## CRITICAL GROUNDING RULES\n\n");
+        prompt.push_str("1. ONLY use information EXPLICITLY stated in the context below\n");
+        prompt.push_str("2. If information is not in context, say: \"This information is not available in the provided documents.\"\n");
+        prompt.push_str("3. NEVER use external knowledge, general knowledge, or training data\n");
+        prompt.push_str("4. NEVER make inferences or assumptions beyond what is explicitly stated\n");
+        prompt.push_str("5. Every claim MUST have a citation: [Source: filename, Page X]\n");
+        prompt.push_str("6. Stay close to the source text - do not paraphrase in ways that change meaning\n\n");
+
+        prompt.push_str("## Context from Documents\n\n");
         prompt.push_str(context);
         prompt.push_str("\n\n");
 
         if !citations.is_empty() {
-            prompt.push_str("## Sources\n\n");
+            prompt.push_str("## Available Sources\n\n");
             for (i, citation) in citations.iter().enumerate() {
                 prompt.push_str(&format!(
                     "[{}] {} ({}",
@@ -64,7 +72,10 @@ impl GeminiClient {
                     citation.file_type.display_name()
                 ));
                 if let Some(page) = citation.page_number {
-                    prompt.push_str(&format!(", page {}", page));
+                    prompt.push_str(&format!(", Page {}", page));
+                }
+                if let (Some(start), Some(end)) = (citation.line_start, citation.line_end) {
+                    prompt.push_str(&format!(", Lines {}-{}", start, end));
                 }
                 prompt.push_str(")\n");
             }
@@ -74,7 +85,7 @@ impl GeminiClient {
         prompt.push_str("## Question\n\n");
         prompt.push_str(question);
         prompt.push_str("\n\n");
-        prompt.push_str("## Answer\n\n");
+        prompt.push_str("## Grounded Answer (cite sources inline with [Source: filename, Page X])\n\n");
 
         prompt
     }
@@ -144,9 +155,9 @@ impl LlmProvider for GeminiClient {
                 parts: vec![Part { text: prompt }],
             }],
             generation_config: GenerationConfig {
-                temperature: 0.3,
+                temperature: 0.1, // Very low for grounded, factual responses
                 max_output_tokens: 2048,
-                top_p: 0.95,
+                top_p: 0.85, // Tighter for more deterministic output
             },
         };
 
@@ -215,9 +226,9 @@ impl LlmProvider for GeminiClient {
         let request = GenerateRequest {
             contents,
             generation_config: GenerationConfig {
-                temperature: 0.3,
+                temperature: 0.1, // Very low for grounded, factual responses
                 max_output_tokens: 2048,
-                top_p: 0.95,
+                top_p: 0.85, // Tighter for more deterministic output
             },
         };
 

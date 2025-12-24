@@ -230,6 +230,12 @@ pub struct GcpConfig {
     pub location: String,
     /// GCS bucket for document storage
     pub gcs_bucket: String,
+    /// GCS prefix for original documents (default: "originals/")
+    #[serde(default = "default_gcs_originals_prefix")]
+    pub gcs_originals_prefix: String,
+    /// GCS prefix for extracted plain text (default: "plaintext/")
+    #[serde(default = "default_gcs_plaintext_prefix")]
+    pub gcs_plaintext_prefix: String,
     /// Vertex AI Vector Search endpoint (full resource name)
     /// e.g., "projects/my-project/locations/us-central1/indexEndpoints/123456"
     pub vector_search_endpoint: String,
@@ -249,4 +255,12 @@ fn default_embedding_model() -> String {
 
 fn default_generation_model() -> String {
     "gemini-2.5-pro".to_string()
+}
+
+fn default_gcs_originals_prefix() -> String {
+    "originals/".to_string()
+}
+
+fn default_gcs_plaintext_prefix() -> String {
+    "plaintext/".to_string()
 }

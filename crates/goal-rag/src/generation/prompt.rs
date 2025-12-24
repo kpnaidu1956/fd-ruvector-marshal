@@ -47,19 +47,25 @@ impl PromptBuilder {
         parts.join(", ")
     }
 
-    /// Build the full RAG prompt
+    /// Build the full RAG prompt with strict grounding
     pub fn build_rag_prompt(question: &str, context: &str, citations: &[Citation]) -> String {
         format!(
-            r#"You are a knowledgeable assistant that provides comprehensive, detailed answers based on provided documents.
+            r#"You are a document-grounded assistant that ONLY uses information from provided documents.
 
-IMPORTANT INSTRUCTIONS:
-1. Provide a COMPREHENSIVE and DETAILED answer using information from the context below
-2. Synthesize information from MULTIPLE sources when available to give a complete picture
-3. Include relevant details, examples, and explanations found in the documents
-4. For each claim or fact, cite the source using the format [Source: filename, Page X] or [Source: filename, Lines X-Y]
-5. Structure your answer clearly with proper paragraphs when covering multiple aspects
-6. If information spans multiple documents, integrate it cohesively
-7. If the information is not in the context, say "I cannot find this information in the provided documents"
+CRITICAL GROUNDING RULES - YOU MUST FOLLOW THESE EXACTLY:
+1. ONLY use information that is EXPLICITLY stated in the CONTEXT below
+2. If the answer is not in the context: respond with "This information is not available in the provided documents."
+3. NEVER use external knowledge, general knowledge, or training data
+4. NEVER make inferences, assumptions, or educated guesses beyond what is explicitly stated
+5. Every fact, claim, or piece of information MUST have a citation in this format: [Source: filename, Page X]
+6. If you're unsure whether something is in the context, it's NOT - do not include it
+7. Do NOT paraphrase in ways that change meaning - stay close to the source text
+
+RESPONSE STRUCTURE:
+- Provide a clear, well-organized answer using ONLY information from the context
+- Cite sources inline with each claim: [Source: filename, Page X] or [Source: filename, Lines X-Y]
+- If multiple sources support a point, cite all of them
+- Structure with paragraphs for readability when covering multiple aspects
 
 CONTEXT FROM DOCUMENTS:
 {context}
@@ -69,7 +75,7 @@ AVAILABLE SOURCES:
 
 QUESTION: {question}
 
-Provide a comprehensive, well-structured answer with citations:"#,
+Provide a grounded answer using ONLY the document content above:"#,
             context = context,
             sources = Self::format_sources_list(citations),
             question = question
@@ -117,17 +123,23 @@ Provide a comprehensive, well-structured answer with citations:"#,
         };
 
         format!(
-            r#"You are a knowledgeable assistant that provides comprehensive, detailed answers based on provided documents.
+            r#"You are a document-grounded assistant that ONLY uses information from provided documents.
 
-IMPORTANT INSTRUCTIONS:
-1. Provide a COMPREHENSIVE and DETAILED answer using information from the context below
-2. Synthesize information from MULTIPLE sources when available to give a complete picture
-3. Include relevant details, examples, and explanations found in the documents
-4. For each claim or fact, cite the source using the format [Source: filename, Page X] or [Source: filename, Lines X-Y]
-5. Structure your answer clearly with proper paragraphs when covering multiple aspects
-6. If information spans multiple documents, integrate it cohesively
-7. If the information is not in the context, say "I cannot find this information in the provided documents"
+CRITICAL GROUNDING RULES - YOU MUST FOLLOW THESE EXACTLY:
+1. ONLY use information that is EXPLICITLY stated in the CONTEXT below
+2. If the answer is not in the context: respond with "This information is not available in the provided documents."
+3. NEVER use external knowledge, general knowledge, or training data
+4. NEVER make inferences, assumptions, or educated guesses beyond what is explicitly stated
+5. Every fact, claim, or piece of information MUST have a citation in this format: [Source: filename, Page X]
+6. If you're unsure whether something is in the context, it's NOT - do not include it
+7. Do NOT paraphrase in ways that change meaning - stay close to the source text
 {past_examples}
+RESPONSE STRUCTURE:
+- Provide a clear, well-organized answer using ONLY information from the context
+- Cite sources inline with each claim: [Source: filename, Page X] or [Source: filename, Lines X-Y]
+- If multiple sources support a point, cite all of them
+- Structure with paragraphs for readability when covering multiple aspects
+
 CONTEXT FROM DOCUMENTS:
 {context}
 
@@ -136,7 +148,7 @@ AVAILABLE SOURCES:
 
 QUESTION: {question}
 
-Provide a comprehensive, well-structured answer with citations:"#,
+Provide a grounded answer using ONLY the document content above:"#,
             past_examples = past_examples,
             context = context,
             sources = Self::format_sources_list(citations),

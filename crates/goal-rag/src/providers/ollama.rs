@@ -17,6 +17,7 @@ use super::llm::LlmProvider;
 pub struct OllamaEmbedder {
     client: Arc<OllamaClient>,
     dimensions: usize,
+    #[allow(dead_code)]
     model: String,
 }
 

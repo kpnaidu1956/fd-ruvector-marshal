@@ -274,7 +274,6 @@ impl ExternalParser {
     /// Convert PDF to text using pdftotext (poppler-utils)
     /// Much faster and more reliable than Rust PDF libraries for complex fonts
     pub fn convert_pdf_with_pdftotext(&self, data: &[u8]) -> Result<String> {
-        use std::fs;
         use std::io::Write;
         use std::process::Stdio;
 
