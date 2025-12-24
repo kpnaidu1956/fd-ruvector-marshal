@@ -120,8 +120,11 @@ impl FileType {
 pub struct Document {
     /// Unique document ID
     pub id: Uuid,
-    /// Original filename
+    /// Original filename as uploaded by user
     pub filename: String,
+    /// Internal filename (may differ if file was converted)
+    #[serde(default)]
+    pub internal_filename: Option<String>,
     /// File type
     pub file_type: FileType,
     /// Content hash for deduplication
@@ -139,11 +142,34 @@ pub struct Document {
 }
 
 impl Document {
-    /// Create a new document
-    pub fn new(filename: String, file_type: FileType, content_hash: String, file_size: u64) -> Self {
+    /// Create a new document with original filename
+    pub fn new(original_filename: String, file_type: FileType, content_hash: String, file_size: u64) -> Self {
         Self {
             id: Uuid::new_v4(),
-            filename,
+            filename: original_filename,
+            internal_filename: None,
+            file_type,
+            content_hash,
+            total_pages: None,
+            total_chunks: 0,
+            file_size,
+            ingested_at: chrono::Utc::now(),
+            metadata: HashMap::new(),
+        }
+    }
+
+    /// Create a new document with both original and internal filename
+    pub fn new_with_internal(
+        original_filename: String,
+        internal_filename: String,
+        file_type: FileType,
+        content_hash: String,
+        file_size: u64,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            filename: original_filename,
+            internal_filename: Some(internal_filename),
             file_type,
             content_hash,
             total_pages: None,
@@ -158,8 +184,11 @@ impl Document {
 /// Source information for a chunk (used for citations)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkSource {
-    /// Source filename
+    /// Original filename as uploaded (used in citations)
     pub filename: String,
+    /// Internal filename if converted (for debugging)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub internal_filename: Option<String>,
     /// File type
     pub file_type: FileType,
     /// Page number (1-indexed, for PDF/DOCX)
@@ -186,6 +215,7 @@ impl ChunkSource {
     pub fn text(filename: String) -> Self {
         Self {
             filename,
+            internal_filename: None,
             file_type: FileType::Txt,
             page_number: None,
             page_count: None,
@@ -203,6 +233,7 @@ impl ChunkSource {
     pub fn pdf(filename: String, page: u32, total_pages: u32) -> Self {
         Self {
             filename,
+            internal_filename: None,
             file_type: FileType::Pdf,
             page_number: Some(page),
             page_count: Some(total_pages),
@@ -220,6 +251,7 @@ impl ChunkSource {
     pub fn code(filename: String, language: String, line_start: u32, line_end: u32) -> Self {
         Self {
             filename,
+            internal_filename: None,
             file_type: FileType::Code(language),
             page_number: None,
             page_count: None,

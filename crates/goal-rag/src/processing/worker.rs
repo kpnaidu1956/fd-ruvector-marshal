@@ -213,6 +213,9 @@ impl ProcessingWorker {
         // Check file extension
         let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
 
+        // Store original filename for reporting/citations
+        let original_filename = filename.to_string();
+
         // For PDFs, try pdftotext first (much faster and handles fonts better)
         if ext == "pdf" && ExternalParser::has_pdftotext() {
             tracing::info!("[{}] Using pdftotext for PDF extraction", filename);
@@ -225,7 +228,8 @@ impl ProcessingWorker {
                         state,
                         job_queue,
                         job_id,
-                        &text_filename,
+                        &original_filename,  // Use original filename for display
+                        Some(&text_filename), // Internal filename
                         text.as_bytes(),
                         parallel_embeddings,
                     ).await.map(FileProcessResult::New);
@@ -314,7 +318,14 @@ impl ProcessingWorker {
             (filename.to_string(), data.to_vec())
         };
 
-        tracing::info!("[{}] Parsing file content...", processed_filename);
+        tracing::info!("[{}] Parsing file content...", original_filename);
+
+        // Determine internal filename if different from original
+        let internal_filename = if processed_filename != original_filename {
+            Some(processed_filename.clone())
+        } else {
+            None
+        };
 
         // Create pipeline
         let pipeline = IngestPipeline::new(
@@ -325,8 +336,8 @@ impl ProcessingWorker {
         // Parse file to get content hash
         let parsed = pipeline.parse_file(&processed_filename, &processed_data)?;
 
-        // Check file status for deduplication
-        match state.check_file_status(&processed_filename, &parsed.content_hash) {
+        // Check file status for deduplication (use original filename for tracking)
+        match state.check_file_status(&original_filename, &parsed.content_hash) {
             FileStatus::Unchanged(existing) => {
                 return Ok(FileProcessResult::Skipped(format!(
                     "unchanged (hash: {}...)",
@@ -344,7 +355,7 @@ impl ProcessingWorker {
                 let deleted = state.delete_document_with_chunks(&existing.id)?;
                 tracing::info!(
                     "File '{}' modified, deleted {} old chunks",
-                    processed_filename,
+                    original_filename,
                     deleted
                 );
 
@@ -353,7 +364,8 @@ impl ProcessingWorker {
                     state,
                     job_queue,
                     job_id,
-                    &processed_filename,
+                    &original_filename,
+                    internal_filename.as_deref(),
                     &processed_data,
                     &parsed,
                     parallel_embeddings,
@@ -366,7 +378,8 @@ impl ProcessingWorker {
                     state,
                     job_queue,
                     job_id,
-                    &processed_filename,
+                    &original_filename,
+                    internal_filename.as_deref(),
                     &processed_data,
                     &parsed,
                     parallel_embeddings,
@@ -377,11 +390,14 @@ impl ProcessingWorker {
     }
 
     /// Process pre-extracted text content (for pdftotext/pandoc output)
+    /// - `original_filename`: The filename as uploaded by user (used for display/citations)
+    /// - `internal_filename`: The converted filename if different (e.g., "report.pdf" -> "report.txt")
     async fn process_text_content(
         state: &AppState,
         job_queue: &Arc<JobQueue>,
         job_id: uuid::Uuid,
-        filename: &str,
+        original_filename: &str,
+        internal_filename: Option<&str>,
         text_data: &[u8],
         parallel_embeddings: usize,
     ) -> Result<Document> {
@@ -394,26 +410,36 @@ impl ProcessingWorker {
         hasher.update(content.as_bytes());
         let content_hash = format!("{:x}", hasher.finalize());
 
-        // Check for duplicates
-        match state.check_file_status(filename, &content_hash) {
+        // Check for duplicates using original filename
+        match state.check_file_status(original_filename, &content_hash) {
             crate::server::state::FileStatus::Unchanged(existing) => {
-                tracing::info!("[{}] Unchanged, skipping", filename);
+                tracing::info!("[{}] Unchanged, skipping", original_filename);
                 return Err(Error::Internal(format!("File unchanged: {}", existing.filename)));
             }
             crate::server::state::FileStatus::Duplicate(existing) => {
-                tracing::info!("[{}] Duplicate of {}, skipping", filename, existing.filename);
+                tracing::info!("[{}] Duplicate of {}, skipping", original_filename, existing.filename);
                 return Err(Error::Internal(format!("Duplicate of: {}", existing.filename)));
             }
             _ => {}
         }
 
-        // Create document
-        let mut doc = Document::new(
-            filename.to_string(),
-            crate::types::FileType::Txt,
-            content_hash,
-            text_data.len() as u64,
-        );
+        // Create document with original and internal filenames
+        let mut doc = if let Some(internal) = internal_filename {
+            Document::new_with_internal(
+                original_filename.to_string(),
+                internal.to_string(),
+                crate::types::FileType::Txt,
+                content_hash,
+                text_data.len() as u64,
+            )
+        } else {
+            Document::new(
+                original_filename.to_string(),
+                crate::types::FileType::Txt,
+                content_hash,
+                text_data.len() as u64,
+            )
+        };
 
         // Create pipeline for chunking
         let pipeline = IngestPipeline::new(
@@ -436,10 +462,10 @@ impl ProcessingWorker {
         };
 
         // Create chunks
-        tracing::info!("[{}] Creating chunks from extracted text...", filename);
+        tracing::info!("[{}] Creating chunks from extracted text...", original_filename);
         let mut chunks = pipeline.create_chunks(&doc, &parsed)?;
         let total_chunks = chunks.len();
-        tracing::info!("[{}] Created {} chunks, generating embeddings...", filename, total_chunks);
+        tracing::info!("[{}] Created {} chunks, generating embeddings...", original_filename, total_chunks);
 
         // Generate embeddings
         let chunk_batches: Vec<_> = chunks.chunks_mut(parallel_embeddings).collect();
@@ -465,14 +491,14 @@ impl ProcessingWorker {
                         match result {
                             Ok(embedding) => chunk.embedding = embedding,
                             Err(e) => {
-                                tracing::warn!("[{}] Embedding failed: {}", filename, e);
+                                tracing::warn!("[{}] Embedding failed: {}", original_filename, e);
                                 chunk.embedding = vec![0.0; config.embeddings.dimensions];
                             }
                         }
                     }
                 }
                 Err(_) => {
-                    tracing::error!("[{}] Embedding batch {}/{} timed out", filename, batch_num, total_batches);
+                    tracing::error!("[{}] Embedding batch {}/{} timed out", original_filename, batch_num, total_batches);
                     for chunk in batch.iter_mut() {
                         chunk.embedding = vec![0.0; config.embeddings.dimensions];
                     }
@@ -480,31 +506,34 @@ impl ProcessingWorker {
             }
 
             if batch_start.elapsed().as_secs() > 10 {
-                tracing::info!("[{}] Batch {}/{} took {:.1}s", filename, batch_num, total_batches, batch_start.elapsed().as_secs_f64());
+                tracing::info!("[{}] Batch {}/{} took {:.1}s", original_filename, batch_num, total_batches, batch_start.elapsed().as_secs_f64());
             }
 
             job_queue.increment_chunks_embedded(job_id, batch.len());
         }
 
         // Store chunks
-        tracing::info!("[{}] Storing {} chunks...", filename, total_chunks);
+        tracing::info!("[{}] Storing {} chunks...", original_filename, total_chunks);
         let vector_store = state.vector_store();
         for chunk in &chunks {
             vector_store.insert_chunk(chunk)?;
         }
 
         doc.total_chunks = total_chunks as u32;
-        tracing::info!("[{}] COMPLETE: {} chunks stored", filename, total_chunks);
+        tracing::info!("[{}] COMPLETE: {} chunks stored", original_filename, total_chunks);
 
         Ok(doc)
     }
 
     /// Process file content (chunking, embedding, storing)
+    /// - `original_filename`: The filename as uploaded by user (used for display/citations)
+    /// - `internal_filename`: The converted filename if different (e.g., "doc.doc" -> "doc.docx")
     async fn process_file_content(
         state: &AppState,
         job_queue: &Arc<JobQueue>,
         job_id: uuid::Uuid,
-        filename: &str,
+        original_filename: &str,
+        internal_filename: Option<&str>,
         data: &[u8],
         parsed: &crate::ingestion::ParsedDocument,
         parallel_embeddings: usize,
@@ -517,20 +546,30 @@ impl ProcessingWorker {
             config.chunking.chunk_overlap,
         );
 
-        // Create document
-        let mut doc = Document::new(
-            filename.to_string(),
-            parsed.file_type.clone(),
-            parsed.content_hash.clone(),
-            data.len() as u64,
-        );
+        // Create document with original and internal filenames
+        let mut doc = if let Some(internal) = internal_filename {
+            Document::new_with_internal(
+                original_filename.to_string(),
+                internal.to_string(),
+                parsed.file_type.clone(),
+                parsed.content_hash.clone(),
+                data.len() as u64,
+            )
+        } else {
+            Document::new(
+                original_filename.to_string(),
+                parsed.file_type.clone(),
+                parsed.content_hash.clone(),
+                data.len() as u64,
+            )
+        };
         doc.total_pages = parsed.total_pages;
 
         // Create chunks
-        tracing::info!("[{}] Creating chunks...", filename);
+        tracing::info!("[{}] Creating chunks...", original_filename);
         let mut chunks = pipeline.create_chunks(&doc, parsed)?;
         let total_chunks = chunks.len();
-        tracing::info!("[{}] Created {} chunks, generating embeddings...", filename, total_chunks);
+        tracing::info!("[{}] Created {} chunks, generating embeddings...", original_filename, total_chunks);
 
         // Generate embeddings in parallel batches with timeout
         let chunk_batches: Vec<_> = chunks.chunks_mut(parallel_embeddings).collect();
@@ -561,7 +600,7 @@ impl ProcessingWorker {
                             }
                             Err(e) => {
                                 failed_count += 1;
-                                tracing::warn!("[{}] Embedding failed for chunk: {}", filename, e);
+                                tracing::warn!("[{}] Embedding failed for chunk: {}", original_filename, e);
                                 // Use zero vector as fallback
                                 chunk.embedding = vec![0.0; config.embeddings.dimensions];
                             }
@@ -570,14 +609,14 @@ impl ProcessingWorker {
                     if failed_count > 0 {
                         tracing::warn!(
                             "[{}] Batch {}/{}: {} embeddings failed, using fallback",
-                            filename, batch_num, total_batches, failed_count
+                            original_filename, batch_num, total_batches, failed_count
                         );
                     }
                 }
                 Err(_) => {
                     tracing::error!(
                         "[{}] TIMEOUT: Embedding batch {}/{} took >{}s, using fallback embeddings",
-                        filename, batch_num, total_batches, embed_timeout.as_secs()
+                        original_filename, batch_num, total_batches, embed_timeout.as_secs()
                     );
                     // Use zero vectors for all chunks in this batch
                     for chunk in batch.iter_mut() {
@@ -590,7 +629,7 @@ impl ProcessingWorker {
             if batch_elapsed.as_secs() > 10 {
                 tracing::info!(
                     "[{}] Batch {}/{} took {:.1}s",
-                    filename, batch_num, total_batches, batch_elapsed.as_secs_f64()
+                    original_filename, batch_num, total_batches, batch_elapsed.as_secs_f64()
                 );
             }
 
@@ -598,7 +637,7 @@ impl ProcessingWorker {
         }
 
         // Store chunks
-        tracing::info!("[{}] Storing {} chunks in vector database...", filename, total_chunks);
+        tracing::info!("[{}] Storing {} chunks in vector database...", original_filename, total_chunks);
         let vector_store = state.vector_store();
         for chunk in &chunks {
             vector_store.insert_chunk(chunk)?;
@@ -608,7 +647,7 @@ impl ProcessingWorker {
 
         tracing::info!(
             "[{}] COMPLETE: {} pages, {} chunks stored",
-            filename,
+            original_filename,
             doc.total_pages.unwrap_or(1),
             total_chunks
         );

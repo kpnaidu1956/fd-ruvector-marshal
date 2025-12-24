@@ -243,8 +243,15 @@ impl VectorStore {
             .map(|v| serde_json::from_value(v.clone()).unwrap_or(crate::types::FileType::Unknown))
             .unwrap_or(crate::types::FileType::Unknown);
 
+        // Internal filename (for debugging, not shown in citations)
+        let internal_filename = metadata
+            .get("internal_filename")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
         let source = crate::types::ChunkSource {
             filename,
+            internal_filename,
             file_type,
             page_number,
             page_count: None,
