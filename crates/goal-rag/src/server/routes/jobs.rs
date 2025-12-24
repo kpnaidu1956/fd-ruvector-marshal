@@ -106,6 +106,40 @@ pub async fn get_job_progress(
         })
         .collect();
 
+    // Parse skipped files into structured format
+    let skipped_files: Vec<SkippedFileInfo> = progress
+        .skipped_files
+        .iter()
+        .map(|s| {
+            // Format is "filename: reason"
+            let parts: Vec<&str> = s.splitn(2, ": ").collect();
+            let (filename, reason) = if parts.len() == 2 {
+                (parts[0].to_string(), parts[1].to_string())
+            } else {
+                (s.clone(), "unknown".to_string())
+            };
+
+            // Detect reason type from the reason text
+            let reason_type = if reason.contains("duplicate") {
+                "duplicate"
+            } else if reason.contains("unchanged") || reason.contains("hash:") {
+                "unchanged"
+            } else if reason.contains("empty") || reason.contains("no text") {
+                "empty"
+            } else if reason.contains("unsupported") || reason.contains("format") {
+                "unsupported"
+            } else {
+                "error"
+            };
+
+            SkippedFileInfo {
+                filename,
+                reason,
+                reason_type: reason_type.to_string(),
+            }
+        })
+        .collect();
+
     Ok(Json(JobProgressResponse {
         job_id: progress.job_id,
         status: format!("{:?}", progress.status).to_lowercase(),
@@ -120,7 +154,7 @@ pub async fn get_job_progress(
         chunks_embedded: progress.chunks_embedded,
         error: progress.error,
         file_errors,
-        skipped_files: progress.skipped_files,
+        skipped_files,
         created_at: progress.created_at.to_rfc3339(),
         updated_at: progress.updated_at.to_rfc3339(),
     }))
@@ -130,10 +164,15 @@ pub async fn get_job_progress(
 pub async fn list_jobs(
     State(state): State<AppState>,
 ) -> Json<JobListResponse> {
-    let jobs = state.job_queue().list_jobs();
+    let jobs_list = state.job_queue().list_jobs();
     let stats = state.job_queue().stats();
 
-    let jobs: Vec<JobSummary> = jobs
+    // Calculate aggregate stats
+    let total_files_processed: usize = jobs_list.iter().map(|j| j.files_processed).sum();
+    let total_files_skipped: usize = jobs_list.iter().map(|j| j.files_skipped).sum();
+    let total_files_failed: usize = jobs_list.iter().map(|j| j.files_failed).sum();
+
+    let jobs: Vec<JobSummary> = jobs_list
         .into_iter()
         .map(|p| JobSummary {
             job_id: p.job_id,
@@ -142,6 +181,8 @@ pub async fn list_jobs(
             percent_complete: p.percent_complete(),
             total_files: p.total_files,
             files_processed: p.files_processed,
+            files_skipped: p.files_skipped,
+            files_failed: p.files_failed,
             error: p.error,
         })
         .collect();
@@ -154,6 +195,9 @@ pub async fn list_jobs(
         complete: stats.complete,
         failed: stats.failed,
         worker_count: stats.worker_count,
+        total_files_processed,
+        total_files_skipped,
+        total_files_failed,
     })
 }
 
@@ -172,7 +216,7 @@ pub struct JobProgressResponse {
     pub chunks_embedded: usize,
     pub error: Option<String>,
     pub file_errors: Vec<FileErrorResponse>,
-    pub skipped_files: Vec<String>,
+    pub skipped_files: Vec<SkippedFileInfo>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -185,6 +229,13 @@ pub struct FileErrorResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct SkippedFileInfo {
+    pub filename: String,
+    pub reason: String,
+    pub reason_type: String,  // "duplicate", "unchanged", "empty", "unsupported", "error"
+}
+
+#[derive(Debug, Serialize)]
 pub struct JobSummary {
     pub job_id: Uuid,
     pub status: String,
@@ -192,6 +243,8 @@ pub struct JobSummary {
     pub percent_complete: f32,
     pub total_files: usize,
     pub files_processed: usize,
+    pub files_skipped: usize,
+    pub files_failed: usize,
     pub error: Option<String>,
 }
 
@@ -204,6 +257,10 @@ pub struct JobListResponse {
     pub complete: usize,
     pub failed: usize,
     pub worker_count: usize,
+    /// Aggregate stats across all jobs
+    pub total_files_processed: usize,
+    pub total_files_skipped: usize,
+    pub total_files_failed: usize,
 }
 
 #[derive(Debug, Deserialize)]
