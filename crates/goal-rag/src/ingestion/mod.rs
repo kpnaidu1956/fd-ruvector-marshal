@@ -7,5 +7,5 @@ mod processor;
 
 pub use chunker::TextChunker;
 pub use external_parser::{ExternalParser, ExternalParserConfig, ParsedExternalDocument};
-pub use parser::{FileParser, ParsedDocument};
+pub use parser::{FileParser, PageContent, ParsedDocument};
 pub use processor::IngestPipeline;
