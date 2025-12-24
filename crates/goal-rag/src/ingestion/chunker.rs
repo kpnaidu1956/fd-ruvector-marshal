@@ -181,7 +181,8 @@ impl TextChunker {
         _char_end: usize,
     ) -> ChunkSource {
         let mut source = ChunkSource {
-            filename: doc.filename.clone(),
+            filename: doc.filename.clone(),  // Original filename for citations
+            internal_filename: doc.internal_filename.clone(),  // Internal filename for debugging
             file_type: doc.file_type.clone(),
             page_number,
             page_count,
@@ -239,12 +240,13 @@ impl CodeChunker {
             {
                 let char_start = char_offset - current_chunk.len();
 
-                let source = ChunkSource::code(
-                    doc.filename.clone(),
+                let mut source = ChunkSource::code(
+                    doc.filename.clone(),  // Original filename for citations
                     language.to_string(),
                     current_start_line,
                     line_num as u32,
                 );
+                source.internal_filename = doc.internal_filename.clone();
 
                 chunks.push(Chunk::new(
                     doc.id,
@@ -268,12 +270,13 @@ impl CodeChunker {
         if !current_chunk.trim().is_empty() {
             let char_start = char_offset - current_chunk.len();
 
-            let source = ChunkSource::code(
-                doc.filename.clone(),
+            let mut source = ChunkSource::code(
+                doc.filename.clone(),  // Original filename for citations
                 language.to_string(),
                 current_start_line,
                 lines.len() as u32,
             );
+            source.internal_filename = doc.internal_filename.clone();
 
             chunks.push(Chunk::new(
                 doc.id,
