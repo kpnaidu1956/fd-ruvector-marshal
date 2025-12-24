@@ -7,12 +7,17 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::config::RagConfig;
-use crate::error::Result;
+use crate::config::{BackendProvider, RagConfig};
+use crate::error::{Error, Result};
 use crate::generation::OllamaClient;
 use crate::ingestion::ExternalParser;
 use crate::learning::KnowledgeStore;
 use crate::processing::{JobQueue, ProcessingWorker};
+use crate::providers::{
+    EmbeddingProvider, LlmProvider, VectorStoreProvider,
+    local::LocalVectorStore,
+    ollama::{OllamaEmbedder, OllamaLlm},
+};
 use crate::retrieval::VectorStore;
 use crate::types::Document;
 
@@ -25,9 +30,15 @@ pub struct AppState {
 struct AppStateInner {
     /// Configuration
     config: RagConfig,
-    /// Vector store for chunks
+    /// Vector store for chunks (provider abstraction)
+    vector_store_provider: Arc<dyn VectorStoreProvider>,
+    /// Legacy vector store (for backwards compatibility)
     vector_store: Arc<VectorStore>,
-    /// Ollama client (used for both embeddings and generation)
+    /// Embedding provider (Ollama or Vertex AI)
+    embedding_provider: Arc<dyn EmbeddingProvider>,
+    /// LLM provider (Ollama or Gemini)
+    llm_provider: Arc<dyn LlmProvider>,
+    /// Ollama client (legacy, for backwards compatibility)
     ollama: Arc<OllamaClient>,
     /// External parser for legacy formats
     external_parser: Arc<ExternalParser>,
@@ -46,15 +57,84 @@ struct AppStateInner {
 impl AppState {
     /// Create new application state
     pub async fn new(config: RagConfig) -> Result<Self> {
-        tracing::info!("Initializing RAG application state...");
+        tracing::info!("Initializing RAG application state (backend: {:?})...", config.backend);
 
-        // Initialize vector store
+        // Initialize vector store (always local for now)
         let vector_store = Arc::new(VectorStore::new(&config)?);
         tracing::info!("Vector store initialized");
 
-        // Initialize Ollama client (handles both embeddings and generation)
+        // Initialize Ollama client (for local backend, also used as fallback)
         let ollama = Arc::new(OllamaClient::new(&config.llm));
         tracing::info!("Ollama client initialized (using {} for embeddings)", config.llm.embed_model);
+
+        // Initialize providers based on backend
+        let (embedding_provider, llm_provider, vector_store_provider): (
+            Arc<dyn EmbeddingProvider>,
+            Arc<dyn LlmProvider>,
+            Arc<dyn VectorStoreProvider>,
+        ) = match config.backend {
+            BackendProvider::Local => {
+                tracing::info!("Using local backend (Ollama + HNSW)");
+                let embedder = Arc::new(OllamaEmbedder::new(
+                    &config.llm,
+                    config.embeddings.dimensions,
+                ));
+                let llm = Arc::new(OllamaLlm::new(&config.llm));
+                let vector_provider = Arc::new(LocalVectorStore::new(Arc::clone(&vector_store)));
+                (embedder, llm, vector_provider)
+            }
+            BackendProvider::Gcp => {
+                #[cfg(feature = "gcp")]
+                {
+                    use crate::providers::gcp::{GcpAuth, GeminiClient, VertexAiEmbedder, VertexVectorSearch};
+
+                    let gcp_config = config.gcp.as_ref().ok_or_else(|| {
+                        Error::Config("GCP backend selected but gcp config is missing".to_string())
+                    })?;
+
+                    tracing::info!("Using GCP backend (Vertex AI + Gemini)");
+
+                    let auth = Arc::new(GcpAuth::from_service_account(
+                        &gcp_config.service_account_key_path,
+                        gcp_config.project_id.clone(),
+                    )?);
+
+                    let embedder = Arc::new(VertexAiEmbedder::new(
+                        Arc::clone(&auth),
+                        gcp_config.location.clone(),
+                        Some(gcp_config.embedding_model.clone()),
+                    ));
+
+                    let llm = Arc::new(GeminiClient::new(
+                        Arc::clone(&auth),
+                        gcp_config.location.clone(),
+                        Some(gcp_config.generation_model.clone()),
+                    ));
+
+                    let vector_provider = Arc::new(VertexVectorSearch::new(
+                        Arc::clone(&auth),
+                        gcp_config.location.clone(),
+                        gcp_config.vector_search_endpoint.clone(),
+                        gcp_config.deployed_index_id.clone(),
+                    ));
+
+                    tracing::info!(
+                        "GCP providers initialized (embedding: {}, llm: {})",
+                        gcp_config.embedding_model,
+                        gcp_config.generation_model
+                    );
+
+                    (embedder, llm, vector_provider)
+                }
+                #[cfg(not(feature = "gcp"))]
+                {
+                    return Err(Error::Config(
+                        "GCP backend selected but gcp feature is not enabled. \
+                         Rebuild with --features gcp".to_string()
+                    ));
+                }
+            }
+        };
 
         // Initialize external parser for legacy formats
         let external_parser = Arc::new(ExternalParser::new(config.external_parser.clone()));
@@ -85,7 +165,10 @@ impl AppState {
         let state = Self {
             inner: Arc::new(AppStateInner {
                 config,
+                vector_store_provider,
                 vector_store,
+                embedding_provider,
+                llm_provider,
                 ollama,
                 external_parser,
                 job_queue: job_queue.clone(),
@@ -178,8 +261,24 @@ impl AppState {
     }
 
     /// Get Ollama client (for embeddings and generation)
+    /// NOTE: Prefer using embedding_provider() and llm_provider() for new code
     pub fn ollama(&self) -> &Arc<OllamaClient> {
         &self.inner.ollama
+    }
+
+    /// Get embedding provider (Ollama or Vertex AI based on config)
+    pub fn embedding_provider(&self) -> &Arc<dyn EmbeddingProvider> {
+        &self.inner.embedding_provider
+    }
+
+    /// Get LLM provider (Ollama or Gemini based on config)
+    pub fn llm_provider(&self) -> &Arc<dyn LlmProvider> {
+        &self.inner.llm_provider
+    }
+
+    /// Get vector store provider (Local HNSW or Vertex AI Vector Search)
+    pub fn vector_store_provider(&self) -> &Arc<dyn VectorStoreProvider> {
+        &self.inner.vector_store_provider
     }
 
     /// Get documents map

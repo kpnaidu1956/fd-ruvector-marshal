@@ -19,8 +19,8 @@ pub async fn query_rag(
 
     tracing::info!("Query: \"{}\"", request.question);
 
-    // Generate query embedding using Ollama
-    let query_embedding = state.ollama().embed(&request.question).await?;
+    // Generate query embedding (using provider abstraction - Ollama or Vertex AI)
+    let query_embedding = state.embedding_provider().embed(&request.question).await?;
 
     // Search for relevant chunks
     let mut search_results = state.vector_store().search(
@@ -63,16 +63,16 @@ pub async fn query_rag(
         .map(|qa| (qa.question.clone(), qa.answer.clone()))
         .collect();
 
-    // Generate answer using Ollama (with learning if available)
+    // Generate answer (using provider abstraction - Ollama or Gemini)
     let answer = if past_qa.is_empty() {
         state
-            .ollama()
+            .llm_provider()
             .generate_answer(&request.question, &context, &citations)
             .await?
     } else {
         tracing::info!("Using {} learned examples for better answer", past_qa.len());
         state
-            .ollama()
+            .llm_provider()
             .generate_with_learning(&request.question, &context, &citations, &past_qa)
             .await?
     };
