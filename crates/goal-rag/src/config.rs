@@ -161,11 +161,11 @@ impl Default for LlmConfig {
         Self {
             base_url: "http://localhost:11434".to_string(),
             embed_model: "nomic-embed-text".to_string(),
-            generate_model: "command-r".to_string(),  // Best for RAG with citations
+            generate_model: "phi3".to_string(),  // Fast 3.8B model for CPU
             temperature: 0.3,  // Lower for more factual answers
-            timeout_secs: 300,  // 5 minutes for complex queries
-            max_retries: 3,
-            context_size: 128000,  // command-r supports 128k context
+            timeout_secs: 120,  // 2 minutes for phi3
+            max_retries: 2,
+            context_size: 4096,  // phi3 context size
         }
     }
 }
