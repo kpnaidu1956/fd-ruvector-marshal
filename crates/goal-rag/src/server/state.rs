@@ -2,6 +2,7 @@
 
 use dashmap::DashMap;
 use parking_lot::RwLock;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -34,8 +35,10 @@ struct AppStateInner {
     job_queue: Arc<JobQueue>,
     /// Knowledge store for learning
     knowledge_store: KnowledgeStore,
-    /// Document registry (in-memory for now)
+    /// Document registry (persisted to disk)
     documents: DashMap<Uuid, Document>,
+    /// Path to documents registry file
+    documents_path: PathBuf,
     /// Ready state
     ready: RwLock<bool>,
 }
@@ -58,13 +61,19 @@ impl AppState {
         tracing::info!("External parser initialized (enabled: {})", config.external_parser.enabled);
 
         // Initialize knowledge store for learning
-        let knowledge_path = config.vector_db.storage_path
+        let storage_dir = config.vector_db.storage_path
             .parent()
             .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("knowledge.json");
+            .unwrap_or_else(|| PathBuf::from("."));
+
+        let knowledge_path = storage_dir.join("knowledge.json");
         let knowledge_store = KnowledgeStore::new(knowledge_path);
         tracing::info!("Knowledge store initialized");
+
+        // Load persisted documents registry
+        let documents_path = storage_dir.join("documents.json");
+        let documents = Self::load_documents(&documents_path);
+        tracing::info!("Loaded {} documents from registry", documents.len());
 
         // Initialize job queue and start workers
         let worker_count = num_cpus::get().min(4);  // Max 4 workers
@@ -81,7 +90,8 @@ impl AppState {
                 external_parser,
                 job_queue: job_queue.clone(),
                 knowledge_store,
-                documents: DashMap::new(),
+                documents,
+                documents_path,
                 ready: RwLock::new(true),
             }),
         };
@@ -94,6 +104,52 @@ impl AppState {
         });
 
         Ok(state)
+    }
+
+    /// Load documents from disk
+    fn load_documents(path: &PathBuf) -> DashMap<Uuid, Document> {
+        let documents = DashMap::new();
+
+        if path.exists() {
+            match fs::read_to_string(path) {
+                Ok(content) => {
+                    match serde_json::from_str::<Vec<Document>>(&content) {
+                        Ok(docs) => {
+                            for doc in docs {
+                                documents.insert(doc.id, doc);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to parse documents.json: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to read documents.json: {}", e);
+                }
+            }
+        }
+
+        documents
+    }
+
+    /// Save documents to disk
+    fn save_documents(&self) {
+        let docs: Vec<Document> = self.inner.documents
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+
+        match serde_json::to_string_pretty(&docs) {
+            Ok(content) => {
+                if let Err(e) = fs::write(&self.inner.documents_path, content) {
+                    tracing::error!("Failed to save documents.json: {}", e);
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to serialize documents: {}", e);
+            }
+        }
     }
 
     /// Get external parser
@@ -141,9 +197,10 @@ impl AppState {
         *self.inner.ready.write() = ready;
     }
 
-    /// Add a document to the registry
+    /// Add a document to the registry (persisted to disk)
     pub fn add_document(&self, doc: Document) {
         self.inner.documents.insert(doc.id, doc);
+        self.save_documents();
     }
 
     /// Get a document by ID
@@ -151,9 +208,13 @@ impl AppState {
         self.inner.documents.get(id).map(|d| d.clone())
     }
 
-    /// Remove a document
+    /// Remove a document (persisted to disk)
     pub fn remove_document(&self, id: &Uuid) -> Option<Document> {
-        self.inner.documents.remove(id).map(|(_, d)| d)
+        let removed = self.inner.documents.remove(id).map(|(_, d)| d);
+        if removed.is_some() {
+            self.save_documents();
+        }
+        removed
     }
 
     /// List all documents
