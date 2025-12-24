@@ -1,0 +1,82 @@
+# Goal RAG Configuration
+# Location: crates/goal-rag/config.toml
+
+# Backend: "local" (Ollama + HNSW) or "gcp" (Vertex AI + Gemini + GCS)
+backend = "gcp"
+
+[server]
+host = "0.0.0.0"
+port = 8080
+enable_cors = true
+max_upload_size = 104857600  # 100MB
+
+[embeddings]
+model = "nomic-embed-text"
+dimensions = 768
+batch_size = 32
+max_length = 256
+cache_dir = "/tmp/ruvector-rag/models"
+
+[chunking]
+chunk_size = 1024
+chunk_overlap = 200
+min_chunk_size = 100
+respect_sentences = true
+
+[llm]
+# Used as fallback when GCP is unavailable
+base_url = "http://localhost:11434"
+embed_model = "nomic-embed-text"
+generate_model = "phi3"
+temperature = 0.3
+timeout_secs = 120
+max_retries = 2
+context_size = 4096
+
+[vector_db]
+storage_path = "/tmp/ruvector-rag/vectors.db"
+hnsw_m = 32
+hnsw_ef_construction = 200
+hnsw_ef_search = 100
+
+[external_parser]
+enabled = true
+libreoffice_path = "/usr/bin/libreoffice"
+pdftotext_path = "/usr/bin/pdftotext"
+timeout_secs = 60
+
+[processing]
+file_timeout_secs = 300
+# parallel_files = 4      # Auto-detect if not set
+# parallel_embeddings = 8
+
+# ============================================================
+# GCP Configuration (required when backend = "gcp")
+# ============================================================
+[gcp]
+# Path to your service account JSON key file
+service_account_key_path = "/path/to/your-service-account.json"
+
+# Your GCP project ID
+project_id = "your-gcp-project-id"
+
+# GCP region for Vertex AI
+location = "us-central1"
+
+# GCS bucket for storing documents
+gcs_bucket = "your-rag-documents-bucket"
+
+# Prefixes for organizing files in GCS
+gcs_originals_prefix = "originals/"
+gcs_plaintext_prefix = "plaintext/"
+
+# Vertex AI Vector Search endpoint (full resource name)
+# Create at: https://console.cloud.google.com/vertex-ai/matching-engine
+vector_search_endpoint = "projects/your-project/locations/us-central1/indexEndpoints/1234567890"
+
+# Deployed index ID within the endpoint
+deployed_index_id = "deployed_index_1"
+
+# Models (defaults shown)
+embedding_model = "text-embedding-005"
+generation_model = "gemini-2.5-pro"

@@ -23,6 +23,7 @@ tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip",
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = "0.8"
 
 # File Parsing
 pdf-extract = "0.8"
