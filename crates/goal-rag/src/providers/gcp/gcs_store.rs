@@ -23,7 +23,10 @@ pub struct GcsDocumentStore {
     auth: Arc<GcpAuth>,
     client: GcsClient,
     bucket: String,
-    prefix: String,
+    /// Prefix for original documents
+    originals_prefix: String,
+    /// Prefix for extracted plain text
+    plaintext_prefix: String,
 }
 
 impl GcsDocumentStore {
@@ -32,8 +35,14 @@ impl GcsDocumentStore {
     /// # Arguments
     /// * `auth` - GCP authentication
     /// * `bucket` - GCS bucket name
-    /// * `prefix` - Object prefix (e.g., "documents/")
-    pub async fn new(auth: Arc<GcpAuth>, bucket: String, prefix: Option<String>) -> Result<Self> {
+    /// * `originals_prefix` - Prefix for original documents (e.g., "originals/")
+    /// * `plaintext_prefix` - Prefix for extracted plain text (e.g., "plaintext/")
+    pub async fn new(
+        auth: Arc<GcpAuth>,
+        bucket: String,
+        originals_prefix: Option<String>,
+        plaintext_prefix: Option<String>,
+    ) -> Result<Self> {
         // Create GCS client using the service account
         let config = google_cloud_storage::client::ClientConfig::default()
             .with_auth()
@@ -46,19 +55,188 @@ impl GcsDocumentStore {
             auth,
             client,
             bucket,
-            prefix: prefix.unwrap_or_else(|| "documents/".to_string()),
+            originals_prefix: originals_prefix.unwrap_or_else(|| "originals/".to_string()),
+            plaintext_prefix: plaintext_prefix.unwrap_or_else(|| "plaintext/".to_string()),
         })
     }
 
-    /// Get the full object path for a document
+    /// Get the full object path for an original document
     fn object_path(&self, doc_id: &Uuid, extension: &str) -> String {
-        format!("{}{}.{}", self.prefix, doc_id, extension)
+        format!("{}{}.{}", self.originals_prefix, doc_id, extension)
     }
 
-    /// Get GCS URI for a document
+    /// Get the full object path for plain text
+    fn plaintext_object_path(&self, doc_id: &Uuid) -> String {
+        format!("{}{}.txt", self.plaintext_prefix, doc_id)
+    }
+
+    /// Get GCS URI for an original document
     fn gcs_uri(&self, doc_id: &Uuid, extension: &str) -> String {
         format!("gs://{}/{}", self.bucket, self.object_path(doc_id, extension))
     }
+
+    /// Get GCS URI for plain text
+    fn plaintext_gcs_uri(&self, doc_id: &Uuid) -> String {
+        format!("gs://{}/{}", self.bucket, self.plaintext_object_path(doc_id))
+    }
+
+    /// Store extracted plain text for a document
+    ///
+    /// # Arguments
+    /// * `doc_id` - Document UUID
+    /// * `filename` - Original filename (for metadata)
+    /// * `text` - Extracted plain text content
+    pub async fn store_plain_text(
+        &self,
+        doc_id: &Uuid,
+        filename: &str,
+        text: &str,
+    ) -> Result<String> {
+        let object_path = self.plaintext_object_path(doc_id);
+        let upload_type = UploadType::Simple(Media::new(object_path.clone()));
+
+        self.client
+            .upload_object(
+                &UploadObjectRequest {
+                    bucket: self.bucket.clone(),
+                    ..Default::default()
+                },
+                text.as_bytes().to_vec(),
+                &upload_type,
+            )
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to upload plain text to GCS: {}", e)))?;
+
+        tracing::debug!(
+            "Stored plain text for {} ({}) at {}",
+            filename,
+            doc_id,
+            object_path
+        );
+
+        Ok(self.plaintext_gcs_uri(doc_id))
+    }
+
+    /// Get extracted plain text for a document
+    ///
+    /// # Arguments
+    /// * `doc_id` - Document UUID
+    pub async fn get_plain_text(&self, doc_id: &Uuid) -> Result<Option<String>> {
+        let object_path = self.plaintext_object_path(doc_id);
+
+        match self
+            .client
+            .download_object(
+                &GetObjectRequest {
+                    bucket: self.bucket.clone(),
+                    object: object_path,
+                    ..Default::default()
+                },
+                &Range::default(),
+            )
+            .await
+        {
+            Ok(data) => {
+                let text = String::from_utf8(data).map_err(|e| {
+                    Error::Internal(format!("Plain text is not valid UTF-8: {}", e))
+                })?;
+                Ok(Some(text))
+            }
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// Get document info with both original and plain text URIs
+    ///
+    /// # Arguments
+    /// * `doc_id` - Document UUID
+    pub async fn get_document_with_info(&self, doc_id: &Uuid) -> Result<Option<DocumentWithInfo>> {
+        let meta_path = self.object_path(doc_id, "meta.json");
+
+        match self
+            .client
+            .download_object(
+                &GetObjectRequest {
+                    bucket: self.bucket.clone(),
+                    object: meta_path,
+                    ..Default::default()
+                },
+                &Range::default(),
+            )
+            .await
+        {
+            Ok(meta_data) => {
+                if let Ok(metadata) = serde_json::from_slice::<DocumentMetadata>(&meta_data) {
+                    let filename = metadata.filename.clone();
+                    let extension = std::path::Path::new(&filename)
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("bin")
+                        .to_string();
+
+                    // Check if plain text exists
+                    let plaintext_uri = if self.plaintext_exists(doc_id).await {
+                        Some(self.plaintext_gcs_uri(doc_id))
+                    } else {
+                        None
+                    };
+
+                    Ok(Some(DocumentWithInfo {
+                        id: metadata.id,
+                        filename,
+                        size: metadata.size,
+                        content_type: metadata.content_type,
+                        original_uri: self.gcs_uri(doc_id, &extension),
+                        plaintext_uri,
+                    }))
+                } else {
+                    Ok(None)
+                }
+            }
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// Check if plain text exists for a document
+    async fn plaintext_exists(&self, doc_id: &Uuid) -> bool {
+        let object_path = self.plaintext_object_path(doc_id);
+
+        self.client
+            .get_object(&GetObjectRequest {
+                bucket: self.bucket.clone(),
+                object: object_path,
+                ..Default::default()
+            })
+            .await
+            .is_ok()
+    }
+
+    /// Delete plain text for a document
+    pub async fn delete_plain_text(&self, doc_id: &Uuid) -> Result<()> {
+        let object_path = self.plaintext_object_path(doc_id);
+
+        let _ = self
+            .client
+            .delete_object(&DeleteObjectRequest {
+                bucket: self.bucket.clone(),
+                object: object_path,
+                ..Default::default()
+            })
+            .await;
+
+        Ok(())
+    }
+}
+
+/// Document info with both original and plain text URIs
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DocumentWithInfo {
+    pub id: Uuid,
+    pub filename: String,
+    pub size: u64,
+    pub content_type: String,
+    pub original_uri: String,
+    pub plaintext_uri: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -217,7 +395,7 @@ impl DocumentStoreProvider for GcsDocumentStore {
 
                 let object_path = self.object_path(doc_id, extension);
 
-                // Delete document
+                // Delete original document
                 let _ = self
                     .client
                     .delete_object(&DeleteObjectRequest {
@@ -228,6 +406,17 @@ impl DocumentStoreProvider for GcsDocumentStore {
                     .await;
             }
         }
+
+        // Delete plain text
+        let plaintext_path = self.plaintext_object_path(doc_id);
+        let _ = self
+            .client
+            .delete_object(&DeleteObjectRequest {
+                bucket: self.bucket.clone(),
+                object: plaintext_path,
+                ..Default::default()
+            })
+            .await;
 
         // Delete metadata
         let _ = self
@@ -247,7 +436,7 @@ impl DocumentStoreProvider for GcsDocumentStore {
 
         let list_request = ListObjectsRequest {
             bucket: self.bucket.clone(),
-            prefix: Some(self.prefix.clone()),
+            prefix: Some(self.originals_prefix.clone()),
             ..Default::default()
         };
 

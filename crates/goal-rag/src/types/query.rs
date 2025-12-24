@@ -3,6 +3,56 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Type of query for routing between RAG and string search
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryType {
+    /// Full RAG query with semantic search and LLM answer generation
+    Question,
+    /// Literal string search (word or phrase lookup)
+    StringSearch,
+}
+
+impl QueryType {
+    /// Detect query type from input string
+    ///
+    /// Heuristics:
+    /// - Question if: ends with ?, starts with question words (what/how/why/etc), or 5+ words
+    /// - StringSearch otherwise (short phrases, single words)
+    pub fn detect(input: &str) -> Self {
+        let input = input.trim();
+
+        // Ends with question mark -> Question
+        if input.ends_with('?') {
+            return Self::Question;
+        }
+
+        let lower = input.to_lowercase();
+        let words: Vec<&str> = lower.split_whitespace().collect();
+
+        // Question words at start -> Question
+        const QUESTION_WORDS: &[&str] = &[
+            "what", "how", "why", "when", "where", "who", "which",
+            "can", "could", "would", "should", "is", "are", "do", "does",
+            "explain", "describe", "tell", "show", "find", "list",
+        ];
+
+        if let Some(first_word) = words.first() {
+            if QUESTION_WORDS.contains(first_word) {
+                return Self::Question;
+            }
+        }
+
+        // 5+ words -> likely a question or complex query
+        if words.len() >= 5 {
+            return Self::Question;
+        }
+
+        // Short phrase or single word -> string search
+        Self::StringSearch
+    }
+}
+
 /// Query request for RAG search
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryRequest {

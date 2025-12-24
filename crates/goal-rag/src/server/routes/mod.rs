@@ -34,6 +34,10 @@ pub fn api_routes(max_upload_size: usize) -> Router<AppState> {
         .route("/jobs/:id", get(jobs::get_job_progress))
         // Query
         .route("/query", post(query::query_rag))
+        // V2 Query (frontend-friendly format)
+        .route("/v2/query", post(query::query_rag_v2))
+        // String search
+        .route("/string-search", post(query::string_search))
         // Info
         .route("/info", get(info))
 }
@@ -49,10 +53,19 @@ async fn info() -> axum::Json<serde_json::Value> {
             "POST /api/ingest/async": "Upload documents for async processing",
             "GET /api/jobs": "List all jobs and queue stats",
             "GET /api/jobs/:id": "Get job progress",
-            "POST /api/query": "Query with citations",
+            "POST /api/query": "Query with citations (v1)",
+            "POST /api/v2/query": "Query with citations (v2 - frontend-friendly format)",
+            "POST /api/string-search": "Literal string search",
             "GET /api/documents": "List all documents",
             "GET /api/documents/:id": "Get document details",
             "DELETE /api/documents/:id": "Delete a document"
+        },
+        "features": {
+            "gcs_storage": "Original files and plain text stored in GCS",
+            "deduplication": "Content-hash based file deduplication",
+            "string_search": "Literal text search for words/phrases",
+            "answer_caching": "Cached answers with document-based invalidation",
+            "grounded_answers": "LLM uses only document content, no external knowledge"
         }
     }))
 }

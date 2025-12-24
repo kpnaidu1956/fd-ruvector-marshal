@@ -156,6 +156,7 @@ struct Neighbor {
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code)]
 struct NeighborDatapoint {
     datapoint_id: String,
     crowding_tag: Option<NeighborCrowdingTag>,
@@ -172,6 +173,7 @@ struct UpsertRequest {
 }
 
 #[derive(serde::Serialize)]
+#[allow(dead_code)]
 struct RemoveRequest {
     datapoint_ids: Vec<String>,
 }

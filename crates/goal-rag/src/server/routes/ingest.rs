@@ -10,6 +10,8 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::ingestion::{ExternalParser, IngestPipeline};
+#[cfg(feature = "gcp")]
+use crate::providers::document_store::DocumentStoreProvider;
 use crate::server::state::{AppState, FileStatus};
 use crate::types::{
     query::IngestOptions,
@@ -271,12 +273,40 @@ async fn process_file_internal(
     doc.total_pages = parsed.total_pages;
     doc.metadata = options.metadata.clone();
 
+    // Store original file and plain text in GCS (GCP backend only)
+    #[cfg(feature = "gcp")]
+    if let Some(document_store) = state.document_store() {
+        // Store original file
+        match document_store.store_document(&doc.id, filename, data).await {
+            Ok(original_uri) => {
+                doc.metadata.insert("original_uri".to_string(), serde_json::Value::String(original_uri));
+                tracing::debug!("Stored original file in GCS: {}", filename);
+            }
+            Err(e) => {
+                tracing::warn!("Failed to store original file in GCS: {}", e);
+                // Continue processing - GCS storage is not critical
+            }
+        }
+
+        // Store extracted plain text
+        match document_store.store_plain_text(&doc.id, filename, &parsed.content).await {
+            Ok(plaintext_uri) => {
+                doc.metadata.insert("plaintext_uri".to_string(), serde_json::Value::String(plaintext_uri));
+                tracing::debug!("Stored plain text in GCS: {}", filename);
+            }
+            Err(e) => {
+                tracing::warn!("Failed to store plain text in GCS: {}", e);
+                // Continue processing - GCS storage is not critical
+            }
+        }
+    }
+
     // Create chunks
     let mut chunks = pipeline.create_chunks(&doc, parsed)?;
 
-    // Generate embeddings for all chunks using Ollama
+    // Generate embeddings for all chunks using the embedding provider
     for chunk in chunks.iter_mut() {
-        let embedding = state.ollama().embed(&chunk.content).await?;
+        let embedding = state.embedding_provider().embed(&chunk.content).await?;
         chunk.embedding = embedding;
     }
 

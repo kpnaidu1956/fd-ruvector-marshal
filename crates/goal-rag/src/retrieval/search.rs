@@ -9,6 +9,7 @@ use ruvector_core::types::{DbOptions, HnswConfig};
 use crate::config::RagConfig;
 use crate::error::{Error, Result};
 use crate::types::Chunk;
+use crate::types::response::StringSearchResult;
 
 /// Search result with chunk and similarity
 #[derive(Debug, Clone)]
@@ -17,6 +18,14 @@ pub struct SearchResult {
     pub chunk: Chunk,
     /// Similarity score (0.0-1.0, higher is better)
     pub similarity: f32,
+}
+
+/// Internal string search match
+#[derive(Debug, Clone)]
+struct StringMatch {
+    chunk: Chunk,
+    match_count: usize,
+    match_positions: Vec<usize>,
 }
 
 /// Vector store wrapper for ruvector-core
@@ -171,6 +180,118 @@ impl VectorStore {
     /// Check if empty
     pub fn is_empty(&self) -> Result<bool> {
         Ok(self.len()? == 0)
+    }
+
+    /// Perform literal string search across all chunks
+    ///
+    /// Returns up to `limit` results sorted by match count (descending)
+    pub fn string_search(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<StringSearchResult>> {
+        let query_lower = query.to_lowercase();
+        let mut matches: Vec<StringMatch> = Vec::new();
+
+        // Get all entries and search for literal matches
+        // Note: This is a linear scan - for large databases, consider building a text index
+        let all_results = self.db.search(CoreSearchQuery {
+            vector: vec![0.0; self.dimensions], // Dummy vector
+            k: 10000, // Get many results
+            filter: None,
+            ef_search: None,
+        }).map_err(|e| Error::VectorDb(e.to_string()))?;
+
+        for result in all_results {
+            if let Some(ref metadata) = result.metadata {
+                let chunk = self.metadata_to_chunk(&result.id, metadata)?;
+                let content_lower = chunk.content.to_lowercase();
+
+                // Find all occurrences of the query
+                let mut positions = Vec::new();
+                let mut search_start = 0;
+                while let Some(pos) = content_lower[search_start..].find(&query_lower) {
+                    positions.push(search_start + pos);
+                    search_start = search_start + pos + 1;
+                    if search_start >= content_lower.len() {
+                        break;
+                    }
+                }
+
+                if !positions.is_empty() {
+                    matches.push(StringMatch {
+                        chunk,
+                        match_count: positions.len(),
+                        match_positions: positions,
+                    });
+                }
+            }
+        }
+
+        // Sort by match count (descending)
+        matches.sort_by(|a, b| b.match_count.cmp(&a.match_count));
+
+        // Take top `limit` results and convert to StringSearchResult
+        let results: Vec<StringSearchResult> = matches
+            .into_iter()
+            .take(limit)
+            .map(|m| {
+                // Create highlighted snippet
+                let highlighted = self.highlight_matches(&m.chunk.content, query);
+
+                // Create preview (context around first match)
+                let preview = if let Some(&first_pos) = m.match_positions.first() {
+                    let start = first_pos.saturating_sub(50);
+                    let end = (first_pos + query.len() + 50).min(m.chunk.content.len());
+                    let mut preview = m.chunk.content[start..end].to_string();
+                    if start > 0 {
+                        preview = format!("...{}", preview);
+                    }
+                    if end < m.chunk.content.len() {
+                        preview = format!("{}...", preview);
+                    }
+                    preview
+                } else {
+                    m.chunk.content.chars().take(100).collect()
+                };
+
+                StringSearchResult {
+                    chunk_id: m.chunk.id,
+                    document_id: m.chunk.document_id,
+                    filename: m.chunk.source.filename.clone(),
+                    file_type: m.chunk.source.file_type.clone(),
+                    page_number: m.chunk.source.page_number,
+                    match_count: m.match_count,
+                    match_positions: m.match_positions,
+                    highlighted_snippet: highlighted,
+                    preview,
+                }
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Highlight search query in text using <mark> tags
+    fn highlight_matches(&self, text: &str, query: &str) -> String {
+        let query_lower = query.to_lowercase();
+        let text_lower = text.to_lowercase();
+        let mut result = String::with_capacity(text.len() + query.len() * 20);
+        let mut last_end = 0;
+
+        for (idx, _) in text_lower.match_indices(&query_lower) {
+            // Add text before the match
+            result.push_str(&text[last_end..idx]);
+            // Add highlighted match (preserving original case)
+            result.push_str("<mark>");
+            result.push_str(&text[idx..idx + query.len()]);
+            result.push_str("</mark>");
+            last_end = idx + query.len();
+        }
+
+        // Add remaining text
+        result.push_str(&text[last_end..]);
+        result
     }
 
     /// Convert metadata back to chunk

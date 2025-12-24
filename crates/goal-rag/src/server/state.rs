@@ -11,13 +11,15 @@ use crate::config::{BackendProvider, RagConfig};
 use crate::error::{Error, Result};
 use crate::generation::OllamaClient;
 use crate::ingestion::ExternalParser;
-use crate::learning::KnowledgeStore;
+use crate::learning::{AnswerCache, KnowledgeStore};
 use crate::processing::{JobQueue, ProcessingWorker};
 use crate::providers::{
     EmbeddingProvider, LlmProvider, VectorStoreProvider,
     local::LocalVectorStore,
     ollama::{OllamaEmbedder, OllamaLlm},
 };
+#[cfg(feature = "gcp")]
+use crate::providers::gcp::GcsDocumentStore;
 use crate::retrieval::VectorStore;
 use crate::types::Document;
 
@@ -46,12 +48,17 @@ struct AppStateInner {
     job_queue: Arc<JobQueue>,
     /// Knowledge store for learning
     knowledge_store: KnowledgeStore,
+    /// Answer cache with document-based invalidation
+    answer_cache: AnswerCache,
     /// Document registry (persisted to disk)
     documents: DashMap<Uuid, Document>,
     /// Path to documents registry file
     documents_path: PathBuf,
     /// Ready state
     ready: RwLock<bool>,
+    /// GCS document store (only for GCP backend)
+    #[cfg(feature = "gcp")]
+    document_store: Option<Arc<GcsDocumentStore>>,
 }
 
 impl AppState {
@@ -66,6 +73,10 @@ impl AppState {
         // Initialize Ollama client (for local backend, also used as fallback)
         let ollama = Arc::new(OllamaClient::new(&config.llm));
         tracing::info!("Ollama client initialized (using {} for embeddings)", config.llm.embed_model);
+
+        // Initialize document store (GCP only)
+        #[cfg(feature = "gcp")]
+        let mut gcs_document_store: Option<Arc<GcsDocumentStore>> = None;
 
         // Initialize providers based on backend
         let (embedding_provider, llm_provider, vector_store_provider): (
@@ -118,10 +129,20 @@ impl AppState {
                         gcp_config.deployed_index_id.clone(),
                     ));
 
+                    // Initialize GCS document store
+                    let document_store = GcsDocumentStore::new(
+                        Arc::clone(&auth),
+                        gcp_config.gcs_bucket.clone(),
+                        Some(gcp_config.gcs_originals_prefix.clone()),
+                        Some(gcp_config.gcs_plaintext_prefix.clone()),
+                    ).await?;
+                    gcs_document_store = Some(Arc::new(document_store));
+
                     tracing::info!(
-                        "GCP providers initialized (embedding: {}, llm: {})",
+                        "GCP providers initialized (embedding: {}, llm: {}, gcs: {})",
                         gcp_config.embedding_model,
-                        gcp_config.generation_model
+                        gcp_config.generation_model,
+                        gcp_config.gcs_bucket
                     );
 
                     (embedder, llm, vector_provider)
@@ -150,6 +171,10 @@ impl AppState {
         let knowledge_store = KnowledgeStore::new(knowledge_path);
         tracing::info!("Knowledge store initialized");
 
+        // Initialize answer cache (1000 entries, 1 hour TTL)
+        let answer_cache = AnswerCache::new(1000, 3600);
+        tracing::info!("Answer cache initialized");
+
         // Load persisted documents registry
         let documents_path = storage_dir.join("documents.json");
         let documents = Self::load_documents(&documents_path);
@@ -173,9 +198,12 @@ impl AppState {
                 external_parser,
                 job_queue: job_queue.clone(),
                 knowledge_store,
+                answer_cache,
                 documents,
                 documents_path,
                 ready: RwLock::new(true),
+                #[cfg(feature = "gcp")]
+                document_store: gcs_document_store,
             }),
         };
 
@@ -250,6 +278,20 @@ impl AppState {
         &self.inner.knowledge_store
     }
 
+    /// Get answer cache
+    pub fn answer_cache(&self) -> &AnswerCache {
+        &self.inner.answer_cache
+    }
+
+    /// Get document timestamps for cache validation
+    pub fn get_document_timestamps(&self) -> std::collections::HashMap<Uuid, chrono::DateTime<chrono::Utc>> {
+        self.inner
+            .documents
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().ingested_at))
+            .collect()
+    }
+
     /// Get configuration
     pub fn config(&self) -> &RagConfig {
         &self.inner.config
@@ -279,6 +321,12 @@ impl AppState {
     /// Get vector store provider (Local HNSW or Vertex AI Vector Search)
     pub fn vector_store_provider(&self) -> &Arc<dyn VectorStoreProvider> {
         &self.inner.vector_store_provider
+    }
+
+    /// Get GCS document store (only available with GCP backend)
+    #[cfg(feature = "gcp")]
+    pub fn document_store(&self) -> Option<&Arc<GcsDocumentStore>> {
+        self.inner.document_store.as_ref()
     }
 
     /// Get documents map
@@ -370,6 +418,9 @@ impl AppState {
 
     /// Delete document and its chunks
     pub fn delete_document_with_chunks(&self, doc_id: &Uuid) -> crate::error::Result<usize> {
+        // Invalidate cached answers that cite this document
+        self.inner.answer_cache.invalidate_by_document(doc_id);
+
         // Delete chunks from vector store
         let deleted = self.inner.vector_store.delete_by_document(doc_id)?;
 
