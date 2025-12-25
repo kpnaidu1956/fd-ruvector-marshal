@@ -16,6 +16,9 @@ use crate::types::Chunk;
 pub struct VertexVectorSearch {
     auth: Arc<GcpAuth>,
     location: String,
+    /// Index resource for upsert/delete operations
+    index: String,
+    /// IndexEndpoint resource for query operations
     index_endpoint: String,
     deployed_index_id: String,
     /// Endpoint for data plane operations (upsert, delete)
@@ -28,17 +31,20 @@ impl VertexVectorSearch {
     /// # Arguments
     /// * `auth` - GCP authentication
     /// * `location` - GCP region (e.g., "us-central1")
-    /// * `index_endpoint` - Full resource name of the index endpoint
+    /// * `index` - Full resource name of the index (for upsert/delete)
+    /// * `index_endpoint` - Full resource name of the index endpoint (for queries)
     /// * `deployed_index_id` - ID of the deployed index
     pub fn new(
         auth: Arc<GcpAuth>,
         location: String,
+        index: String,
         index_endpoint: String,
         deployed_index_id: String,
     ) -> Self {
         Self {
             auth,
             location,
+            index,
             index_endpoint,
             deployed_index_id,
             data_endpoint: None,
@@ -191,11 +197,11 @@ impl VectorStoreProvider for VertexVectorSearch {
 
         let client = self.auth.authorized_client().await?;
 
-        // Use data endpoint if available, otherwise use streaming update
+        // Use data endpoint if available, otherwise use Index resource for upserts
         let endpoint = self.data_endpoint.clone().unwrap_or_else(|| {
             format!(
                 "https://{}-aiplatform.googleapis.com/v1/{}:upsertDatapoints",
-                self.location, self.index_endpoint
+                self.location, self.index
             )
         });
 

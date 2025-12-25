@@ -125,6 +125,7 @@ impl AppState {
                     let vector_provider = Arc::new(VertexVectorSearch::new(
                         Arc::clone(&auth),
                         gcp_config.location.clone(),
+                        gcp_config.vector_search_index.clone(),
                         gcp_config.vector_search_endpoint.clone(),
                         gcp_config.deployed_index_id.clone(),
                     ));
