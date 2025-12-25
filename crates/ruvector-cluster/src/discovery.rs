@@ -2,18 +2,17 @@
 //!
 //! Supports static configuration and gossip-based discovery.
 
-use crate::{ClusterError, ClusterNode, NodeStatus, Result};
+use crate::{ClusterNode, Result};
 use async_trait::async_trait;
 use chrono::Utc;
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Service for discovering nodes in the cluster
 #[async_trait]

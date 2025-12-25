@@ -310,11 +310,9 @@ async fn process_file_internal(
         chunk.embedding = embedding;
     }
 
-    // Store chunks in vector database
+    // Store chunks in vector database (uses Vertex AI for GCP backend)
     let chunk_count = chunks.len() as u32;
-    for chunk in &chunks {
-        state.vector_store().insert_chunk(chunk)?;
-    }
+    state.vector_store_provider().insert_chunks(&chunks).await?;
 
     doc.total_chunks = chunk_count;
 
