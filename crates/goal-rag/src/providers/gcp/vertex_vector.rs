@@ -20,6 +20,8 @@ pub struct VertexVectorSearch {
     index: String,
     /// IndexEndpoint resource for query operations
     index_endpoint: String,
+    /// Public endpoint domain for queries (required for public endpoints)
+    public_domain: Option<String>,
     deployed_index_id: String,
     /// Endpoint for data plane operations (upsert, delete)
     data_endpoint: Option<String>,
@@ -33,12 +35,14 @@ impl VertexVectorSearch {
     /// * `location` - GCP region (e.g., "us-central1")
     /// * `index` - Full resource name of the index (for upsert/delete)
     /// * `index_endpoint` - Full resource name of the index endpoint (for queries)
+    /// * `public_domain` - Public endpoint domain (required for public endpoints)
     /// * `deployed_index_id` - ID of the deployed index
     pub fn new(
         auth: Arc<GcpAuth>,
         location: String,
         index: String,
         index_endpoint: String,
+        public_domain: Option<String>,
         deployed_index_id: String,
     ) -> Self {
         Self {
@@ -46,6 +50,7 @@ impl VertexVectorSearch {
             location,
             index,
             index_endpoint,
+            public_domain,
             deployed_index_id,
             data_endpoint: None,
         }
@@ -59,10 +64,19 @@ impl VertexVectorSearch {
 
     /// Get search endpoint URL
     fn search_endpoint(&self) -> String {
-        format!(
-            "https://{}-aiplatform.googleapis.com/v1/{}:findNeighbors",
-            self.location, self.index_endpoint
-        )
+        if let Some(ref domain) = self.public_domain {
+            // Use public endpoint domain for queries
+            format!(
+                "https://{}/v1/{}:findNeighbors",
+                domain, self.index_endpoint
+            )
+        } else {
+            // Fall back to standard API endpoint
+            format!(
+                "https://{}-aiplatform.googleapis.com/v1/{}:findNeighbors",
+                self.location, self.index_endpoint
+            )
+        }
     }
 
     /// Convert chunk to vector search datapoint

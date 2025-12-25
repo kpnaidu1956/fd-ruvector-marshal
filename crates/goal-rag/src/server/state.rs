@@ -127,6 +127,7 @@ impl AppState {
                         gcp_config.location.clone(),
                         gcp_config.vector_search_index.clone(),
                         gcp_config.vector_search_endpoint.clone(),
+                        gcp_config.vector_search_public_domain.clone(),
                         gcp_config.deployed_index_id.clone(),
                     ));
 
