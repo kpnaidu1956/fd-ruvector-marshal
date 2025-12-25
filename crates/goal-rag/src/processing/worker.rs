@@ -233,6 +233,7 @@ impl ProcessingWorker {
                         &original_filename,  // Use original filename for display
                         Some(&text_filename), // Internal filename
                         text.as_bytes(),
+                        Some(data),          // Original PDF data for GCS storage
                         parallel_embeddings,
                     ).await.map(FileProcessResult::New);
                 }
@@ -394,6 +395,7 @@ impl ProcessingWorker {
     /// Process pre-extracted text content (for pdftotext/pandoc output)
     /// - `original_filename`: The filename as uploaded by user (used for display/citations)
     /// - `internal_filename`: The converted filename if different (e.g., "report.pdf" -> "report.txt")
+    /// - `original_data`: Original file bytes for GCS storage (optional)
     async fn process_text_content(
         state: &AppState,
         job_queue: &Arc<JobQueue>,
@@ -401,6 +403,7 @@ impl ProcessingWorker {
         original_filename: &str,
         internal_filename: Option<&str>,
         text_data: &[u8],
+        original_data: Option<&[u8]>,
         parallel_embeddings: usize,
     ) -> Result<Document> {
         let config = state.config();
@@ -518,9 +521,23 @@ impl ProcessingWorker {
         tracing::info!("[{}] Storing {} chunks...", original_filename, total_chunks);
         state.vector_store_provider().insert_chunks(&chunks).await?;
 
-        // Store plain text in GCS (GCP backend only)
+        // Store original file and plain text in GCS (GCP backend only)
         #[cfg(feature = "gcp")]
         if let Some(document_store) = state.document_store() {
+            // Store original file if provided
+            if let Some(orig_data) = original_data {
+                match document_store.store_document(&doc.id, original_filename, orig_data).await {
+                    Ok(original_uri) => {
+                        doc.metadata.insert("original_uri".to_string(), serde_json::Value::String(original_uri));
+                        tracing::debug!("[{}] Stored original in GCS", original_filename);
+                    }
+                    Err(e) => {
+                        tracing::warn!("[{}] Failed to store original in GCS: {}", original_filename, e);
+                    }
+                }
+            }
+
+            // Store plain text
             match document_store.store_plain_text(&doc.id, original_filename, &content).await {
                 Ok(plaintext_uri) => {
                     doc.metadata.insert("plaintext_uri".to_string(), serde_json::Value::String(plaintext_uri));
