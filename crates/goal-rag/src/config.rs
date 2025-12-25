@@ -236,7 +236,10 @@ pub struct GcpConfig {
     /// GCS prefix for extracted plain text (default: "plaintext/")
     #[serde(default = "default_gcs_plaintext_prefix")]
     pub gcs_plaintext_prefix: String,
-    /// Vertex AI Vector Search endpoint (full resource name)
+    /// Vertex AI Vector Search Index (full resource name for upsert operations)
+    /// e.g., "projects/my-project/locations/us-central1/indexes/123456"
+    pub vector_search_index: String,
+    /// Vertex AI Vector Search endpoint (full resource name for query operations)
     /// e.g., "projects/my-project/locations/us-central1/indexEndpoints/123456"
     pub vector_search_endpoint: String,
     /// Deployed index ID within the endpoint
