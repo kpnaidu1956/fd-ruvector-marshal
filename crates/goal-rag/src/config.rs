@@ -242,6 +242,9 @@ pub struct GcpConfig {
     /// Vertex AI Vector Search endpoint (full resource name for query operations)
     /// e.g., "projects/my-project/locations/us-central1/indexEndpoints/123456"
     pub vector_search_endpoint: String,
+    /// Public endpoint domain for Vector Search queries (required for public endpoints)
+    /// e.g., "399775135.us-central1-1040167267396.vdb.vertexai.goog"
+    pub vector_search_public_domain: Option<String>,
     /// Deployed index ID within the endpoint
     pub deployed_index_id: String,
     /// Embedding model (default: "text-embedding-005")
