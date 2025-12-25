@@ -114,9 +114,9 @@ struct DataPoint {
 #[derive(serde::Serialize, Clone)]
 struct Restrict {
     namespace: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "allowList", skip_serializing_if = "Vec::is_empty")]
     allow: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "denyList", skip_serializing_if = "Vec::is_empty")]
     deny: Vec<String>,
 }
 
