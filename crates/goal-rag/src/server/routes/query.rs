@@ -42,6 +42,18 @@ pub async fn query_rag(
         request.document_filter.as_deref(),
     ).await?;
 
+    // Enrich minimal chunks with full data from local store (Vertex AI workaround)
+    for result in &mut search_results {
+        if result.chunk.content.is_empty() || result.chunk.document_id.is_nil() {
+            if let Some(full_chunk) = state.get_chunk(&result.chunk.id) {
+                tracing::debug!("Enriched minimal chunk {} from local store", result.chunk.id);
+                result.chunk = full_chunk;
+            } else {
+                tracing::warn!("Chunk {} not found in local store, using minimal data", result.chunk.id);
+            }
+        }
+    }
+
     // Filter by similarity threshold
     search_results.retain(|r| r.similarity >= request.similarity_threshold);
 
@@ -297,6 +309,18 @@ pub async fn query_rag_v2(
         request.top_k * 2,
         request.document_filter.as_deref(),
     ).await?;
+
+    // Enrich minimal chunks with full data from local store (Vertex AI workaround)
+    for result in &mut search_results {
+        if result.chunk.content.is_empty() || result.chunk.document_id.is_nil() {
+            if let Some(full_chunk) = state.get_chunk(&result.chunk.id) {
+                tracing::debug!("V2: Enriched minimal chunk {} from local store", result.chunk.id);
+                result.chunk = full_chunk;
+            } else {
+                tracing::warn!("V2: Chunk {} not found in local store, using minimal data", result.chunk.id);
+            }
+        }
+    }
 
     // Filter by similarity threshold
     search_results.retain(|r| r.similarity >= request.similarity_threshold);

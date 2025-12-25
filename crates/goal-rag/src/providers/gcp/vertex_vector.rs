@@ -308,29 +308,39 @@ impl VectorStoreProvider for VertexVectorSearch {
         for neighbors in search_response.nearest_neighbors {
             for neighbor in neighbors.neighbors {
                 let datapoint_id = &neighbor.datapoint.datapoint_id;
+                let similarity = 1.0 - neighbor.distance as f32;
 
-                // Parse metadata from crowding tag
-                if let Some(crowding) = neighbor.datapoint.crowding_tag {
+                // Try to parse chunk_id from datapoint_id
+                let chunk_id = match Uuid::parse_str(datapoint_id) {
+                    Ok(id) => id,
+                    Err(_) => {
+                        tracing::warn!("Invalid UUID datapoint_id: {}", datapoint_id);
+                        continue;
+                    }
+                };
+
+                // Try to parse metadata from crowding tag
+                let chunk = if let Some(crowding) = &neighbor.datapoint.crowding_tag {
                     match serde_json::from_str::<HashMap<String, serde_json::Value>>(
                         &crowding.crowding_attribute,
                     ) {
-                        Ok(metadata) => {
-                            let chunk = self.metadata_to_chunk(&metadata)?;
-                            // Convert distance to similarity (cosine: similarity = 1 - distance)
-                            let similarity = 1.0 - neighbor.distance as f32;
-                            results.push(VectorSearchResult { chunk, similarity });
-                        }
+                        Ok(metadata) => self.metadata_to_chunk(&metadata)?,
                         Err(_) => {
-                            tracing::warn!(
-                                "Failed to parse crowding attribute as JSON for datapoint {}: '{}'",
-                                datapoint_id,
-                                &crowding.crowding_attribute
+                            // Crowding attribute is hashed - create minimal chunk with just ID
+                            // The caller should look up full chunk data from local store
+                            tracing::debug!(
+                                "Crowding attribute not JSON for {}, returning minimal chunk",
+                                datapoint_id
                             );
+                            self.create_minimal_chunk(chunk_id)
                         }
                     }
                 } else {
-                    tracing::warn!("No crowding tag for datapoint {}", datapoint_id);
-                }
+                    // No crowding tag - create minimal chunk
+                    self.create_minimal_chunk(chunk_id)
+                };
+
+                results.push(VectorSearchResult { chunk, similarity });
             }
         }
 
@@ -364,6 +374,35 @@ impl VectorStoreProvider for VertexVectorSearch {
 }
 
 impl VertexVectorSearch {
+    /// Create a minimal chunk with just the ID
+    /// The caller should look up full chunk data from local store
+    fn create_minimal_chunk(&self, chunk_id: Uuid) -> Chunk {
+        Chunk {
+            id: chunk_id,
+            document_id: Uuid::nil(),
+            content: String::new(),
+            embedding: Vec::new(),
+            source: crate::types::ChunkSource {
+                filename: String::new(),
+                internal_filename: None,
+                file_type: crate::types::FileType::Unknown,
+                page_number: None,
+                page_count: None,
+                section_title: None,
+                heading_hierarchy: Vec::new(),
+                sheet_name: None,
+                row_range: None,
+                line_start: None,
+                line_end: None,
+                code_context: None,
+            },
+            char_start: 0,
+            char_end: 0,
+            chunk_index: 0,
+            metadata: HashMap::new(),
+        }
+    }
+
     /// Convert metadata back to Chunk
     fn metadata_to_chunk(&self, metadata: &HashMap<String, serde_json::Value>) -> Result<Chunk> {
         let chunk_id = metadata

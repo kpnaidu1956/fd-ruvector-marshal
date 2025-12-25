@@ -521,6 +521,9 @@ impl ProcessingWorker {
         tracing::info!("[{}] Storing {} chunks...", original_filename, total_chunks);
         state.vector_store_provider().insert_chunks(&chunks).await?;
 
+        // Store chunks locally for metadata lookup (needed for Vertex AI)
+        state.store_chunks(&chunks);
+
         // Store original file and plain text in GCS (GCP backend only)
         #[cfg(feature = "gcp")]
         if let Some(document_store) = state.document_store() {
@@ -669,6 +672,9 @@ impl ProcessingWorker {
         // Store chunks using provider (Vertex AI for GCP backend)
         tracing::info!("[{}] Storing {} chunks in vector database...", original_filename, total_chunks);
         state.vector_store_provider().insert_chunks(&chunks).await?;
+
+        // Store chunks locally for metadata lookup (needed for Vertex AI)
+        state.store_chunks(&chunks);
 
         // Store original file and plain text in GCS (GCP backend only)
         #[cfg(feature = "gcp")]
