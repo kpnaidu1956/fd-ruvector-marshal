@@ -160,22 +160,26 @@ struct QueryDatapoint {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct FindNeighborsResponse {
     nearest_neighbors: Vec<NearestNeighbors>,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct NearestNeighbors {
     neighbors: Vec<Neighbor>,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Neighbor {
     datapoint: NeighborDatapoint,
     distance: f64,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 struct NeighborDatapoint {
     datapoint_id: String,
@@ -183,6 +187,7 @@ struct NeighborDatapoint {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct NeighborCrowdingTag {
     crowding_attribute: String,
 }
