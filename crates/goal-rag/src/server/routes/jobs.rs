@@ -172,18 +172,44 @@ pub async fn list_jobs(
     let total_files_skipped: usize = jobs_list.iter().map(|j| j.files_skipped).sum();
     let total_files_failed: usize = jobs_list.iter().map(|j| j.files_failed).sum();
 
+    // Collect all file errors across all jobs
+    let all_file_errors: Vec<FileErrorWithJob> = jobs_list
+        .iter()
+        .flat_map(|job| {
+            job.file_errors.iter().map(move |e| FileErrorWithJob {
+                job_id: job.job_id,
+                filename: e.filename.clone(),
+                error: e.error.clone(),
+                stage: format!("{:?}", e.stage).to_lowercase(),
+            })
+        })
+        .collect();
+
     let jobs: Vec<JobSummary> = jobs_list
         .into_iter()
-        .map(|p| JobSummary {
-            job_id: p.job_id,
-            status: format!("{:?}", p.status).to_lowercase(),
-            stage: format!("{:?}", p.stage).to_lowercase(),
-            percent_complete: p.percent_complete(),
-            total_files: p.total_files,
-            files_processed: p.files_processed,
-            files_skipped: p.files_skipped,
-            files_failed: p.files_failed,
-            error: p.error,
+        .map(|p| {
+            let file_errors: Vec<FileErrorResponse> = p
+                .file_errors
+                .iter()
+                .map(|e| FileErrorResponse {
+                    filename: e.filename.clone(),
+                    error: e.error.clone(),
+                    stage: format!("{:?}", e.stage).to_lowercase(),
+                })
+                .collect();
+
+            JobSummary {
+                job_id: p.job_id,
+                status: format!("{:?}", p.status).to_lowercase(),
+                stage: format!("{:?}", p.stage).to_lowercase(),
+                percent_complete: p.percent_complete(),
+                total_files: p.total_files,
+                files_processed: p.files_processed,
+                files_skipped: p.files_skipped,
+                files_failed: p.files_failed,
+                error: p.error,
+                file_errors,
+            }
         })
         .collect();
 
@@ -198,6 +224,7 @@ pub async fn list_jobs(
         total_files_processed,
         total_files_skipped,
         total_files_failed,
+        all_file_errors,
     })
 }
 
@@ -246,6 +273,9 @@ pub struct JobSummary {
     pub files_skipped: usize,
     pub files_failed: usize,
     pub error: Option<String>,
+    /// File-level errors (only included if there are failures)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub file_errors: Vec<FileErrorResponse>,
 }
 
 #[derive(Debug, Serialize)]
@@ -261,6 +291,16 @@ pub struct JobListResponse {
     pub total_files_processed: usize,
     pub total_files_skipped: usize,
     pub total_files_failed: usize,
+    /// All file errors across all jobs (for quick overview)
+    pub all_file_errors: Vec<FileErrorWithJob>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FileErrorWithJob {
+    pub job_id: Uuid,
+    pub filename: String,
+    pub error: String,
+    pub stage: String,
 }
 
 #[derive(Debug, Deserialize)]
