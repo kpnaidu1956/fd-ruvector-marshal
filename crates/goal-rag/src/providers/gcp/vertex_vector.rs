@@ -307,20 +307,29 @@ impl VectorStoreProvider for VertexVectorSearch {
 
         for neighbors in search_response.nearest_neighbors {
             for neighbor in neighbors.neighbors {
+                let datapoint_id = &neighbor.datapoint.datapoint_id;
+
                 // Parse metadata from crowding tag
                 if let Some(crowding) = neighbor.datapoint.crowding_tag {
-                    if let Ok(metadata) =
-                        serde_json::from_str::<HashMap<String, serde_json::Value>>(
-                            &crowding.crowding_attribute,
-                        )
-                    {
-                        let chunk = self.metadata_to_chunk(&metadata)?;
-
-                        // Convert distance to similarity (cosine: similarity = 1 - distance)
-                        let similarity = 1.0 - neighbor.distance as f32;
-
-                        results.push(VectorSearchResult { chunk, similarity });
+                    match serde_json::from_str::<HashMap<String, serde_json::Value>>(
+                        &crowding.crowding_attribute,
+                    ) {
+                        Ok(metadata) => {
+                            let chunk = self.metadata_to_chunk(&metadata)?;
+                            // Convert distance to similarity (cosine: similarity = 1 - distance)
+                            let similarity = 1.0 - neighbor.distance as f32;
+                            results.push(VectorSearchResult { chunk, similarity });
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                "Failed to parse crowding attribute as JSON for datapoint {}: '{}'",
+                                datapoint_id,
+                                &crowding.crowding_attribute
+                            );
+                        }
                     }
+                } else {
+                    tracing::warn!("No crowding tag for datapoint {}", datapoint_id);
                 }
             }
         }
