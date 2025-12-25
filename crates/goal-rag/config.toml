@@ -55,16 +55,16 @@ file_timeout_secs = 300
 # ============================================================
 [gcp]
 # Path to your service account JSON key file
-service_account_key_path = "/path/to/your-service-account.json"
+service_account_key_path = "https://storage.cloud.google.com/goalign-ncfpd-rag/goalign-alpha-rag-key.json"
 
 # Your GCP project ID
-project_id = "your-gcp-project-id"
+project_id = "goalign-alpha"
 
 # GCP region for Vertex AI
 location = "us-central1"
 
 # GCS bucket for storing documents
-gcs_bucket = "your-rag-documents-bucket"
+gcs_bucket = "goalign-rag-bucket"
 
 # Prefixes for organizing files in GCS
 gcs_originals_prefix = "originals/"
@@ -72,10 +72,10 @@ gcs_plaintext_prefix = "plaintext/"
 
 # Vertex AI Vector Search endpoint (full resource name)
 # Create at: https://console.cloud.google.com/vertex-ai/matching-engine
-vector_search_endpoint = "projects/your-project/locations/us-central1/indexEndpoints/1234567890"
+vector_search_endpoint = "projects/1040167267396/locations/us-central1/indexEndpoints/321991980194201600"
 
 # Deployed index ID within the endpoint
-deployed_index_id = "deployed_index_1"
+deployed_index_id = "rag_deployed_index_1766611672753"
 
 # Models (defaults shown)
 embedding_model = "text-embedding-005"
