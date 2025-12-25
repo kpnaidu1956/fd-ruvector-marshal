@@ -2,10 +2,12 @@
 //!
 //! Provides fast, high-quality embeddings with 768 dimensions.
 //! Includes retry logic with exponential backoff for rate limiting.
+//! Uses a global rate limiter to prevent overwhelming the API.
 
 use async_trait::async_trait;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+use tokio::sync::Semaphore;
 use tokio::time::sleep;
 
 use super::auth::GcpAuth;
@@ -15,7 +17,26 @@ use crate::providers::embedding::EmbeddingProvider;
 /// Maximum number of retries for rate-limited requests
 const MAX_RETRIES: u32 = 5;
 /// Initial backoff delay in milliseconds
-const INITIAL_BACKOFF_MS: u64 = 1000;
+const INITIAL_BACKOFF_MS: u64 = 2000;
+/// Maximum concurrent embedding requests (global limit)
+const MAX_CONCURRENT_REQUESTS: usize = 2;
+
+/// Global semaphore to limit concurrent Vertex AI requests
+static RATE_LIMITER: OnceLock<Semaphore> = OnceLock::new();
+
+fn get_rate_limiter() -> &'static Semaphore {
+    RATE_LIMITER.get_or_init(|| Semaphore::new(MAX_CONCURRENT_REQUESTS))
+}
+
+/// Generate a simple jitter value based on current time
+fn jitter_ms() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos();
+    (nanos % 1000) as u64
+}
 
 /// Vertex AI embedding provider
 pub struct VertexAiEmbedder {
@@ -81,6 +102,11 @@ struct EmbeddingValues {
 #[async_trait]
 impl EmbeddingProvider for VertexAiEmbedder {
     async fn embed(&self, text: &str) -> Result<Vec<f32>> {
+        // Acquire rate limiter permit (waits if too many concurrent requests)
+        let _permit = get_rate_limiter().acquire().await.map_err(|e| {
+            Error::Embedding(format!("Rate limiter error: {}", e))
+        })?;
+
         let client = self.auth.authorized_client().await?;
 
         let request = EmbedRequest {
@@ -93,7 +119,8 @@ impl EmbeddingProvider for VertexAiEmbedder {
 
         for attempt in 0..=MAX_RETRIES {
             if attempt > 0 {
-                let backoff_ms = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1);
+                // Add jitter to prevent synchronized retries
+                let backoff_ms = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1) + jitter_ms();
                 tracing::warn!(
                     "Vertex AI rate limited, retrying in {}ms (attempt {}/{})",
                     backoff_ms, attempt, MAX_RETRIES
@@ -154,11 +181,15 @@ impl EmbeddingProvider for VertexAiEmbedder {
 
         let client = self.auth.authorized_client().await?;
 
-        // Vertex AI supports batching up to 250 texts per request
-        // Use smaller batches (50) to reduce rate limiting
+        // Use smaller batches (20) to reduce rate limiting
         let mut all_embeddings = Vec::with_capacity(texts.len());
 
-        for chunk in texts.chunks(50) {
+        for chunk in texts.chunks(20) {
+            // Acquire rate limiter permit for each batch
+            let _permit = get_rate_limiter().acquire().await.map_err(|e| {
+                Error::Embedding(format!("Rate limiter error: {}", e))
+            })?;
+
             let request = EmbedRequest {
                 instances: chunk
                     .iter()
@@ -172,7 +203,8 @@ impl EmbeddingProvider for VertexAiEmbedder {
 
             for attempt in 0..=MAX_RETRIES {
                 if attempt > 0 {
-                    let backoff_ms = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1);
+                    // Add jitter to prevent synchronized retries
+                    let backoff_ms = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1) + jitter_ms();
                     tracing::warn!(
                         "Vertex AI batch rate limited, retrying in {}ms (attempt {}/{}, batch size: {})",
                         backoff_ms, attempt, MAX_RETRIES, chunk.len()
@@ -231,10 +263,8 @@ impl EmbeddingProvider for VertexAiEmbedder {
                 return Err(Error::Embedding(error));
             }
 
-            // Small delay between batches to avoid rate limiting
-            if texts.len() > 50 {
-                sleep(Duration::from_millis(100)).await;
-            }
+            // Delay between batches to avoid rate limiting (500ms)
+            sleep(Duration::from_millis(500)).await;
         }
 
         Ok(all_embeddings)
