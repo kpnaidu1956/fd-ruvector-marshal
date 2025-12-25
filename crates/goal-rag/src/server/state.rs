@@ -21,7 +21,7 @@ use crate::providers::{
 #[cfg(feature = "gcp")]
 use crate::providers::gcp::GcsDocumentStore;
 use crate::retrieval::VectorStore;
-use crate::types::Document;
+use crate::types::{Chunk, Document};
 
 /// Shared application state
 #[derive(Clone)]
@@ -52,6 +52,8 @@ struct AppStateInner {
     answer_cache: AnswerCache,
     /// Document registry (persisted to disk)
     documents: DashMap<Uuid, Document>,
+    /// Chunk metadata store (for Vertex AI lookups)
+    chunks: DashMap<Uuid, Chunk>,
     /// Path to documents registry file
     documents_path: PathBuf,
     /// Ready state
@@ -202,6 +204,7 @@ impl AppState {
                 knowledge_store,
                 answer_cache,
                 documents,
+                chunks: DashMap::new(),
                 documents_path,
                 ready: RwLock::new(true),
                 #[cfg(feature = "gcp")]
@@ -391,6 +394,18 @@ impl AppState {
             .iter()
             .find(|entry| entry.value().content_hash == content_hash)
             .map(|entry| entry.value().clone())
+    }
+
+    /// Store chunks in the local chunk store (for Vertex AI metadata lookup)
+    pub fn store_chunks(&self, chunks: &[Chunk]) {
+        for chunk in chunks {
+            self.inner.chunks.insert(chunk.id, chunk.clone());
+        }
+    }
+
+    /// Get a chunk by ID from the local store
+    pub fn get_chunk(&self, id: &Uuid) -> Option<Chunk> {
+        self.inner.chunks.get(id).map(|c| c.clone())
     }
 
     /// Check if file should be processed (returns action to take)
