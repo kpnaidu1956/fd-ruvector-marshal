@@ -1,6 +1,6 @@
 //! Prompt templates for RAG generation
 
-use crate::retrieval::SearchResult;
+use crate::providers::vector_store::VectorSearchResult;
 use crate::types::response::Citation;
 
 /// Prompt builder for RAG queries
@@ -8,7 +8,7 @@ pub struct PromptBuilder;
 
 impl PromptBuilder {
     /// Build context from search results
-    pub fn build_context(results: &[SearchResult]) -> String {
+    pub fn build_context(results: &[VectorSearchResult]) -> String {
         let mut context = String::new();
 
         for (i, result) in results.iter().enumerate() {

@@ -19,8 +19,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
-use tracing::{debug, error, info, warn};
-use uuid::Uuid;
+use tracing::{debug, info, warn};
 
 pub use consensus::DagConsensus;
 pub use discovery::{DiscoveryService, GossipDiscovery, StaticDiscovery};

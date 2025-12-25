@@ -9,7 +9,7 @@ use crate::generation::PromptBuilder;
 use crate::learning::knowledge_store::QAInteraction;
 use crate::server::state::AppState;
 use crate::learning::CachedCitation;
-use crate::providers::VectorSearchResult;
+use crate::providers::vector_store::VectorSearchResult;
 use crate::types::{
     query::{QueryRequest, QueryType},
     response::{CacheInfo, Citation, QueryResponse, QueryResponseV2, StringSearchResponse},
@@ -35,16 +35,11 @@ pub async fn query_rag(
     // Generate query embedding (using provider abstraction - Ollama or Vertex AI)
     let query_embedding = state.embedding_provider().embed(&request.question).await?;
 
-    // Parse document filter if provided (expects UUID)
-    let doc_filter: Option<Vec<Uuid>> = request.document_filter.as_ref().and_then(|f| {
-        Uuid::parse_str(f).ok().map(|id| vec![id])
-    });
-
     // Search for relevant chunks (uses Vertex AI for GCP backend)
     let mut search_results: Vec<VectorSearchResult> = state.vector_store_provider().search(
         &query_embedding,
         request.top_k * 2, // Get more for filtering
-        doc_filter.as_deref(),
+        request.document_filter.as_deref(),
     ).await?;
 
     // Filter by similarity threshold
@@ -296,16 +291,11 @@ pub async fn query_rag_v2(
     // Generate query embedding
     let query_embedding = state.embedding_provider().embed(&request.question).await?;
 
-    // Parse document filter if provided (expects UUID)
-    let doc_filter: Option<Vec<Uuid>> = request.document_filter.as_ref().and_then(|f| {
-        Uuid::parse_str(f).ok().map(|id| vec![id])
-    });
-
     // Search for relevant chunks (uses Vertex AI for GCP backend)
     let mut search_results: Vec<VectorSearchResult> = state.vector_store_provider().search(
         &query_embedding,
         request.top_k * 2,
-        doc_filter.as_deref(),
+        request.document_filter.as_deref(),
     ).await?;
 
     // Filter by similarity threshold
