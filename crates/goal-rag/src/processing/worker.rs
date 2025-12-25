@@ -8,6 +8,8 @@ use tokio::time::timeout;
 
 use crate::error::{Error, Result};
 use crate::ingestion::{ExternalParser, IngestPipeline};
+#[cfg(feature = "gcp")]
+use crate::providers::document_store::DocumentStoreProvider;
 use crate::server::state::{AppState, FileStatus};
 use crate::types::Document;
 
@@ -512,11 +514,22 @@ impl ProcessingWorker {
             job_queue.increment_chunks_embedded(job_id, batch.len());
         }
 
-        // Store chunks
+        // Store chunks using provider (Vertex AI for GCP backend)
         tracing::info!("[{}] Storing {} chunks...", original_filename, total_chunks);
-        let vector_store = state.vector_store();
-        for chunk in &chunks {
-            vector_store.insert_chunk(chunk)?;
+        state.vector_store_provider().insert_chunks(&chunks).await?;
+
+        // Store plain text in GCS (GCP backend only)
+        #[cfg(feature = "gcp")]
+        if let Some(document_store) = state.document_store() {
+            match document_store.store_plain_text(&doc.id, original_filename, &content).await {
+                Ok(plaintext_uri) => {
+                    doc.metadata.insert("plaintext_uri".to_string(), serde_json::Value::String(plaintext_uri));
+                    tracing::debug!("[{}] Stored plain text in GCS", original_filename);
+                }
+                Err(e) => {
+                    tracing::warn!("[{}] Failed to store plain text in GCS: {}", original_filename, e);
+                }
+            }
         }
 
         doc.total_chunks = total_chunks as u32;
@@ -636,11 +649,34 @@ impl ProcessingWorker {
             job_queue.increment_chunks_embedded(job_id, batch.len());
         }
 
-        // Store chunks
+        // Store chunks using provider (Vertex AI for GCP backend)
         tracing::info!("[{}] Storing {} chunks in vector database...", original_filename, total_chunks);
-        let vector_store = state.vector_store();
-        for chunk in &chunks {
-            vector_store.insert_chunk(chunk)?;
+        state.vector_store_provider().insert_chunks(&chunks).await?;
+
+        // Store original file and plain text in GCS (GCP backend only)
+        #[cfg(feature = "gcp")]
+        if let Some(document_store) = state.document_store() {
+            // Store original file
+            match document_store.store_document(&doc.id, original_filename, data).await {
+                Ok(original_uri) => {
+                    doc.metadata.insert("original_uri".to_string(), serde_json::Value::String(original_uri));
+                    tracing::debug!("[{}] Stored original in GCS", original_filename);
+                }
+                Err(e) => {
+                    tracing::warn!("[{}] Failed to store original in GCS: {}", original_filename, e);
+                }
+            }
+
+            // Store extracted plain text
+            match document_store.store_plain_text(&doc.id, original_filename, &parsed.content).await {
+                Ok(plaintext_uri) => {
+                    doc.metadata.insert("plaintext_uri".to_string(), serde_json::Value::String(plaintext_uri));
+                    tracing::debug!("[{}] Stored plain text in GCS", original_filename);
+                }
+                Err(e) => {
+                    tracing::warn!("[{}] Failed to store plain text in GCS: {}", original_filename, e);
+                }
+            }
         }
 
         doc.total_chunks = total_chunks as u32;
