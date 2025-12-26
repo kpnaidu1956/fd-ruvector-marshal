@@ -532,3 +532,173 @@ impl DocumentStoreProvider for GcsDocumentStore {
         "gcs"
     }
 }
+
+// ============================================================================
+// GCS Sync Methods
+// ============================================================================
+
+/// File discovered in GCS during sync
+#[derive(Debug, Clone)]
+pub struct GcsFileInfo {
+    /// Document ID (from metadata)
+    pub document_id: Uuid,
+    /// Original filename
+    pub filename: String,
+    /// Content hash (if available)
+    pub content_hash: Option<String>,
+    /// File size
+    pub file_size: u64,
+    /// File type (extension)
+    pub file_type: String,
+    /// Whether plaintext version exists (indicates successful processing)
+    pub has_plaintext: bool,
+    /// GCS URI for original file
+    pub original_uri: String,
+    /// GCS URI for plaintext (if exists)
+    pub plaintext_uri: Option<String>,
+}
+
+impl GcsDocumentStore {
+    /// Sync file registry from GCS bucket contents
+    ///
+    /// This method lists all files in the GCS bucket and determines their state:
+    /// - Files with metadata in originals/ prefix are considered uploaded
+    /// - Files with corresponding plaintext/ entries are considered successfully processed
+    /// - Files with metadata but no plaintext are considered failed/pending
+    ///
+    /// Returns a list of file info that can be used to populate the database
+    pub async fn sync_from_bucket(&self) -> Result<Vec<GcsFileInfo>> {
+        tracing::info!("Starting GCS bucket sync...");
+        let mut files = Vec::new();
+
+        // List all metadata files in originals prefix
+        let list_request = ListObjectsRequest {
+            bucket: self.bucket.clone(),
+            prefix: Some(self.originals_prefix.clone()),
+            ..Default::default()
+        };
+
+        let objects = self
+            .client
+            .list_objects(&list_request)
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to list GCS objects: {}", e)))?;
+
+        let items = objects.items.unwrap_or_default();
+        let meta_files: Vec<_> = items.iter()
+            .filter(|item| item.name.ends_with(".meta.json"))
+            .collect();
+
+        tracing::info!("Found {} metadata files in GCS", meta_files.len());
+
+        // Process each metadata file
+        for item in meta_files {
+            match self.process_meta_file(&item.name).await {
+                Ok(Some(file_info)) => {
+                    files.push(file_info);
+                }
+                Ok(None) => {
+                    tracing::debug!("Skipping invalid metadata: {}", item.name);
+                }
+                Err(e) => {
+                    tracing::warn!("Error processing {}: {}", item.name, e);
+                }
+            }
+        }
+
+        tracing::info!(
+            "GCS sync complete: {} files found ({} with plaintext)",
+            files.len(),
+            files.iter().filter(|f| f.has_plaintext).count()
+        );
+
+        Ok(files)
+    }
+
+    /// Process a metadata file and return file info
+    async fn process_meta_file(&self, meta_path: &str) -> Result<Option<GcsFileInfo>> {
+        // Download metadata
+        let meta_data = match self
+            .client
+            .download_object(
+                &GetObjectRequest {
+                    bucket: self.bucket.clone(),
+                    object: meta_path.to_string(),
+                    ..Default::default()
+                },
+                &Range::default(),
+            )
+            .await
+        {
+            Ok(data) => data,
+            Err(_) => return Ok(None),
+        };
+
+        // Parse metadata
+        let metadata: DocumentMetadata = match serde_json::from_slice(&meta_data) {
+            Ok(m) => m,
+            Err(_) => return Ok(None),
+        };
+
+        // Check if plaintext exists
+        let plaintext_path = format!("{}{}.txt", self.plaintext_prefix, metadata.id);
+        let has_plaintext = self
+            .client
+            .get_object(&GetObjectRequest {
+                bucket: self.bucket.clone(),
+                object: plaintext_path.clone(),
+                ..Default::default()
+            })
+            .await
+            .is_ok();
+
+        // Get file extension
+        let extension = std::path::Path::new(&metadata.filename)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("bin")
+            .to_string();
+
+        Ok(Some(GcsFileInfo {
+            document_id: metadata.id,
+            filename: metadata.filename.clone(),
+            content_hash: None, // Not stored in current metadata
+            file_size: metadata.size,
+            file_type: extension.clone(),
+            has_plaintext,
+            original_uri: format!("gs://{}/{}{}.{}", self.bucket, self.originals_prefix, metadata.id, extension),
+            plaintext_uri: if has_plaintext {
+                Some(format!("gs://{}/{}", self.bucket, plaintext_path))
+            } else {
+                None
+            },
+        }))
+    }
+
+    /// Get count of files in bucket (quick check)
+    pub async fn get_file_counts(&self) -> Result<(usize, usize)> {
+        // Count originals
+        let orig_request = ListObjectsRequest {
+            bucket: self.bucket.clone(),
+            prefix: Some(self.originals_prefix.clone()),
+            ..Default::default()
+        };
+        let orig_objects = self.client.list_objects(&orig_request).await
+            .map_err(|e| Error::Internal(format!("Failed to list originals: {}", e)))?;
+        let orig_count = orig_objects.items.unwrap_or_default().iter()
+            .filter(|i| i.name.ends_with(".meta.json"))
+            .count();
+
+        // Count plaintext
+        let plain_request = ListObjectsRequest {
+            bucket: self.bucket.clone(),
+            prefix: Some(self.plaintext_prefix.clone()),
+            ..Default::default()
+        };
+        let plain_objects = self.client.list_objects(&plain_request).await
+            .map_err(|e| Error::Internal(format!("Failed to list plaintext: {}", e)))?;
+        let plain_count = plain_objects.items.unwrap_or_default().len();
+
+        Ok((orig_count, plain_count))
+    }
+}

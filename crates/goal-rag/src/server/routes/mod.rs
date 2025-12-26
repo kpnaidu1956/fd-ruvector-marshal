@@ -16,7 +16,7 @@ use crate::server::state::AppState;
 
 /// Build all API routes
 pub fn api_routes(max_upload_size: usize) -> Router<AppState> {
-    Router::new()
+    let router = Router::new()
         // Document management
         .route("/documents", get(documents::list_documents))
         .route("/documents/:id", get(documents::get_document))
@@ -40,6 +40,7 @@ pub fn api_routes(max_upload_size: usize) -> Router<AppState> {
         .route("/files/failed", get(files::list_failed_files))
         .route("/files/failed", delete(files::clear_failed_files))
         .route("/files/stats", get(files::file_stats))
+        .route("/files/sync/status", get(files::get_sync_status))
         .route("/files/:filename", get(files::get_file_status))
         .route("/files/:filename", delete(files::delete_file_record))
         // Query
@@ -50,7 +51,15 @@ pub fn api_routes(max_upload_size: usize) -> Router<AppState> {
         .route("/string-search", post(query::string_search))
         // Info and capabilities
         .route("/info", get(info))
-        .route("/capabilities", get(capabilities))
+        .route("/capabilities", get(capabilities));
+
+    // Add GCP-specific routes when gcp feature is enabled
+    #[cfg(feature = "gcp")]
+    let router = router
+        .route("/files/sync", post(files::sync_from_gcs))
+        .route("/files/gcs-counts", get(files::get_gcs_counts));
+
+    router
 }
 
 /// API info endpoint
@@ -77,6 +86,9 @@ async fn info() -> axum::Json<serde_json::Value> {
             "GET /api/files/stats": "Get file registry statistics",
             "GET /api/files/:filename": "Get specific file status",
             "DELETE /api/files/:filename": "Remove file record for re-upload",
+            "POST /api/files/sync": "Sync file registry from GCS bucket (GCP only)",
+            "GET /api/files/sync/status": "Get last GCS sync status",
+            "GET /api/files/gcs-counts": "Get file counts from GCS bucket (GCP only)",
             "GET /api/capabilities": "Check document extraction capabilities"
         },
         "features": {

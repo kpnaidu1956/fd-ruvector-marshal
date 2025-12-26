@@ -14,6 +14,7 @@ pub mod processing;
 pub mod providers;
 pub mod retrieval;
 pub mod server;
+pub mod storage;
 pub mod types;
 
 pub use config::RagConfig;
