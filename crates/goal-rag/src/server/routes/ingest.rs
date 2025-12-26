@@ -226,6 +226,19 @@ async fn process_file_with_dedup(
                 existing.filename
             )));
         }
+        FileStatus::ExistsInRegistry(record) => {
+            return Ok(ProcessResult::Skipped(format!(
+                "already in GCS (hash: {}..., uploaded: {})",
+                &record.content_hash[..record.content_hash.len().min(12)],
+                record.first_seen_at.format("%Y-%m-%d")
+            )));
+        }
+        FileStatus::DuplicateInRegistry(record) => {
+            return Ok(ProcessResult::Skipped(format!(
+                "duplicate of '{}' in GCS",
+                record.filename
+            )));
+        }
         FileStatus::Modified(existing) => {
             // Delete old document and its chunks
             let deleted = state.delete_document_with_chunks(&existing.id)?;

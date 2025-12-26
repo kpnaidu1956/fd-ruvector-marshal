@@ -552,7 +552,32 @@ impl AppState {
     /// Check if file should be processed (returns action to take)
     /// Returns: (should_process, existing_doc_to_delete)
     pub fn check_file_status(&self, filename: &str, content_hash: &str) -> FileStatus {
-        // First, check if exact same content exists (by hash)
+        // First, check file registry (includes files synced from GCS)
+        if let Some(record) = self.inner.file_registry.get(filename) {
+            if record.content_hash == content_hash && record.status == FileRecordStatus::Success {
+                // Same file, same content, already successfully processed - skip
+                tracing::info!(
+                    "File '{}' already exists in registry (hash: {}..., synced from GCS)",
+                    filename,
+                    &content_hash[..content_hash.len().min(12)]
+                );
+                return FileStatus::ExistsInRegistry(record.clone());
+            }
+        }
+
+        // Check by content hash in file registry
+        if let Some(record) = self.get_file_record_by_hash(content_hash) {
+            if record.status == FileRecordStatus::Success {
+                tracing::info!(
+                    "File with same content already exists as '{}' (hash: {}...)",
+                    record.filename,
+                    &content_hash[..content_hash.len().min(12)]
+                );
+                return FileStatus::DuplicateInRegistry(record);
+            }
+        }
+
+        // Check if exact same content exists in documents (by hash)
         if let Some(existing) = self.find_by_hash(content_hash) {
             if existing.filename == filename {
                 // Same file, same content - skip
@@ -821,4 +846,8 @@ pub enum FileStatus {
     Duplicate(Document),
     /// File exists but content changed - delete old and reprocess
     Modified(Document),
+    /// File already exists in registry (synced from GCS) - skip
+    ExistsInRegistry(FileRecord),
+    /// Same content exists in registry under different filename - skip
+    DuplicateInRegistry(FileRecord),
 }
