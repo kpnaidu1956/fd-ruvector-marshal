@@ -262,6 +262,24 @@ impl ExternalParser {
             .unwrap_or(false)
     }
 
+    /// Check if tesseract OCR is available (for image-based PDFs)
+    pub fn has_tesseract() -> bool {
+        Command::new("tesseract")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    /// Check if pdftoppm is available (for OCR preprocessing)
+    pub fn has_pdftoppm() -> bool {
+        Command::new("pdftoppm")
+            .arg("-v")
+            .output()
+            .map(|_| true) // pdftoppm -v outputs to stderr, just check if command exists
+            .unwrap_or(false)
+    }
+
     /// Check if pandoc is available
     pub fn has_pandoc() -> bool {
         Command::new("pandoc")
@@ -310,10 +328,96 @@ impl ExternalParser {
         let text = String::from_utf8_lossy(&output.stdout).to_string();
 
         if text.trim().is_empty() {
-            return Err(Error::Internal("pdftotext produced no output".to_string()));
+            return Err(Error::Internal("pdftotext produced no output - PDF may be image-based".to_string()));
         }
 
         Ok(text)
+    }
+
+    /// Extract text from image-based PDF using OCR (pdftoppm + tesseract)
+    pub fn convert_pdf_with_ocr(&self, data: &[u8]) -> Result<String> {
+        use std::fs;
+
+        if !Self::has_pdftoppm() || !Self::has_tesseract() {
+            return Err(Error::Internal(
+                "OCR requires pdftoppm and tesseract. Install with: apt install poppler-utils tesseract-ocr".to_string()
+            ));
+        }
+
+        let temp_dir = std::env::temp_dir().join(format!("goal-rag-ocr-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir)
+            .map_err(|e| Error::Internal(format!("Failed to create temp dir: {}", e)))?;
+
+        let pdf_path = temp_dir.join("input.pdf");
+        fs::write(&pdf_path, data)
+            .map_err(|e| Error::Internal(format!("Failed to write temp PDF: {}", e)))?;
+
+        // Convert PDF pages to images using pdftoppm
+        let pdftoppm_output = Command::new("pdftoppm")
+            .args([
+                "-png",
+                "-r", "150",  // 150 DPI is good balance of quality and speed
+                pdf_path.to_str().unwrap(),
+                temp_dir.join("page").to_str().unwrap(),
+            ])
+            .output()
+            .map_err(|e| Error::Internal(format!("pdftoppm failed: {}", e)))?;
+
+        if !pdftoppm_output.status.success() {
+            let stderr = String::from_utf8_lossy(&pdftoppm_output.stderr);
+            fs::remove_dir_all(&temp_dir).ok();
+            return Err(Error::Internal(format!("pdftoppm error: {}", stderr)));
+        }
+
+        // Find all generated page images
+        let mut page_images: Vec<_> = fs::read_dir(&temp_dir)
+            .map_err(|e| Error::Internal(format!("Failed to read temp dir: {}", e)))?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map_or(false, |ext| ext == "png"))
+            .map(|e| e.path())
+            .collect();
+
+        page_images.sort();
+
+        if page_images.is_empty() {
+            fs::remove_dir_all(&temp_dir).ok();
+            return Err(Error::Internal("pdftoppm produced no images".to_string()));
+        }
+
+        // Run tesseract on each page
+        let mut all_text = String::new();
+        for (i, image_path) in page_images.iter().enumerate() {
+            let ocr_output = Command::new("tesseract")
+                .args([
+                    image_path.to_str().unwrap(),
+                    "stdout",
+                    "-l", "eng",  // English language
+                ])
+                .output()
+                .map_err(|e| Error::Internal(format!("tesseract failed on page {}: {}", i + 1, e)))?;
+
+            if ocr_output.status.success() {
+                let page_text = String::from_utf8_lossy(&ocr_output.stdout);
+                if !page_text.trim().is_empty() {
+                    if !all_text.is_empty() {
+                        all_text.push_str("\n\n--- Page ");
+                        all_text.push_str(&(i + 1).to_string());
+                        all_text.push_str(" ---\n\n");
+                    }
+                    all_text.push_str(&page_text);
+                }
+            }
+        }
+
+        // Cleanup
+        fs::remove_dir_all(&temp_dir).ok();
+
+        if all_text.trim().is_empty() {
+            return Err(Error::Internal("OCR produced no text".to_string()));
+        }
+
+        tracing::info!("OCR extracted {} characters from {} pages", all_text.len(), page_images.len());
+        Ok(all_text)
     }
 
     /// Fallback: Convert PDF using temp files
@@ -415,7 +519,7 @@ impl ExternalParser {
         Ok(text)
     }
 
-    /// Smart conversion: try local tools first, then fall back to API/libraries
+    /// Smart conversion: try local tools first, then fall back to OCR or API
     pub async fn convert_to_text(&self, filename: &str, data: &[u8]) -> Result<String> {
         let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
 
@@ -429,7 +533,21 @@ impl ExternalParser {
                         return Ok(text);
                     }
                     Err(e) => {
-                        tracing::warn!("[{}] pdftotext failed: {}, will try other methods", filename, e);
+                        tracing::warn!("[{}] pdftotext failed: {}, will try OCR", filename, e);
+                    }
+                }
+            }
+
+            // Try OCR for image-based PDFs
+            if Self::has_tesseract() && Self::has_pdftoppm() {
+                tracing::info!("[{}] Attempting OCR extraction", filename);
+                match self.convert_pdf_with_ocr(data) {
+                    Ok(text) => {
+                        tracing::info!("[{}] OCR extracted {} chars", filename, text.len());
+                        return Ok(text);
+                    }
+                    Err(e) => {
+                        tracing::warn!("[{}] OCR failed: {}, will try Unstructured API", filename, e);
                     }
                 }
             }
@@ -444,15 +562,56 @@ impl ExternalParser {
                     return Ok(text);
                 }
                 Err(e) => {
-                    tracing::warn!("[{}] pandoc failed: {}, will try other methods", filename, e);
+                    tracing::warn!("[{}] pandoc failed: {}, will try Unstructured API", filename, e);
                 }
             }
         }
 
-        // Fall back to Unstructured API
+        // Fall back to Unstructured API (has built-in OCR)
         tracing::info!("[{}] Falling back to Unstructured API", filename);
         let parsed = self.parse_with_unstructured(filename, data).await?;
         Ok(parsed.content)
+    }
+
+    /// Convert PDF using all available methods with comprehensive fallback chain
+    /// Returns (text, method_used)
+    pub async fn convert_pdf_comprehensive(&self, data: &[u8]) -> Result<(String, &'static str)> {
+        // 1. Try pdftotext (fastest, handles most text-based PDFs)
+        if Self::has_pdftotext() {
+            match self.convert_pdf_with_pdftotext(data) {
+                Ok(text) if !text.trim().is_empty() => {
+                    return Ok((text, "pdftotext"));
+                }
+                Ok(_) => tracing::debug!("pdftotext returned empty text"),
+                Err(e) => tracing::debug!("pdftotext failed: {}", e),
+            }
+        }
+
+        // 2. Try OCR (for scanned/image-based PDFs)
+        if Self::has_tesseract() && Self::has_pdftoppm() {
+            match self.convert_pdf_with_ocr(data) {
+                Ok(text) if !text.trim().is_empty() => {
+                    return Ok((text, "ocr"));
+                }
+                Ok(_) => tracing::debug!("OCR returned empty text"),
+                Err(e) => tracing::debug!("OCR failed: {}", e),
+            }
+        }
+
+        // 3. Try Unstructured API (cloud fallback with built-in OCR)
+        if self.config.enabled {
+            match self.parse_with_unstructured("document.pdf", data).await {
+                Ok(parsed) if !parsed.content.trim().is_empty() => {
+                    return Ok((parsed.content, "unstructured"));
+                }
+                Ok(_) => tracing::debug!("Unstructured returned empty text"),
+                Err(e) => tracing::debug!("Unstructured API failed: {}", e),
+            }
+        }
+
+        Err(Error::Internal(
+            "All PDF extraction methods failed. The PDF may be encrypted, corrupted, or contain only images without OCR capability.".to_string()
+        ))
     }
 }
 
