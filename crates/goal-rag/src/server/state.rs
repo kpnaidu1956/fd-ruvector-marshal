@@ -428,7 +428,7 @@ impl AppState {
         self.inner
             .documents
             .iter()
-            .map(|entry| (entry.key().clone(), entry.value().ingested_at))
+            .map(|entry| (*entry.key(), entry.value().ingested_at))
             .collect()
     }
 

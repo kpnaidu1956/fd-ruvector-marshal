@@ -305,6 +305,7 @@ impl FileIngestStatus {
 
 /// Summary statistics for ingestion
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct IngestSummary {
     /// Number of new files processed
     pub new_files: usize,
@@ -322,19 +323,6 @@ pub struct IngestSummary {
     pub total_chunks_deleted: usize,
 }
 
-impl Default for IngestSummary {
-    fn default() -> Self {
-        Self {
-            new_files: 0,
-            updated_files: 0,
-            unchanged_files: 0,
-            duplicate_files: 0,
-            failed_files: 0,
-            total_chunks_created: 0,
-            total_chunks_deleted: 0,
-        }
-    }
-}
 
 impl IngestSummary {
     /// Create summary from list of file statuses

@@ -129,7 +129,7 @@ impl EmbeddingProvider for VertexAiEmbedder {
             }
 
             let response = match client
-                .post(&self.endpoint())
+                .post(self.endpoint())
                 .json(&request)
                 .send()
                 .await
@@ -213,7 +213,7 @@ impl EmbeddingProvider for VertexAiEmbedder {
                 }
 
                 let response = match client
-                    .post(&self.endpoint())
+                    .post(self.endpoint())
                     .json(&request)
                     .send()
                     .await

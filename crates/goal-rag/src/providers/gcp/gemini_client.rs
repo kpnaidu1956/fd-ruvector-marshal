@@ -79,7 +79,7 @@ impl GeminiClient {
                 }
                 prompt.push_str(")\n");
             }
-            prompt.push_str("\n");
+            prompt.push('\n');
         }
 
         prompt.push_str("## Question\n\n");
@@ -162,7 +162,7 @@ impl LlmProvider for GeminiClient {
         };
 
         let response = client
-            .post(&self.endpoint())
+            .post(self.endpoint())
             .json(&request)
             .send()
             .await
@@ -233,7 +233,7 @@ impl LlmProvider for GeminiClient {
         };
 
         let response = client
-            .post(&self.endpoint())
+            .post(self.endpoint())
             .json(&request)
             .send()
             .await

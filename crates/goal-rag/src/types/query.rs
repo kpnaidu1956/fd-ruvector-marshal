@@ -146,6 +146,7 @@ impl QueryRequest {
 
 /// Ingest request options
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct IngestOptions {
     /// Custom chunk size (overrides config)
     pub chunk_size: Option<usize>,
@@ -162,13 +163,3 @@ pub struct IngestOptions {
     pub metadata: std::collections::HashMap<String, serde_json::Value>,
 }
 
-impl Default for IngestOptions {
-    fn default() -> Self {
-        Self {
-            chunk_size: None,
-            chunk_overlap: None,
-            extract_images: false,
-            metadata: std::collections::HashMap::new(),
-        }
-    }
-}

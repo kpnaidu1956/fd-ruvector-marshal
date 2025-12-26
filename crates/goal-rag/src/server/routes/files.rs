@@ -522,7 +522,7 @@ pub async fn get_gcs_counts(
     Ok(Json(GcsCountsResponse {
         originals_count: originals,
         plaintext_count: plaintext,
-        failed_estimate: if originals > plaintext { originals - plaintext } else { 0 },
+        failed_estimate: originals.saturating_sub(plaintext),
     }))
 }
 

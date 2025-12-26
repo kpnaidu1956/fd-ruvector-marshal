@@ -81,14 +81,12 @@ impl VertexVectorSearch {
 
     /// Convert chunk to vector search datapoint
     fn chunk_to_datapoint(chunk: &Chunk) -> DataPoint {
-        let mut restricts = Vec::new();
-
         // Add document_id as a restrict for filtering
-        restricts.push(Restrict {
+        let restricts = vec![Restrict {
             namespace: "document_id".to_string(),
             allow: vec![chunk.document_id.to_string()],
             deny: vec![],
-        });
+        }];
 
         // Store chunk metadata in crowding tag (up to 1KB)
         let metadata = serde_json::json!({
@@ -206,7 +204,7 @@ struct RemoveRequest {
 #[async_trait]
 impl VectorStoreProvider for VertexVectorSearch {
     async fn insert_chunk(&self, chunk: &Chunk) -> Result<()> {
-        self.insert_chunks(&[chunk.clone()]).await
+        self.insert_chunks(std::slice::from_ref(chunk)).await
     }
 
     async fn insert_chunks(&self, chunks: &[Chunk]) -> Result<()> {
@@ -283,7 +281,7 @@ impl VectorStoreProvider for VertexVectorSearch {
         };
 
         let response = client
-            .post(&self.search_endpoint())
+            .post(self.search_endpoint())
             .json(&request)
             .send()
             .await
