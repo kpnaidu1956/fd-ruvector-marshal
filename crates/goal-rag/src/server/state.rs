@@ -21,7 +21,7 @@ use crate::providers::{
 #[cfg(feature = "gcp")]
 use crate::providers::gcp::GcsDocumentStore;
 use crate::retrieval::VectorStore;
-use crate::types::{Chunk, Document};
+use crate::types::{Chunk, Document, FileRecord, FileRecordStatus, SkipReason};
 
 /// Shared application state
 #[derive(Clone)]
@@ -54,8 +54,12 @@ struct AppStateInner {
     documents: DashMap<Uuid, Document>,
     /// Chunk metadata store (for Vertex AI lookups)
     chunks: DashMap<Uuid, Chunk>,
+    /// File registry for tracking all file processing status
+    file_registry: DashMap<String, FileRecord>,
     /// Path to documents registry file
     documents_path: PathBuf,
+    /// Path to file registry file
+    file_registry_path: PathBuf,
     /// Ready state
     ready: RwLock<bool>,
     /// GCS document store (only for GCP backend)
@@ -184,6 +188,11 @@ impl AppState {
         let documents = Self::load_documents(&documents_path);
         tracing::info!("Loaded {} documents from registry", documents.len());
 
+        // Load persisted file registry
+        let file_registry_path = storage_dir.join("file_registry.json");
+        let file_registry = Self::load_file_registry(&file_registry_path);
+        tracing::info!("Loaded {} file records from registry", file_registry.len());
+
         // Initialize job queue and start workers
         let worker_count = num_cpus::get().min(4);  // Max 4 workers
         let (job_queue, receiver) = JobQueue::new(worker_count);
@@ -205,7 +214,9 @@ impl AppState {
                 answer_cache,
                 documents,
                 chunks: DashMap::new(),
+                file_registry,
                 documents_path,
+                file_registry_path,
                 ready: RwLock::new(true),
                 #[cfg(feature = "gcp")]
                 document_store: gcs_document_store,
@@ -264,6 +275,52 @@ impl AppState {
             }
             Err(e) => {
                 tracing::error!("Failed to serialize documents: {}", e);
+            }
+        }
+    }
+
+    /// Load file registry from disk
+    fn load_file_registry(path: &PathBuf) -> DashMap<String, FileRecord> {
+        let registry = DashMap::new();
+
+        if path.exists() {
+            match fs::read_to_string(path) {
+                Ok(content) => {
+                    match serde_json::from_str::<Vec<FileRecord>>(&content) {
+                        Ok(records) => {
+                            for record in records {
+                                registry.insert(record.filename.clone(), record);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to parse file_registry.json: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to read file_registry.json: {}", e);
+                }
+            }
+        }
+
+        registry
+    }
+
+    /// Save file registry to disk
+    fn save_file_registry(&self) {
+        let records: Vec<FileRecord> = self.inner.file_registry
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+
+        match serde_json::to_string_pretty(&records) {
+            Ok(content) => {
+                if let Err(e) = fs::write(&self.inner.file_registry_path, content) {
+                    tracing::error!("Failed to save file_registry.json: {}", e);
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to serialize file registry: {}", e);
             }
         }
     }
@@ -446,6 +503,198 @@ impl AppState {
 
         Ok(deleted)
     }
+
+    // ==================== File Registry Methods ====================
+
+    /// Record a successful file processing
+    pub fn record_file_success(
+        &self,
+        filename: &str,
+        content_hash: &str,
+        file_size: u64,
+        file_type: crate::types::FileType,
+        document_id: Uuid,
+        chunks_created: u32,
+        job_id: Option<Uuid>,
+    ) {
+        let record = FileRecord::success(
+            filename.to_string(),
+            content_hash.to_string(),
+            file_size,
+            file_type,
+            document_id,
+            chunks_created,
+            job_id,
+        );
+        self.inner.file_registry.insert(filename.to_string(), record);
+        self.save_file_registry();
+    }
+
+    /// Record a skipped file
+    pub fn record_file_skipped(
+        &self,
+        filename: &str,
+        content_hash: &str,
+        file_size: u64,
+        file_type: crate::types::FileType,
+        skip_reason: SkipReason,
+        job_id: Option<Uuid>,
+    ) {
+        // Update existing record if it exists
+        if let Some(mut existing) = self.inner.file_registry.get_mut(filename) {
+            existing.update_for_reupload(job_id);
+            existing.status = FileRecordStatus::Skipped;
+            existing.skip_reason = Some(skip_reason);
+        } else {
+            let record = FileRecord::skipped(
+                filename.to_string(),
+                content_hash.to_string(),
+                file_size,
+                file_type,
+                skip_reason,
+                job_id,
+            );
+            self.inner.file_registry.insert(filename.to_string(), record);
+        }
+        self.save_file_registry();
+    }
+
+    /// Record a failed file
+    pub fn record_file_failed(
+        &self,
+        filename: &str,
+        content_hash: &str,
+        file_size: u64,
+        file_type: crate::types::FileType,
+        error_message: &str,
+        failed_at_stage: &str,
+        job_id: Option<Uuid>,
+    ) {
+        // Update existing record if it exists
+        if let Some(mut existing) = self.inner.file_registry.get_mut(filename) {
+            existing.update_for_reupload(job_id);
+            existing.mark_failed(error_message.to_string(), failed_at_stage.to_string());
+        } else {
+            let record = FileRecord::failed(
+                filename.to_string(),
+                content_hash.to_string(),
+                file_size,
+                file_type,
+                error_message.to_string(),
+                failed_at_stage.to_string(),
+                job_id,
+            );
+            self.inner.file_registry.insert(filename.to_string(), record);
+        }
+        self.save_file_registry();
+    }
+
+    /// Get file record by filename
+    pub fn get_file_record(&self, filename: &str) -> Option<FileRecord> {
+        self.inner.file_registry.get(filename).map(|r| r.clone())
+    }
+
+    /// Get file record by content hash
+    pub fn get_file_record_by_hash(&self, content_hash: &str) -> Option<FileRecord> {
+        self.inner
+            .file_registry
+            .iter()
+            .find(|entry| entry.value().content_hash == content_hash)
+            .map(|entry| entry.value().clone())
+    }
+
+    /// List all file records
+    pub fn list_file_records(&self) -> Vec<FileRecord> {
+        self.inner
+            .file_registry
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
+    }
+
+    /// List successful file records
+    pub fn list_successful_files(&self) -> Vec<FileRecord> {
+        self.inner
+            .file_registry
+            .iter()
+            .filter(|entry| entry.value().status == FileRecordStatus::Success)
+            .map(|entry| entry.value().clone())
+            .collect()
+    }
+
+    /// List failed file records
+    pub fn list_failed_files(&self) -> Vec<FileRecord> {
+        self.inner
+            .file_registry
+            .iter()
+            .filter(|entry| entry.value().status == FileRecordStatus::Failed)
+            .map(|entry| entry.value().clone())
+            .collect()
+    }
+
+    /// List skipped file records
+    pub fn list_skipped_files(&self) -> Vec<FileRecord> {
+        self.inner
+            .file_registry
+            .iter()
+            .filter(|entry| entry.value().status == FileRecordStatus::Skipped)
+            .map(|entry| entry.value().clone())
+            .collect()
+    }
+
+    /// Get file registry statistics
+    pub fn file_registry_stats(&self) -> FileRegistryStats {
+        let total = self.inner.file_registry.len();
+        let success = self.inner.file_registry.iter()
+            .filter(|e| e.value().status == FileRecordStatus::Success)
+            .count();
+        let failed = self.inner.file_registry.iter()
+            .filter(|e| e.value().status == FileRecordStatus::Failed)
+            .count();
+        let skipped = self.inner.file_registry.iter()
+            .filter(|e| e.value().status == FileRecordStatus::Skipped)
+            .count();
+
+        FileRegistryStats { total, success, failed, skipped }
+    }
+
+    /// Remove a file record
+    pub fn remove_file_record(&self, filename: &str) -> Option<FileRecord> {
+        let removed = self.inner.file_registry.remove(filename).map(|(_, r)| r);
+        if removed.is_some() {
+            self.save_file_registry();
+        }
+        removed
+    }
+
+    /// Clear all failed file records (for retry)
+    pub fn clear_failed_files(&self) -> usize {
+        let failed_keys: Vec<String> = self.inner
+            .file_registry
+            .iter()
+            .filter(|e| e.value().status == FileRecordStatus::Failed)
+            .map(|e| e.key().clone())
+            .collect();
+
+        let count = failed_keys.len();
+        for key in failed_keys {
+            self.inner.file_registry.remove(&key);
+        }
+
+        if count > 0 {
+            self.save_file_registry();
+        }
+        count
+    }
+}
+
+/// Statistics for file registry
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FileRegistryStats {
+    pub total: usize,
+    pub success: usize,
+    pub failed: usize,
+    pub skipped: usize,
 }
 
 /// Status of a file for deduplication
