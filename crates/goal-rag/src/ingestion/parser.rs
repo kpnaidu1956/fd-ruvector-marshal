@@ -201,14 +201,39 @@ impl FileParser {
 
         match file_type {
             FileType::Pdf => Self::parse_pdf(data),
-            FileType::Docx | FileType::Doc => Self::parse_docx(data),
+            FileType::Docx => Self::parse_docx(data),
+            FileType::Doc => {
+                // .doc requires external conversion - return error to trigger fallback
+                Err(Error::UnsupportedFileType(
+                    "doc - Old Word format requires LibreOffice conversion".to_string()
+                ))
+            }
             FileType::Pptx => Self::parse_pptx(data),
+            FileType::Ppt => {
+                // .ppt requires external conversion - return error to trigger fallback
+                Err(Error::UnsupportedFileType(
+                    "ppt - Old PowerPoint format requires LibreOffice conversion".to_string()
+                ))
+            }
             FileType::Txt | FileType::Markdown => Self::parse_text(data, file_type),
             FileType::Html => Self::parse_html(data),
             FileType::Csv => Self::parse_csv(data),
             FileType::Xlsx | FileType::Xls => Self::parse_xlsx(data),
+            FileType::Rtf | FileType::Odt | FileType::Odp | FileType::Ods | FileType::Epub => {
+                // These require external tools (pandoc/LibreOffice) - return error to trigger fallback
+                Err(Error::UnsupportedFileType(format!(
+                    "{} - Requires pandoc or LibreOffice for conversion",
+                    extension
+                )))
+            }
+            FileType::Image => {
+                // Images require OCR - return error to trigger fallback
+                Err(Error::UnsupportedFileType(
+                    "image - Requires tesseract OCR for text extraction".to_string()
+                ))
+            }
             FileType::Code(ref lang) => Self::parse_code(data, lang.clone()),
-            _ => Err(Error::UnsupportedFileType(format!("{} - File type not supported", extension))),
+            FileType::Unknown => Err(Error::UnsupportedFileType(format!("{} - Unknown file type", extension))),
         }
     }
 

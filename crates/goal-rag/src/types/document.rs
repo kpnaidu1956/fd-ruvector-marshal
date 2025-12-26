@@ -12,11 +12,11 @@ pub enum FileType {
     Pdf,
     /// Microsoft Word document (.docx)
     Docx,
-    /// Old Microsoft Word document (.doc) - limited support
+    /// Old Microsoft Word document (.doc) - requires LibreOffice
     Doc,
     /// Microsoft PowerPoint presentation (.pptx)
     Pptx,
-    /// Old Microsoft PowerPoint (.ppt) - not supported (binary format)
+    /// Old Microsoft PowerPoint (.ppt) - requires LibreOffice
     Ppt,
     /// Plain text file
     Txt,
@@ -24,13 +24,23 @@ pub enum FileType {
     Markdown,
     /// Excel spreadsheet (.xlsx)
     Xlsx,
-    /// Old Excel spreadsheet (.xls) - limited support
+    /// Old Excel spreadsheet (.xls) - requires LibreOffice for complex files
     Xls,
     /// HTML document
     Html,
     /// CSV file
     Csv,
-    /// Image (for OCR)
+    /// Rich Text Format
+    Rtf,
+    /// OpenDocument Text
+    Odt,
+    /// OpenDocument Presentation
+    Odp,
+    /// OpenDocument Spreadsheet
+    Ods,
+    /// EPUB ebook
+    Epub,
+    /// Image (for OCR) - requires tesseract
     Image,
     /// Source code file with language
     Code(String),
@@ -47,13 +57,18 @@ impl FileType {
             "doc" => Self::Doc,
             "pptx" => Self::Pptx,
             "ppt" => Self::Ppt,
-            "txt" => Self::Txt,
+            "txt" | "text" => Self::Txt,
             "md" | "markdown" => Self::Markdown,
             "xlsx" => Self::Xlsx,
             "xls" => Self::Xls,
             "html" | "htm" => Self::Html,
             "csv" => Self::Csv,
-            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" => Self::Image,
+            "rtf" => Self::Rtf,
+            "odt" => Self::Odt,
+            "odp" => Self::Odp,
+            "ods" => Self::Ods,
+            "epub" => Self::Epub,
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tiff" | "tif" => Self::Image,
             // Code files
             "rs" => Self::Code("rust".to_string()),
             "py" => Self::Code("python".to_string()),
@@ -80,8 +95,14 @@ impl FileType {
     }
 
     /// Check if this is a supported file type
+    /// Note: Some formats require external tools (LibreOffice, tesseract)
     pub fn is_supported(&self) -> bool {
-        !matches!(self, Self::Unknown | Self::Ppt | Self::Image)
+        !matches!(self, Self::Unknown)
+    }
+
+    /// Check if this format requires external tools
+    pub fn requires_external_tools(&self) -> bool {
+        matches!(self, Self::Doc | Self::Ppt | Self::Xls | Self::Image | Self::Rtf | Self::Odt | Self::Odp | Self::Ods | Self::Epub)
     }
 
     /// Get display name
@@ -98,6 +119,11 @@ impl FileType {
             Self::Xls => "Excel Spreadsheet (.xls)",
             Self::Html => "HTML",
             Self::Csv => "CSV",
+            Self::Rtf => "Rich Text Format",
+            Self::Odt => "OpenDocument Text",
+            Self::Odp => "OpenDocument Presentation",
+            Self::Ods => "OpenDocument Spreadsheet",
+            Self::Epub => "EPUB eBook",
             Self::Image => "Image",
             Self::Code(lang) => lang.as_str(),
             Self::Unknown => "Unknown",
@@ -107,9 +133,22 @@ impl FileType {
     /// Get reason why file type is not supported
     pub fn unsupported_reason(&self) -> Option<&str> {
         match self {
-            Self::Ppt => Some("Old PowerPoint format (.ppt) is not supported. Please convert to .pptx format."),
-            Self::Image => Some("Image files require OCR which is not enabled."),
             Self::Unknown => Some("Unknown file type."),
+            _ => None,
+        }
+    }
+
+    /// Get required tools for this file type
+    pub fn required_tools(&self) -> Option<&str> {
+        match self {
+            Self::Doc => Some("LibreOffice (libreoffice --headless)"),
+            Self::Ppt => Some("LibreOffice (libreoffice --headless)"),
+            Self::Xls => Some("LibreOffice (libreoffice --headless) or calamine fallback"),
+            Self::Rtf => Some("pandoc or LibreOffice"),
+            Self::Odt | Self::Odp | Self::Ods => Some("pandoc or LibreOffice"),
+            Self::Epub => Some("pandoc"),
+            Self::Image => Some("tesseract OCR (apt install tesseract-ocr)"),
+            Self::Pdf => Some("poppler-utils (pdftotext) for complex PDFs, tesseract for scanned PDFs"),
             _ => None,
         }
     }
