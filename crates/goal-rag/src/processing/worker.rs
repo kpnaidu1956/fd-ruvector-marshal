@@ -295,8 +295,85 @@ impl ProcessingWorker {
                     )));
                 }
             }
+        } else if ExternalParser::needs_ocr(filename) {
+            // Image files - try OCR
+            tracing::info!("[{}] Using OCR for image extraction...", filename);
+
+            // Try local tesseract first
+            if ExternalParser::has_tesseract() {
+                match external_parser.convert_image_with_ocr(data) {
+                    Ok(text) => {
+                        tracing::info!("[{}] OCR extracted {} chars", filename, text.len());
+                        let text_filename = format!("{}.txt", filename.rsplit('.').next().unwrap_or(filename));
+                        return Self::process_text_content(
+                            state,
+                            job_queue,
+                            job_id,
+                            &original_filename,
+                            Some(&text_filename),
+                            text.as_bytes(),
+                            Some(data),
+                            parallel_embeddings,
+                        ).await.map(FileProcessResult::New);
+                    }
+                    Err(e) => {
+                        tracing::warn!("[{}] Local OCR failed: {}, trying Unstructured API", filename, e);
+                    }
+                }
+            }
+
+            // Fall back to Unstructured API (has built-in OCR)
+            let parse_result = timeout(
+                op_timeout,
+                external_parser.parse_with_unstructured(filename, data)
+            ).await;
+            match parse_result {
+                Ok(Ok(parsed)) => {
+                    tracing::info!("[{}] Unstructured OCR successful", filename);
+                    (format!("{}.txt", filename), parsed.content.into_bytes())
+                }
+                Ok(Err(e)) => {
+                    tracing::error!("[{}] Image OCR failed: {}", filename, e);
+                    return Err(Error::file_parse(
+                        filename,
+                        format!("Image OCR failed. Install tesseract-ocr for local OCR. Error: {}", e)
+                    ));
+                }
+                Err(_) => {
+                    return Err(Error::file_parse(
+                        filename,
+                        "Image OCR timeout".to_string()
+                    ));
+                }
+            }
         } else if ExternalParser::needs_external_parsing(filename) {
+            // Other formats needing external parsing (RTF, ODT, ODP, ODS, EPUB)
             tracing::info!("[{}] Using external parser...", filename);
+
+            // Try pandoc first for supported formats
+            if ExternalParser::has_pandoc() && ExternalParser::can_use_pandoc(filename) {
+                match external_parser.convert_with_pandoc(filename, data) {
+                    Ok(text) => {
+                        tracing::info!("[{}] pandoc extracted {} chars", filename, text.len());
+                        let text_filename = format!("{}.txt", filename.rsplit('.').next().unwrap_or(filename));
+                        return Self::process_text_content(
+                            state,
+                            job_queue,
+                            job_id,
+                            &original_filename,
+                            Some(&text_filename),
+                            text.as_bytes(),
+                            Some(data),
+                            parallel_embeddings,
+                        ).await.map(FileProcessResult::New);
+                    }
+                    Err(e) => {
+                        tracing::warn!("[{}] pandoc failed: {}, trying Unstructured API", filename, e);
+                    }
+                }
+            }
+
+            // Fall back to Unstructured API
             let parse_result = timeout(
                 op_timeout,
                 external_parser.parse_with_unstructured(filename, data)

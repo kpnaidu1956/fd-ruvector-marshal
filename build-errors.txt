@@ -1,0 +1,3369 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-node/Cargo.toml
+workspace: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-wasm/Cargo.toml
+workspace: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-router-cli/Cargo.toml
+workspace: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-router-ffi/Cargo.toml
+workspace: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-router-wasm/Cargo.toml
+workspace: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-tiny-dancer-wasm/Cargo.toml
+workspace: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-tiny-dancer-node/Cargo.toml
+workspace: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-graph-node/Cargo.toml
+workspace: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-graph-wasm/Cargo.toml
+workspace: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-gnn-node/Cargo.toml
+workspace: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-gnn-wasm/Cargo.toml
+workspace: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-attention-wasm/Cargo.toml
+workspace: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-attention-node/Cargo.toml
+workspace: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/Cargo.toml
+warning: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-gnn-wasm/Cargo.toml: no edition set: defaulting to the 2015 edition while the latest is 2024
+warning: /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-attention/Cargo.toml: file `/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-attention/benches/attention_benchmarks.rs` found to be present in multiple build targets:
+  * `bin` target `bench_runner`
+  * `bench` target `attention_benchmarks`
+warning: output filename collision at /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/target/debug/ruvector
+  |
+  = note: the bin target `ruvector` in package `ruvector-router-cli v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-router-cli)` has the same output filename as the bin target `ruvector` in package `ruvector-cli v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-cli)`
+  = note: this may become a hard error in the future; see <https://github.com/rust-lang/cargo/issues/6313>
+  = help: consider changing their names to be unique or compiling them separately
+warning: output filename collision at /Users/kpnaidu/PROJECTS/fd-ruvector-marshal/target/debug/ruvector.dSYM
+  |
+  = note: the bin target `ruvector` in package `ruvector-router-cli v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-router-cli)` has the same output filename as the bin target `ruvector` in package `ruvector-cli v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-cli)`
+  = note: this may become a hard error in the future; see <https://github.com/rust-lang/cargo/issues/6313>
+  = help: consider changing their names to be unique or compiling them separately
+   Compiling proc-macro2 v1.0.103
+   Compiling unicode-ident v1.0.22
+   Compiling quote v1.0.42
+   Compiling libc v0.2.177
+   Compiling cfg-if v1.0.4
+   Compiling autocfg v1.5.0
+   Compiling memchr v2.7.6
+   Compiling once_cell v1.21.3
+   Compiling libm v0.2.15
+   Compiling smallvec v1.15.1
+   Compiling serde_core v1.0.228
+   Compiling log v0.4.28
+   Compiling pin-project-lite v0.2.16
+   Compiling crossbeam-utils v0.8.21
+   Compiling zerocopy v0.8.30
+   Compiling bitflags v2.10.0
+   Compiling parking_lot_core v0.9.12
+   Compiling serde v1.0.228
+   Compiling version_check v0.9.5
+   Compiling scopeguard v1.2.0
+   Compiling num-traits v0.2.19
+   Compiling lock_api v0.4.14
+   Compiling itoa v1.0.15
+   Compiling bytes v1.11.0
+   Compiling core-foundation-sys v0.8.7
+   Compiling either v1.15.0
+   Compiling rayon-core v1.13.0
+   Compiling tracing-core v0.1.35
+   Compiling syn v2.0.111
+   Compiling crossbeam-epoch v0.9.18
+   Compiling equivalent v1.0.2
+   Compiling shlex v1.3.0
+   Compiling find-msvc-tools v0.1.5
+   Compiling getrandom v0.3.4
+   Compiling pin-utils v0.1.0
+   Compiling ryu v1.0.20
+   Compiling crossbeam-deque v0.8.6
+   Compiling regex-syntax v0.8.8
+   Compiling serde_json v1.0.145
+   Compiling anyhow v1.0.100
+   Compiling byteorder v1.5.0
+   Compiling thiserror v1.0.69
+   Compiling thiserror v2.0.17
+   Compiling getrandom v0.2.16
+   Compiling parking_lot v0.12.5
+   Compiling rand_core v0.6.4
+   Compiling rayon v1.11.0
+   Compiling num-integer v0.1.46
+   Compiling num-complex v0.4.6
+   Compiling signal-hook-registry v1.4.7
+   Compiling mio v1.1.0
+   Compiling jobserver v0.1.34
+   Compiling socket2 v0.6.1
+   Compiling cc v1.2.47
+   Compiling matrixmultiply v0.3.10
+   Compiling rawpointer v0.2.1
+   Compiling hashbrown v0.16.1
+   Compiling lazy_static v1.5.0
+   Compiling aho-corasick v1.1.4
+   Compiling crossbeam-channel v0.5.15
+   Compiling iana-time-zone v0.1.64
+   Compiling ahash v0.8.12
+   Compiling utf8parse v0.2.2
+   Compiling heck v0.5.0
+   Compiling anstyle-parse v0.2.7
+   Compiling colorchoice v1.0.4
+   Compiling indexmap v2.12.1
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle-query v1.1.5
+   Compiling anstyle v1.0.13
+   Compiling bitflags v1.3.2
+   Compiling memmap2 v0.9.9
+   Compiling futures-core v0.3.31
+   Compiling anstream v0.6.21
+   Compiling simd-adler32 v0.3.7
+   Compiling crc32fast v1.5.0
+   Compiling redb v2.6.3
+   Compiling crossbeam-queue v0.3.12
+   Compiling allocator-api2 v0.2.21
+   Compiling foldhash v0.1.5
+   Compiling adler2 v2.0.1
+   Compiling crossbeam v0.8.4
+   Compiling regex-automata v0.4.13
+   Compiling miniz_oxide v0.8.9
+   Compiling simdutf8 v0.1.5
+   Compiling num_cpus v1.17.0
+   Compiling hashbrown v0.15.5
+   Compiling virtue v0.0.18
+   Compiling futures-sink v0.3.31
+   Compiling simsimd v5.9.11
+   Compiling memoffset v0.7.1
+   Compiling unty v0.0.4
+   Compiling bytemuck v1.24.0
+   Compiling slab v0.4.11
+   Compiling futures-channel v0.3.31
+   Compiling rand_core v0.9.3
+   Compiling flate2 v1.1.5
+   Compiling jiff v0.2.16
+   Compiling fnv v1.0.7
+   Compiling mach2 v0.4.3
+   Compiling cpu-time v1.0.0
+   Compiling bincode_derive v2.0.1
+   Compiling combine v4.6.7
+   Compiling nix v0.26.4
+   Compiling futures-task v0.3.31
+   Compiling futures-io v0.3.31
+   Compiling core-foundation v0.9.4
+   Compiling rustix v1.1.2
+   Compiling errno v0.3.14
+   Compiling rustversion v1.0.22
+   Compiling stable_deref_trait v1.2.1
+   Compiling typenum v1.19.0
+   Compiling strsim v0.11.1
+   Compiling unicase v2.8.1
+   Compiling semver v1.0.27
+   Compiling synstructure v0.13.2
+   Compiling http v1.4.0
+   Compiling zerocopy-derive v0.8.30
+   Compiling serde_derive v1.0.228
+   Compiling tracing-attributes v0.1.31
+   Compiling thiserror-impl v2.0.17
+   Compiling thiserror-impl v1.0.69
+   Compiling tokio-macros v2.6.0
+   Compiling tracing v0.1.42
+   Compiling regex v1.12.2
+   Compiling tokio v1.48.0
+   Compiling ptr_meta_derive v0.3.1
+   Compiling ptr_meta v0.3.1
+   Compiling bytecheck_derive v0.8.2
+   Compiling munge_macro v0.4.7
+   Compiling rkyv_derive v0.8.12
+   Compiling munge v0.4.7
+   Compiling env_filter v0.1.4
+   Compiling rancor v0.1.1
+   Compiling bytecheck v0.8.2
+   Compiling enum-as-inner v0.6.1
+   Compiling env_logger v0.11.8
+   Compiling futures-macro v0.3.31
+   Compiling sysctl v0.5.5
+   Compiling ppv-lite86 v0.2.21
+   Compiling anndists v0.1.3
+   Compiling hashbrown v0.14.5
+   Compiling rand_chacha v0.3.1
+   Compiling rend v0.5.3
+   Compiling rand_chacha v0.9.0
+   Compiling futures-util v0.3.31
+   Compiling rand v0.8.5
+   Compiling rand v0.9.2
+   Compiling dashmap v6.1.0
+   Compiling unicode-width v0.2.2
+   Compiling mmap-rs v0.6.1
+   Compiling option-ext v0.2.0
+   Compiling portable-atomic v1.11.1
+   Compiling zerofrom-derive v0.1.6
+   Compiling displaydoc v0.2.5
+   Compiling generic-array v0.14.7
+   Compiling minimal-lexical v0.2.1
+   Compiling rand_distr v0.4.3
+   Compiling bumpalo v3.19.0
+   Compiling chrono v0.4.42
+   Compiling uuid v1.18.1
+   Compiling ndarray v0.16.1
+   Compiling bincode v2.0.1
+   Compiling bincode v1.3.3
+   Compiling nom v7.1.3
+   Compiling yoke-derive v0.8.1
+   Compiling hnsw_rs v0.3.3
+   Compiling zerofrom v0.1.6
+   Compiling fdeflate v0.3.7
+   Compiling weezl v0.1.12
+   Compiling color_quant v1.1.0
+   Compiling yoke v0.8.1
+   Compiling half v2.7.1
+   Compiling terminal_size v0.4.3
+   Compiling num-bigint v0.4.6
+   Compiling proc-macro-error-attr v1.0.4
+   Compiling napi-build v2.3.1
+   Compiling httparse v1.10.1
+   Compiling syn v1.0.109
+   Compiling wasm-bindgen-shared v0.2.105
+   Compiling clap_lex v0.7.6
+   Compiling pkg-config v0.3.32
+   Compiling clap_builder v4.5.53
+   Compiling tokio-util v0.7.17
+   Compiling http-body v1.0.1
+   Compiling zerovec-derive v0.11.2
+   Compiling clap_derive v4.5.49
+   Compiling proc-macro-error v1.0.4
+   Compiling autocfg v0.1.8
+   Compiling tower-service v0.3.3
+   Compiling percent-encoding v2.3.2
+   Compiling rkyv v0.8.12
+   Compiling fastrand v2.3.0
+   Compiling rand_core v0.4.2
+   Compiling tempfile v3.23.0
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling subtle v2.6.1
+   Compiling futures-executor v0.3.31
+   Compiling digest v0.10.7
+   Compiling zerovec v0.11.5
+   Compiling console v0.15.11
+   Compiling num-iter v0.1.45
+   Compiling base64 v0.22.1
+   Compiling system-configuration-sys v0.6.0
+   Compiling bytecount v0.6.9
+   Compiling tower-layer v0.3.3
+   Compiling futures v0.3.31
+   Compiling wasm-bindgen-macro-support v0.2.105
+   Compiling dirs-sys v0.5.0
+   Compiling matchers v0.2.0
+   Compiling wasm-bindgen v0.2.105
+   Compiling rustc_version v0.4.1
+   Compiling sharded-slab v0.1.7
+   Compiling tracing-log v0.2.0
+   Compiling thread_local v1.1.9
+   Compiling clap v4.5.53
+   Compiling httpdate v1.0.3
+   Compiling cpufeatures v0.2.17
+   Compiling try-lock v0.2.5
+   Compiling number_prefix v0.4.0
+   Compiling mime v0.3.17
+   Compiling unicode-segmentation v1.12.0
+   Compiling nu-ansi-term v0.50.3
+   Compiling atomic-waker v1.1.2
+   Compiling paste v1.0.15
+   Compiling h2 v0.4.12
+   Compiling indicatif v0.17.11
+   Compiling tracing-subscriber v0.3.21
+   Compiling want v0.3.1
+   Compiling tinystr v0.8.2
+   Compiling pathfinder_simd v0.5.5
+   Compiling dirs v6.0.0
+   Compiling rand_core v0.3.1
+   Compiling num-rational v0.4.2
+   Compiling form_urlencoded v1.2.2
+   Compiling http-body-util v0.1.3
+   Compiling foreign-types-macros v0.2.3
+   Compiling equator-macro v0.4.2
+   Compiling sync_wrapper v1.0.2
+   Compiling ruvector-core v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-core)
+   Compiling concurrent-queue v2.5.0
+   Compiling base64 v0.21.7
+   Compiling parking v2.2.1
+   Compiling foreign-types-shared v0.3.1
+   Compiling writeable v0.6.2
+warning: unused import: `std::collections::HashMap`
+ --> crates/ruvector-core/src/advanced_features/conformal_prediction.rs:9:5
+  |
+9 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `RuvectorError`
+ --> crates/ruvector-core/src/advanced_features/filtered_search.rs:8:28
+  |
+8 | use crate::error::{Result, RuvectorError};
+  |                            ^^^^^^^^^^^^^
+
+warning: unused import: `RuvectorError`
+ --> crates/ruvector-core/src/advanced_features/hybrid_search.rs:8:28
+  |
+8 | use crate::error::{Result, RuvectorError};
+  |                            ^^^^^^^^^^^^^
+
+warning: unused import: `parking_lot::RwLock`
+  --> crates/ruvector-core/src/agenticdb.rs:13:5
+   |
+13 | use parking_lot::RwLock;
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::path::Path`
+  --> crates/ruvector-core/src/agenticdb.rs:17:5
+   |
+17 | use std::path::Path;
+   |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `DistanceMetric`
+ --> crates/ruvector-core/src/index.rs:8:20
+  |
+8 | use crate::types::{DistanceMetric, SearchResult, VectorId};
+  |                    ^^^^^^^^^^^^^^
+
+warning: unused doc comment
+   --> crates/ruvector-core/src/arena.rs:214:1
+    |
+214 | /// Thread-local arena for per-thread allocations
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+    |
+    = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `Result` and `RuvectorError`
+ --> crates/ruvector-core/src/advanced/neural_hash.rs:6:20
+  |
+6 | use crate::error::{Result, RuvectorError};
+  |                    ^^^^^^  ^^^^^^^^^^^^^
+
+warning: unused import: `Array1`
+ --> crates/ruvector-core/src/advanced/tda.rs:7:15
+  |
+7 | use ndarray::{Array1, Array2};
+  |               ^^^^^^
+
+warning: unused imports: `HashMap` and `HashSet`
+ --> crates/ruvector-core/src/advanced/tda.rs:9:24
+  |
+9 | use std::collections::{HashMap, HashSet};
+  |                        ^^^^^^^  ^^^^^^^
+
+   Compiling litemap v0.8.1
+   Compiling foreign-types v0.5.0
+   Compiling hdrhistogram v7.5.4
+   Compiling event-listener v5.4.1
+   Compiling icu_locale_core v2.1.1
+   Compiling equator v0.4.2
+   Compiling wasm-bindgen-macro v0.2.105
+   Compiling system-configuration v0.6.1
+   Compiling potential_utf v0.1.4
+   Compiling zerotrie v0.2.3
+   Compiling async-trait v0.1.89
+   Compiling core-graphics-types v0.1.3
+   Compiling num-bigint v0.2.6
+   Compiling unicode-width v0.1.11
+warning: unused import: `rayon::prelude`
+   --> crates/ruvector-core/src/index/hnsw.rs:301:13
+    |
+301 |         use rayon::prelude::*;
+    |             ^^^^^^^^^^^^^^
+
+   Compiling ipnet v2.11.0
+   Compiling icu_normalizer_data v2.1.1
+   Compiling icu_properties_data v2.1.1
+   Compiling compression-core v0.4.31
+   Compiling compression-codecs v0.4.33
+warning: variable does not need to be mutable
+  --> crates/ruvector-core/src/advanced_features/mmr.rs:66:9
+   |
+66 |         mut candidates: Vec<SearchResult>,
+   |         ----^^^^^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `query`
+   --> crates/ruvector-core/src/advanced_features/mmr.rs:114:9
+    |
+114 |         query: &[f32],
+    |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_query`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `subspace_dim`
+   --> crates/ruvector-core/src/advanced_features/product_quantization.rs:272:13
+    |
+272 |         let subspace_dim = self.dimensions / self.config.num_subspaces;
+    |             ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_subspace_dim`
+
+   Compiling icu_provider v2.1.1
+   Compiling core-graphics v0.23.2
+warning: variable does not need to be mutable
+   --> crates/ruvector-core/src/index/hnsw.rs:339:13
+    |
+339 |         let mut inner = self.inner.write();
+    |             ----^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: value assigned to `deleted` is never read
+   --> crates/ruvector-core/src/storage.rs:206:27
+    |
+206 |         let mut deleted = false;
+    |                           ^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling aligned-vec v0.6.4
+   Compiling icu_collections v2.1.1
+   Compiling event-listener-strategy v0.5.4
+   Compiling tower v0.5.2
+   Compiling sha1 v0.10.6
+   Compiling rand_pcg v0.1.2
+   Compiling rand_chacha v0.1.1
+   Compiling png v0.17.16
+   Compiling is-terminal v0.4.17
+warning: field `dimensions` is never read
+  --> crates/ruvector-core/src/index/flat.rs:14:5
+   |
+11 | pub struct FlatIndex {
+   |            --------- field in this struct
+...
+14 |     dimensions: usize,
+   |     ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/advanced_features/hybrid_search.rs:58:5
+   |
+58 |     pub b: f32,
+   |     ^^^^^^^^^^
+   |
+note: the lint level is defined here
+  --> crates/ruvector-core/src/lib.rs:13:9
+   |
+13 | #![warn(missing_docs)]
+   |         ^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:30:5
+   |
+30 |     pub id: String,
+   |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:31:5
+   |
+31 |     pub task: String,
+   |     ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:32:5
+   |
+32 |     pub actions: Vec<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:33:5
+   |
+33 |     pub observations: Vec<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:34:5
+   |
+34 |     pub critique: String,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:35:5
+   |
+35 |     pub embedding: Vec<f32>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:36:5
+   |
+36 |     pub timestamp: i64,
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:37:5
+   |
+37 |     pub metadata: Option<HashMap<String, serde_json::Value>>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:43:5
+   |
+43 |     pub id: String,
+   |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:44:5
+   |
+44 |     pub name: String,
+   |     ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:45:5
+   |
+45 |     pub description: String,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:46:5
+   |
+46 |     pub parameters: HashMap<String, String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:47:5
+   |
+47 |     pub examples: Vec<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:48:5
+   |
+48 |     pub embedding: Vec<f32>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:49:5
+   |
+49 |     pub usage_count: usize,
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:50:5
+   |
+50 |     pub success_rate: f64,
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:51:5
+   |
+51 |     pub created_at: i64,
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:52:5
+   |
+52 |     pub updated_at: i64,
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:58:5
+   |
+58 |     pub id: String,
+   |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:59:5
+   |
+59 |     pub causes: Vec<String>,  // Hypergraph: multiple causes
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:60:5
+   |
+60 |     pub effects: Vec<String>, // Hypergraph: multiple effects
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:61:5
+   |
+61 |     pub confidence: f64,
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:62:5
+   |
+62 |     pub context: String,
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:63:5
+   |
+63 |     pub embedding: Vec<f32>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:64:5
+   |
+64 |     pub observations: usize,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:65:5
+   |
+65 |     pub timestamp: i64,
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:71:5
+   |
+71 |     pub id: String,
+   |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:72:5
+   |
+72 |     pub algorithm: String, // Q-Learning, DQN, PPO, etc
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:73:5
+   |
+73 |     pub state_dim: usize,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:74:5
+   |
+74 |     pub action_dim: usize,
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:75:5
+   |
+75 |     pub experiences: Vec<Experience>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:76:5
+   |
+76 |     pub model_params: Option<Vec<u8>>, // Serialized model
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:77:5
+   |
+77 |     pub created_at: i64,
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:78:5
+   |
+78 |     pub updated_at: i64,
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:84:5
+   |
+84 |     pub state: Vec<f32>,
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:85:5
+   |
+85 |     pub action: Vec<f32>,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:86:5
+   |
+86 |     pub reward: f64,
+   |     ^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:87:5
+   |
+87 |     pub next_state: Vec<f32>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:88:5
+   |
+88 |     pub done: bool,
+   |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:89:5
+   |
+89 |     pub timestamp: i64,
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:95:5
+   |
+95 |     pub action: Vec<f32>,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:96:5
+   |
+96 |     pub confidence_lower: f64,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:97:5
+   |
+97 |     pub confidence_upper: f64,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/agenticdb.rs:98:5
+   |
+98 |     pub mean_confidence: f64,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/agenticdb.rs:104:5
+    |
+104 |     pub result: SearchResult,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/agenticdb.rs:105:5
+    |
+105 |     pub utility_score: f64,
+    |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/agenticdb.rs:106:5
+    |
+106 |     pub similarity_score: f64,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/agenticdb.rs:107:5
+    |
+107 |     pub causal_uplift: f64,
+    |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/agenticdb.rs:108:5
+    |
+108 |     pub latency_penalty: f64,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> crates/ruvector-core/src/lockfree.rs:18:5
+   |
+18 |     pub fn new(initial: u64) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/ruvector-core/src/lockfree.rs:25:5
+   |
+25 |     pub fn increment(&self) -> u64 {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/ruvector-core/src/lockfree.rs:30:5
+   |
+30 |     pub fn get(&self) -> u64 {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/ruvector-core/src/lockfree.rs:35:5
+   |
+35 |     pub fn add(&self, delta: u64) -> u64 {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> crates/ruvector-core/src/lockfree.rs:49:5
+   |
+49 |     pub fn new() -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/ruvector-core/src/lockfree.rs:59:5
+   |
+59 |     pub fn record_query(&self, latency_ns: u64) {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/ruvector-core/src/lockfree.rs:66:5
+   |
+66 |     pub fn record_insert(&self) {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/ruvector-core/src/lockfree.rs:71:5
+   |
+71 |     pub fn record_delete(&self) {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> crates/ruvector-core/src/lockfree.rs:75:5
+   |
+75 |     pub fn snapshot(&self) -> StatsSnapshot {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct
+  --> crates/ruvector-core/src/lockfree.rs:99:1
+   |
+99 | pub struct StatsSnapshot {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/lockfree.rs:100:5
+    |
+100 |     pub queries: u64,
+    |     ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/lockfree.rs:101:5
+    |
+101 |     pub inserts: u64,
+    |     ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/lockfree.rs:102:5
+    |
+102 |     pub deletes: u64,
+    |     ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/lockfree.rs:103:5
+    |
+103 |     pub avg_latency_ns: u64,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/ruvector-core/src/lockfree.rs:115:5
+    |
+115 | /     pub fn new<F>(capacity: usize, factory: F) -> Self
+116 | |     where
+117 | |         F: Fn() -> T + Send + Sync + 'static,
+    | |_____________________________________________^
+
+warning: missing documentation for a method
+   --> crates/ruvector-core/src/lockfree.rs:159:5
+    |
+159 |     pub fn get(&self) -> &T {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/ruvector-core/src/lockfree.rs:163:5
+    |
+163 |     pub fn get_mut(&mut self) -> &mut T {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> crates/ruvector-core/src/lockfree.rs:196:5
+    |
+196 |     pub fn new(capacity: usize) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/ruvector-core/src/lockfree.rs:203:5
+    |
+203 |     pub fn try_push(&self, item: T) -> Result<(), T> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/ruvector-core/src/lockfree.rs:208:5
+    |
+208 |     pub fn try_pop(&self) -> Option<T> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/ruvector-core/src/lockfree.rs:213:5
+    |
+213 |     pub fn len(&self) -> usize {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> crates/ruvector-core/src/lockfree.rs:218:5
+    |
+218 |     pub fn is_empty(&self) -> bool {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> crates/ruvector-core/src/advanced/hypergraph.rs:46:5
+   |
+46 |     Hourly,
+   |     ^^^^^^
+
+warning: missing documentation for a variant
+  --> crates/ruvector-core/src/advanced/hypergraph.rs:47:5
+   |
+47 |     Daily,
+   |     ^^^^^
+
+warning: missing documentation for a variant
+  --> crates/ruvector-core/src/advanced/hypergraph.rs:48:5
+   |
+48 |     Monthly,
+   |     ^^^^^^^
+
+warning: missing documentation for a variant
+  --> crates/ruvector-core/src/advanced/hypergraph.rs:49:5
+   |
+49 |     Yearly,
+   |     ^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/advanced/hypergraph.rs:301:5
+    |
+301 |     pub total_entities: usize,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/advanced/hypergraph.rs:302:5
+    |
+302 |     pub total_hyperedges: usize,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/advanced/hypergraph.rs:303:5
+    |
+303 |     pub avg_entity_degree: f32,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/advanced/learned_index.rs:29:5
+   |
+29 |     pub total_entries: usize,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+   Compiling multer v3.1.0
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/advanced/learned_index.rs:30:5
+   |
+30 |     pub model_size_bytes: usize,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/advanced/learned_index.rs:31:5
+   |
+31 |     pub avg_error: f32,
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-core/src/advanced/learned_index.rs:32:5
+   |
+32 |     pub max_error: usize,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/advanced/neural_hash.rs:345:5
+    |
+345 |     pub total_vectors: usize,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/advanced/neural_hash.rs:346:5
+    |
+346 |     pub num_buckets: usize,
+    |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/advanced/neural_hash.rs:347:5
+    |
+347 |     pub avg_bucket_size: f32,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/ruvector-core/src/advanced/neural_hash.rs:348:5
+    |
+348 |     pub compression_ratio: f32,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+   Compiling num-complex v0.2.4
+   Compiling num-rational v0.2.4
+   Compiling encoding_rs v0.8.35
+   Compiling jpeg-decoder v0.3.2
+   Compiling utf-8 v0.7.6
+   Compiling same-file v1.0.6
+   Compiling plotters-backend v0.3.7
+   Compiling arrayvec v0.7.6
+   Compiling data-encoding v2.9.0
+   Compiling font-kit v0.14.3
+   Compiling moka v0.12.11
+   Compiling hyper v1.8.1
+   Compiling walkdir v2.5.0
+   Compiling image v0.24.9
+   Compiling tungstenite v0.24.0
+   Compiling pathfinder_geometry v0.5.1
+   Compiling async-lock v3.4.1
+   Compiling hyper-util v0.1.18
+   Compiling v_frame v0.3.9
+   Compiling core-text v20.1.0
+   Compiling async-compression v0.4.34
+   Compiling serde_urlencoded v0.7.1
+   Compiling rand v0.6.5
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling gif v0.12.0
+   Compiling as-slice v0.2.1
+   Compiling safe_arch v0.7.4
+   Compiling av-scenechange v0.14.1
+   Compiling float-ord v0.3.2
+   Compiling built v0.8.0
+   Compiling tagptr v0.2.0
+   Compiling spin v0.9.8
+   Compiling ciborium-io v0.2.2
+   Compiling plotters-bitmap v0.3.7
+   Compiling ciborium-ll v0.2.2
+   Compiling wide v0.7.33
+   Compiling rav1e v0.8.1
+   Compiling aligned v0.4.2
+   Compiling icu_properties v2.1.1
+   Compiling tokio-tungstenite v0.24.0
+   Compiling plotters-svg v0.3.7
+   Compiling icu_normalizer v2.1.1
+   Compiling js-sys v0.3.82
+   Compiling axum-core v0.4.5
+   Compiling rand_isaac v0.1.1
+   Compiling rand_xorshift v0.1.1
+   Compiling rand_hc v0.1.0
+   Compiling rand_jitter v0.1.4
+   Compiling rand_os v0.1.3
+   Compiling profiling-procmacros v1.0.17
+   Compiling arg_enum_proc_macro v0.3.4
+   Compiling axum-macros v0.4.2
+   Compiling serde_path_to_error v0.1.20
+   Compiling approx v0.5.1
+   Compiling security-framework-sys v2.15.0
+   Compiling itertools v0.10.5
+   Compiling core2 v0.4.0
+   Compiling nom v8.0.0
+   Compiling quick-error v2.0.1
+   Compiling native-tls v0.2.14
+   Compiling y4m v0.8.0
+   Compiling ident_case v1.0.1
+   Compiling cast v0.3.0
+   Compiling ttf-parser v0.20.0
+   Compiling heck v0.4.1
+   Compiling ucd-trie v0.1.7
+   Compiling pastey v0.1.1
+   Compiling matchit v0.7.3
+warning: `ruvector-core` (lib) generated 104 warnings (run `cargo fix --lib -p ruvector-core` to apply 13 suggestions)
+   Compiling iri-string v0.7.9
+   Compiling tabled_derive v0.8.0
+   Compiling criterion-plot v0.5.0
+   Compiling darling_core v0.20.11
+   Compiling bitstream-io v4.9.0
+   Compiling axum v0.7.9
+   Compiling security-framework v2.11.1
+   Compiling profiling v1.0.17
+   Compiling idna_adapter v1.2.1
+   Compiling num v0.2.1
+   Compiling plotters v0.3.7
+   Compiling tower-http v0.6.7
+   Compiling ciborium v0.2.2
+   Compiling papergrid v0.12.0
+   Compiling convert_case v0.6.0
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling tinytemplate v1.2.1
+   Compiling num-derive v0.4.2
+   Compiling av1-grain v0.2.5
+   Compiling fax_derive v0.2.0
+   Compiling mime_guess v2.0.5
+   Compiling lz4-sys v1.11.1+lz4-1.10.0
+   Compiling maybe-rayon v0.1.1
+   Compiling simd_helpers v0.1.0
+   Compiling itertools v0.14.0
+   Compiling imgref v1.12.0
+   Compiling zune-core v0.4.12
+   Compiling noop_proc_macro v0.3.0
+   Compiling oorandom v11.1.5
+   Compiling tinyvec_macros v0.1.1
+   Compiling anes v0.1.6
+   Compiling winnow v0.7.13
+   Compiling toml_write v0.1.2
+   Compiling utf8_iter v1.0.4
+   Compiling zstd-safe v7.2.4
+   Compiling new_debug_unreachable v1.0.6
+   Compiling criterion v0.5.1
+   Compiling idna v1.1.0
+   Compiling tinyvec v1.10.0
+   Compiling darling_macro v0.20.11
+   Compiling zune-jpeg v0.4.21
+   Compiling loop9 v0.1.5
+   Compiling fax v0.2.6
+   Compiling tabled v0.16.0
+   Compiling napi-derive-backend v1.0.75
+   Compiling statistical v1.0.0
+   Compiling pest v2.8.4
+   Compiling avif-serialize v0.8.6
+   Compiling ctor v0.2.9
+   Compiling sysinfo v0.31.4
+   Compiling zune-inflate v0.2.54
+   Compiling toml_edit v0.22.27
+   Compiling colored v2.2.0
+   Compiling ordered-float v4.6.0
+   Compiling pxfm v0.1.26
+   Compiling indexmap v1.9.3
+   Compiling instant v0.1.13
+   Compiling zune-core v0.5.0
+   Compiling ttf-parser v0.25.1
+   Compiling ab_glyph_rasterizer v0.1.10
+   Compiling lebe v0.5.3
+   Compiling litrs v1.0.0
+   Compiling bit_field v0.10.3
+   Compiling napi-sys v2.4.0
+   Compiling vcpkg v0.2.15
+   Compiling zeroize v1.8.2
+   Compiling byteorder-lite v0.1.0
+   Compiling rgb v0.8.52
+   Compiling image-webp v0.2.4
+   Compiling document-features v0.2.12
+   Compiling napi v2.16.17
+   Compiling libsqlite3-sys v0.30.1
+   Compiling toml v0.8.23
+   Compiling exr v1.74.0
+   Compiling ruvector-bench v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-bench)
+warning: unused import: `Context`
+  --> crates/ruvector-bench/src/lib.rs:11:14
+   |
+11 | use anyhow::{Context, Result};
+   |              ^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `BufReader`
+  --> crates/ruvector-bench/src/lib.rs:17:15
+   |
+17 | use std::io::{BufReader, BufWriter, Write};
+   |               ^^^^^^^^^
+
+warning: unused import: `Instant`
+  --> crates/ruvector-bench/src/lib.rs:19:27
+   |
+19 | use std::time::{Duration, Instant};
+   |                           ^^^^^^^
+
+   Compiling moxcms v0.7.10
+   Compiling owned_ttf_parser v0.25.1
+   Compiling napi-derive v2.16.13
+warning: `ruvector-bench` (lib) generated 3 warnings (run `cargo fix --lib -p ruvector-bench` to apply 3 suggestions)
+   Compiling zune-jpeg v0.5.5
+   Compiling pest_meta v2.8.4
+   Compiling tokio-native-tls v0.3.1
+   Compiling tiff v0.10.3
+   Compiling unicode-normalization v0.1.25
+   Compiling darling v0.20.11
+   Compiling url v2.5.7
+   Compiling simba v0.8.1
+   Compiling gif v0.14.0
+   Compiling png v0.18.0
+   Compiling pin-project-internal v1.1.10
+   Compiling ravif v0.12.0
+   Compiling qoi v0.4.1
+   Compiling raw-cpuid v11.6.0
+   Compiling unicode-bidi v0.3.18
+   Compiling fixedbitset v0.4.2
+   Compiling hashbrown v0.12.3
+   Compiling ttf-parser v0.15.2
+   Compiling idna v0.5.0
+   Compiling pin-project v1.1.10
+   Compiling petgraph v0.6.5
+   Compiling lz4 v1.28.1
+   Compiling validator_derive v0.18.2
+   Compiling pest_generator v2.8.4
+   Compiling hyper-tls v0.6.0
+   Compiling ab_glyph v0.2.32
+   Compiling zstd v0.13.3
+   Compiling crossterm v0.29.0
+   Compiling quanta v0.12.6
+   Compiling rustls-pki-types v1.13.1
+   Compiling owned_ttf_parser v0.15.2
+   Compiling web-sys v0.3.82
+   Compiling simba v0.9.1
+   Compiling num v0.4.3
+   Compiling sha2 v0.10.9
+   Compiling nom_locate v4.2.0
+   Compiling image v0.25.9
+   Compiling tokio-stream v0.1.17
+   Compiling dirs-sys v0.4.1
+   Compiling dashmap v5.5.3
+   Compiling nalgebra-macros v0.2.2
+   Compiling lru v0.12.5
+   Compiling roaring v0.10.12
+   Compiling dirs-sys-next v0.1.2
+   Compiling page_size v0.6.0
+   Compiling itertools v0.12.1
+   Compiling spinning_top v0.3.0
+   Compiling no-std-compat v0.4.1
+   Compiling nonzero_ext v0.3.0
+   Compiling futures-timer v3.0.3
+   Compiling protobuf v2.28.0
+   Compiling http-range-header v0.4.2
+   Compiling zip v2.4.2
+   Compiling shell-words v1.1.0
+   Compiling tower-http v0.5.2
+   Compiling dialoguer v0.11.0
+   Compiling ruvector-graph v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-graph)
+warning: unexpected `cfg` condition value: `minimal`
+  --> crates/ruvector-graph/src/lib.rs:41:11
+   |
+41 | #[cfg(not(feature = "minimal"))]
+   |           ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `async-runtime`, `blake3`, `compression`, `cypher-lalrpop`, `cypher-pest`, `default`, `distributed`, `federation`, `full`, `fulltext`, `futures`, `geospatial`, `hnsw_rs`, `hyper`, `jit`, `lalrpop-util`, `lz4`, `memmap2`, `metrics`, `moka`, `pest`, `pest_derive`, `prometheus`, `prost`, `redb`, `ruvector-cluster`, `ruvector-raft`, `ruvector-replication`, `simd`, `simsimd`, `storage`, `temporal`, `tokio`, `tonic`, and `tower` and 3 more
+   = help: consider adding `minimal` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unused import: `preceded`
+  --> crates/ruvector-graph/src/cypher/lexer.rs:11:33
+   |
+11 |     sequence::{delimited, pair, preceded, tuple},
+   |                                 ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unnecessary parentheses around assigned value
+   --> crates/ruvector-graph/src/cypher/optimizer.rs:441:25
+    |
+441 |                 cost /= (1.0 + node.labels.len() as f64 * 0.5);
+    |                         ^                                    ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+441 -                 cost /= (1.0 + node.labels.len() as f64 * 0.5);
+441 +                 cost /= 1.0 + node.labels.len() as f64 * 0.5;
+    |
+
+warning: unnecessary parentheses around assigned value
+   --> crates/ruvector-graph/src/cypher/optimizer.rs:445:29
+    |
+445 |                     cost /= (1.0 + props.len() as f64 * 0.3);
+    |                             ^                              ^
+    |
+help: remove these parentheses
+    |
+445 -                     cost /= (1.0 + props.len() as f64 * 0.3);
+445 +                     cost /= 1.0 + props.len() as f64 * 0.3;
+    |
+
+warning: unused import: `HashSet`
+  --> crates/ruvector-graph/src/cypher/semantic.rs:10:33
+   |
+10 | use std::collections::{HashMap, HashSet};
+   |                                 ^^^^^^^
+
+warning: unused import: `ExecutionError`
+ --> crates/ruvector-graph/src/executor/operators.rs:7:23
+  |
+7 | use crate::executor::{ExecutionError, Result};
+  |                       ^^^^^^^^^^^^^^
+
+warning: unused import: `crate::executor::operators::Operator`
+ --> crates/ruvector-graph/src/executor/parallel.rs:5:5
+  |
+5 | use crate::executor::operators::Operator;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ExecutionContext`
+ --> crates/ruvector-graph/src/executor/parallel.rs:6:33
+  |
+6 | use crate::executor::pipeline::{ExecutionContext, RowBatch};
+  |                                 ^^^^^^^^^^^^^^^^
+
+warning: unused import: `ExecutionError`
+ --> crates/ruvector-graph/src/executor/plan.rs:7:23
+  |
+7 | use crate::executor::{ExecutionError, Result};
+  |                       ^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> crates/ruvector-graph/src/executor/plan.rs:10:5
+   |
+10 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+ --> crates/ruvector-graph/src/node.rs:6:5
+  |
+6 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `uuid::Uuid`
+  --> crates/ruvector-graph/src/transaction.rs:16:5
+   |
+16 | use uuid::Uuid;
+   |     ^^^^^^^^^^
+
+warning: unused import: `std::cmp::Ordering`
+ --> crates/ruvector-graph/src/optimization/adaptive_radix.rs:6:5
+  |
+6 | use std::cmp::Ordering;
+  |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::mem`
+ --> crates/ruvector-graph/src/optimization/adaptive_radix.rs:7:5
+  |
+7 | use std::mem;
+  |     ^^^^^^^^
+
+warning: unused imports: `Layout`, `alloc`, and `dealloc`
+ --> crates/ruvector-graph/src/optimization/cache_hierarchy.rs:7:18
+  |
+7 | use std::alloc::{alloc, dealloc, Layout};
+  |                  ^^^^^  ^^^^^^^  ^^^^^^
+
+warning: unused import: `std::arch::x86_64::*`
+  --> crates/ruvector-graph/src/optimization/simd_traversal.rs:13:5
+   |
+13 | use std::arch::x86_64::*;
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `GraphError`
+ --> crates/ruvector-graph/src/hybrid/graph_neural.rs:5:20
+  |
+5 | use crate::error::{GraphError, Result};
+  |                    ^^^^^^^^^^
+
+warning: unused import: `EdgeId`
+ --> crates/ruvector-graph/src/hybrid/graph_neural.rs:6:20
+  |
+6 | use crate::types::{EdgeId, NodeId};
+  |                    ^^^^^^
+
+warning: unused import: `GraphError`
+ --> crates/ruvector-graph/src/hybrid/rag_integration.rs:5:20
+  |
+5 | use crate::error::{GraphError, Result};
+  |                    ^^^^^^^^^^
+
+warning: unused imports: `EdgeId` and `Properties`
+ --> crates/ruvector-graph/src/hybrid/rag_integration.rs:7:20
+  |
+7 | use crate::types::{EdgeId, NodeId, Properties};
+  |                    ^^^^^^          ^^^^^^^^^^
+
+warning: unused import: `GraphError`
+ --> crates/ruvector-graph/src/hybrid/semantic_search.rs:5:20
+  |
+5 | use crate::error::{GraphError, Result};
+  |                    ^^^^^^^^^^
+
+warning: unused imports: `HashMap` and `HashSet`
+ --> crates/ruvector-graph/src/hybrid/semantic_search.rs:9:24
+  |
+9 | use std::collections::{HashMap, HashSet};
+  |                        ^^^^^^^  ^^^^^^^
+
+warning: unused import: `ruvector_core::index::flat::FlatIndex`
+ --> crates/ruvector-graph/src/hybrid/vector_index.rs:9:5
+  |
+9 | use ruvector_core::index::flat::FlatIndex;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `SearchResult`
+  --> crates/ruvector-graph/src/hybrid/vector_index.rs:15:44
+   |
+15 | use ruvector_core::types::{DistanceMetric, SearchResult};
+   |                                            ^^^^^^^^^^^^
+
+warning: unused import: `crate::error::Result`
+  --> crates/ruvector-graph/src/hybrid/mod.rs:21:5
+   |
+21 | use crate::error::Result;
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+   Compiling governor v0.6.3
+   Compiling ruvector-gnn v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-gnn)
+   Compiling dirs-next v2.0.0
+   Compiling axum-streams v0.15.0
+   Compiling dirs v5.0.1
+   Compiling comfy-table v7.2.1
+   Compiling rusttype v0.9.3
+   Compiling validator v0.18.1
+   Compiling reqwest v0.12.24
+   Compiling pest_derive v2.8.4
+   Compiling tower v0.4.13
+warning: unused import: `rand::Rng`
+ --> crates/ruvector-gnn/src/layer.rs:7:5
+  |
+7 | use rand::Rng;
+  |     ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `rand::Rng`
+  --> crates/ruvector-gnn/src/tensor.rs:11:5
+   |
+11 | use rand::Rng;
+   |     ^^^^^^^^^
+
+warning: unused import: `Write`
+  --> crates/ruvector-gnn/src/mmap.rs:17:21
+   |
+17 | use std::io::{self, Write};
+   |                     ^^^^^
+
+   Compiling serde-wasm-bindgen v0.6.5
+warning: unused variable: `layer_idx`
+   --> crates/ruvector-gnn/src/search.rs:109:10
+    |
+109 |     for (layer_idx, (embeddings, gnn_layer)) in
+    |          ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_layer_idx`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `timestep`
+   --> crates/ruvector-gnn/src/training.rs:180:13
+    |
+180 |         let timestep = *t as f32;
+    |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_timestep`
+
+warning: unused variable: `loss_type`
+   --> crates/ruvector-gnn/src/training.rs:236:9
+    |
+236 |         loss_type: LossType,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_loss_type`
+
+warning: unused variable: `predictions`
+   --> crates/ruvector-gnn/src/training.rs:237:9
+    |
+237 |         predictions: &Array2<f32>,
+    |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_predictions`
+
+warning: unused variable: `targets`
+   --> crates/ruvector-gnn/src/training.rs:238:9
+    |
+238 |         targets: &Array2<f32>,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_targets`
+
+warning: unused variable: `loss_type`
+   --> crates/ruvector-gnn/src/training.rs:245:9
+    |
+245 |         loss_type: LossType,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_loss_type`
+
+warning: unused variable: `predictions`
+   --> crates/ruvector-gnn/src/training.rs:246:9
+    |
+246 |         predictions: &Array2<f32>,
+    |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_predictions`
+
+warning: unused variable: `targets`
+   --> crates/ruvector-gnn/src/training.rs:247:9
+    |
+247 |         targets: &Array2<f32>,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_targets`
+
+warning: field `default_level` is never read
+  --> crates/ruvector-gnn/src/compress.rs:77:5
+   |
+75 | pub struct TensorCompress {
+   |            -------------- field in this struct
+76 |     /// Default compression parameters
+77 |     default_level: CompressionLevel,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `TensorCompress` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `file`, `page_size`, and `pin_count` are never read
+   --> crates/ruvector-gnn/src/mmap.rs:120:5
+    |
+118 | pub struct MmapManager {
+    |            ----------- fields in this struct
+119 |     /// The memory-mapped file
+120 |     file: File,
+    |     ^^^^
+...
+124 |     page_size: usize,
+    |     ^^^^^^^^^
+...
+132 |     pin_count: Vec<AtomicU32>,
+    |     ^^^^^^^^^
+    |
+    = note: `MmapManager` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: missing documentation for a module
+  --> crates/ruvector-gnn/src/lib.rs:51:1
+   |
+51 | pub mod ewc;
+   | ^^^^^^^^^^^
+   |
+note: the lint level is defined here
+  --> crates/ruvector-gnn/src/lib.rs:46:9
+   |
+46 | #![warn(missing_docs)]
+   |         ^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/ruvector-gnn/src/lib.rs:56:1
+   |
+56 | pub mod search;
+   | ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:20:12
+   |
+20 |     Half { scale: f32 },
+   |            ^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:23:11
+   |
+23 |     PQ8 { subvectors: u8, centroids: u8 },
+   |           ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:23:27
+   |
+23 |     PQ8 { subvectors: u8, centroids: u8 },
+   |                           ^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:27:9
+   |
+27 |         subvectors: u8,
+   |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:28:9
+   |
+28 |         outlier_threshold: f32,
+   |         ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:32:14
+   |
+32 |     Binary { threshold: f32 },
+   |              ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:39:12
+   |
+39 |     Full { data: Vec<f32> },
+   |            ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:43:9
+   |
+43 |         data: Vec<u16>,
+   |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:44:9
+   |
+44 |         scale: f32,
+   |         ^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:45:9
+   |
+45 |         dim: usize,
+   |         ^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:50:9
+   |
+50 |         codes: Vec<u8>,
+   |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:51:9
+   |
+51 |         codebooks: Vec<Vec<f32>>,
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:52:9
+   |
+52 |         subvector_dim: usize,
+   |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:53:9
+   |
+53 |         dim: usize,
+   |         ^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:58:9
+   |
+58 |         codes: Vec<u8>, // Packed 4-bit codes
+   |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:59:9
+   |
+59 |         codebooks: Vec<Vec<f32>>,
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:60:9
+   |
+60 |         outliers: Vec<(usize, f32)>, // (index, value) pairs
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:61:9
+   |
+61 |         subvector_dim: usize,
+   |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:62:9
+   |
+62 |         dim: usize,
+   |         ^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:67:9
+   |
+67 |         bits: Vec<u8>,
+   |         ^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:68:9
+   |
+68 |         threshold: f32,
+   |         ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/compress.rs:69:9
+   |
+69 |         dim: usize,
+   |         ^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/scheduler.rs:17:9
+   |
+17 |         step_size: usize,
+   |         ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/scheduler.rs:18:9
+   |
+18 |         gamma: f32,
+   |         ^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/scheduler.rs:24:9
+   |
+24 |         gamma: f32,
+   |         ^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/scheduler.rs:30:9
+   |
+30 |         t_max: usize,
+   |         ^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/scheduler.rs:31:9
+   |
+31 |         eta_min: f32,
+   |         ^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/scheduler.rs:38:9
+   |
+38 |         warmup_steps: usize,
+   |         ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/scheduler.rs:39:9
+   |
+39 |         total_steps: usize,
+   |         ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/scheduler.rs:45:9
+   |
+45 |         factor: f32,
+   |         ^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/scheduler.rs:46:9
+   |
+46 |         patience: usize,
+   |         ^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/ruvector-gnn/src/scheduler.rs:47:9
+   |
+47 |         min_lr: f32,
+   |         ^^^^^^^^^^^
+
+   Compiling nalgebra v0.32.6
+   Compiling wasm-bindgen-futures v0.4.55
+   Compiling clap_complete v4.5.61
+   Compiling hmac v0.12.1
+   Compiling zopfli v0.8.3
+warning: unused variable: `query`
+   --> crates/ruvector-graph/src/cypher/optimizer.rs:281:40
+    |
+281 |     fn apply_predicate_pushdown(&self, query: Query) -> Option<Query> {
+    |                                        ^^^^^ help: if this is intentional, prefix it with an underscore: `_query`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling hashlink v0.9.1
+warning: unused variable: `input`
+   --> crates/ruvector-graph/src/executor/operators.rs:320:27
+    |
+320 |     fn execute(&mut self, input: Option<RowBatch>) -> Result<Option<RowBatch>> {
+    |                           ^^^^^ help: if this is intentional, prefix it with an underscore: `_input`
+
+warning: unused variable: `input`
+   --> crates/ruvector-graph/src/executor/operators.rs:362:27
+    |
+362 |     fn execute(&mut self, input: Option<RowBatch>) -> Result<Option<RowBatch>> {
+    |                           ^^^^^ help: if this is intentional, prefix it with an underscore: `_input`
+
+warning: unused variable: `input`
+   --> crates/ruvector-graph/src/executor/operators.rs:430:27
+    |
+430 |     fn execute(&mut self, input: Option<RowBatch>) -> Result<Option<RowBatch>> {
+    |                           ^^^^^ help: if this is intentional, prefix it with an underscore: `_input`
+
+warning: variable does not need to be mutable
+   --> crates/ruvector-graph/src/executor/parallel.rs:102:13
+    |
+102 |         let mut results = Vec::new();
+    |             ----^^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `plan`
+   --> crates/ruvector-graph/src/executor/parallel.rs:101:34
+    |
+101 |     fn execute_sequential(&self, plan: &PhysicalPlan) -> Result<Vec<RowBatch>> {
+    |                                  ^^^^ help: if this is intentional, prefix it with an underscore: `_plan`
+
+warning: unused variable: `plan`
+   --> crates/ruvector-graph/src/executor/parallel.rs:137:9
+    |
+137 |         plan: &PhysicalPlan,
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_plan`
+
+warning: unused variable: `partition_id`
+   --> crates/ruvector-graph/src/executor/parallel.rs:138:9
+    |
+138 |         partition_id: usize,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_partition_id`
+
+warning: unused variable: `num_partitions`
+   --> crates/ruvector-graph/src/executor/parallel.rs:139:9
+    |
+139 |         num_partitions: usize,
+    |         ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_num_partitions`
+
+warning: variable `intermediate_results` is assigned to, but never used
+   --> crates/ruvector-graph/src/executor/parallel.rs:147:13
+    |
+147 |         let mut intermediate_results = Vec::new();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider using `_intermediate_results` instead
+
+warning: value assigned to `intermediate_results` is never read
+   --> crates/ruvector-graph/src/executor/parallel.rs:153:13
+    |
+153 |             intermediate_results = stage_results;
+    |             ^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `plan`
+   --> crates/ruvector-graph/src/executor/parallel.rs:165:9
+    |
+165 |         plan: &PhysicalPlan,
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_plan`
+
+warning: unused variable: `start`
+   --> crates/ruvector-graph/src/executor/parallel.rs:166:9
+    |
+166 |         start: usize,
+    |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_start`
+
+warning: unused variable: `end`
+   --> crates/ruvector-graph/src/executor/parallel.rs:167:9
+    |
+167 |         end: usize,
+    |         ^^^ help: if this is intentional, prefix it with an underscore: `_end`
+
+warning: unused variable: `build_side`
+   --> crates/ruvector-graph/src/executor/parallel.rs:294:14
+    |
+294 |         let (build_side, probe_side) = if left.len() < right.len() {
+    |              ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_build_side`
+
+warning: unused variable: `probe_side`
+   --> crates/ruvector-graph/src/executor/parallel.rs:294:26
+    |
+294 |         let (build_side, probe_side) = if left.len() < right.len() {
+    |                          ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_probe_side`
+
+warning: unused variable: `left`
+   --> crates/ruvector-graph/src/executor/parallel.rs:306:9
+    |
+306 |         left: Vec<RowBatch>,
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_left`
+
+warning: unused variable: `right`
+   --> crates/ruvector-graph/src/executor/parallel.rs:307:9
+    |
+307 |         right: Vec<RowBatch>,
+    |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_right`
+
+warning: unused variable: `left`
+   --> crates/ruvector-graph/src/executor/parallel.rs:314:31
+    |
+314 |     fn sort_merge_join(&self, left: Vec<RowBatch>, right: Vec<RowBatch>) -> Result<Vec<RowBatch>> {
+    |                               ^^^^ help: if this is intentional, prefix it with an underscore: `_left`
+
+warning: unused variable: `right`
+   --> crates/ruvector-graph/src/executor/parallel.rs:314:52
+    |
+314 |     fn sort_merge_join(&self, left: Vec<RowBatch>, right: Vec<RowBatch>) -> Result<Vec<RowBatch>> {
+    |                                                    ^^^^^ help: if this is intentional, prefix it with an underscore: `_right`
+
+warning: unused variable: `join_column`
+  --> crates/ruvector-graph/src/executor/stats.rs:61:9
+   |
+61 |         join_column: &str,
+   |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_join_column`
+
+   Compiling ndarray v0.15.6
+   Compiling csv-core v0.1.13
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling prometheus v0.13.4
+   Compiling glob v0.3.3
+warning: `ruvector-gnn` (lib) generated 47 warnings (run `cargo fix --lib -p ruvector-gnn` to apply 8 suggestions)
+   Compiling fallible-iterator v0.3.0
+warning: unused variable: `label`
+   --> crates/ruvector-graph/src/optimization/query_jit.rs:272:34
+    |
+272 |     pub fn vectorized_label_scan(label: &str, nodes: &[u64]) -> Vec<u64> {
+    |                                  ^^^^^ help: if this is intentional, prefix it with an underscore: `_label`
+
+warning: unused variable: `property`
+   --> crates/ruvector-graph/src/optimization/query_jit.rs:279:9
+    |
+279 |         property: &str,
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_property`
+
+warning: unused variable: `predicate`
+   --> crates/ruvector-graph/src/optimization/query_jit.rs:280:9
+    |
+280 |         predicate: &FilterPredicate,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_predicate`
+
+warning: unused variable: `nodes`
+   --> crates/ruvector-graph/src/optimization/query_jit.rs:288:34
+    |
+288 |     pub fn cache_friendly_expand(nodes: &[u64], direction: Direction) -> Vec<(u64, u64)> {
+    |                                  ^^^^^ help: if this is intentional, prefix it with an underscore: `_nodes`
+
+warning: unused variable: `direction`
+   --> crates/ruvector-graph/src/optimization/query_jit.rs:288:49
+    |
+288 |     pub fn cache_friendly_expand(nodes: &[u64], direction: Direction) -> Vec<(u64, u64)> {
+    |                                                 ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_direction`
+
+warning: variable does not need to be mutable
+  --> crates/ruvector-graph/src/optimization/simd_traversal.rs:39:52
+   |
+39 |     pub fn simd_bfs<F>(&self, start_nodes: &[u64], mut visit_fn: F) -> Vec<u64>
+   |                                                    ----^^^^^^^^
+   |                                                    |
+   |                                                    help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/ruvector-graph/src/optimization/simd_traversal.rs:176:52
+    |
+176 |     pub fn parallel_dfs<F>(&self, start_node: u64, mut visit_fn: F) -> Vec<u64>
+    |                                                    ----^^^^^^^^
+    |                                                    |
+    |                                                    help: remove this `mut`
+
+   Compiling dotenvy v0.15.7
+warning: unused variable: `similar`
+   --> crates/ruvector-graph/src/hybrid/semantic_search.rs:164:13
+    |
+164 |         let similar = self.index.search_similar_nodes(query, expansion_factor)?;
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_similar`
+
+   Compiling rusqlite v0.32.1
+   Compiling py_literal v0.4.0
+warning: methods `get_variables_in_expression` and `collect_variables` are never used
+   --> crates/ruvector-graph/src/cypher/optimizer.rs:475:8
+    |
+ 38 | impl QueryOptimizer {
+    | ------------------- methods in this implementation
+...
+475 |     fn get_variables_in_expression(&self, expr: &Expression) -> HashSet<String> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+481 |     fn collect_variables(&self, expr: &Expression, vars: &mut HashSet<String>) {
+    |        ^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `current_scope`, `push_scope`, and `pop_scope` are never used
+   --> crates/ruvector-graph/src/cypher/semantic.rs:133:8
+    |
+125 | impl SemanticAnalyzer {
+    | --------------------- methods in this implementation
+...
+133 |     fn current_scope(&self) -> &Scope {
+    |        ^^^^^^^^^^^^^
+...
+141 |     fn push_scope(&mut self) {
+    |        ^^^^^^^^^^
+...
+145 |     fn pop_scope(&mut self) {
+    |        ^^^^^^^^^
+
+warning: fields `mode`, `filter`, and `position` are never read
+  --> crates/ruvector-graph/src/executor/operators.rs:40:5
+   |
+39 | pub struct NodeScan {
+   |            -------- fields in this struct
+40 |     mode: ScanMode,
+   |     ^^^^
+41 |     filter: Option<Predicate>,
+   |     ^^^^^^
+42 |     position: usize,
+   |     ^^^^^^^^
+
+warning: fields `mode`, `filter`, and `position` are never read
+  --> crates/ruvector-graph/src/executor/operators.rs:69:5
+   |
+68 | pub struct EdgeScan {
+   |            -------- fields in this struct
+69 |     mode: ScanMode,
+   |     ^^^^
+70 |     filter: Option<Predicate>,
+   |     ^^^^^^
+71 |     position: usize,
+   |     ^^^^^^^^
+
+warning: fields `mode` and `filter` are never read
+  --> crates/ruvector-graph/src/executor/operators.rs:96:5
+   |
+95 | pub struct HyperedgeScan {
+   |            ------------- fields in this struct
+96 |     mode: ScanMode,
+   |     ^^^^
+97 |     filter: Option<Predicate>,
+   |     ^^^^^^
+
+warning: methods `filter_batch_simd`, `filter_batch_avx2`, and `filter_batch_scalar` are never used
+   --> crates/ruvector-graph/src/executor/operators.rs:187:8
+    |
+121 | impl Filter {
+    | ----------- methods in this implementation
+...
+187 |     fn filter_batch_simd(&self, values: &[f32], threshold: f32) -> Vec<bool> {
+    |        ^^^^^^^^^^^^^^^^^
+...
+197 |     unsafe fn filter_batch_avx2(&self, values: &[f32], threshold: f32) -> Vec<bool> {
+    |               ^^^^^^^^^^^^^^^^^
+...
+226 |     fn filter_batch_scalar(&self, values: &[f32], threshold: f32) -> Vec<bool> {
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: fields `join_type`, `on`, `hash_table`, and `built` are never read
+   --> crates/ruvector-graph/src/executor/operators.rs:265:5
+    |
+264 | pub struct Join {
+    |            ---- fields in this struct
+265 |     join_type: JoinType,
+    |     ^^^^^^^^^
+266 |     on: Vec<(String, String)>,
+    |     ^^
+267 |     hash_table: HashMap<Vec<Value>, Vec<HashMap<String, Value>>>,
+    |     ^^^^^^^^^^
+268 |     built: bool,
+    |     ^^^^^
+
+warning: methods `build_hash_table` and `probe` are never used
+   --> crates/ruvector-graph/src/executor/operators.rs:281:8
+    |
+271 | impl Join {
+    | --------- methods in this implementation
+...
+281 |     fn build_hash_table(&mut self, build_side: RowBatch) {
+    |        ^^^^^^^^^^^^^^^^
+...
+297 |     fn probe(&self, probe_row: &HashMap<String, Value>) -> Vec<HashMap<String, Value>> {
+    |        ^^^^^
+
+warning: fields `group_by`, `aggregates`, and `state` are never read
+   --> crates/ruvector-graph/src/executor/operators.rs:346:5
+    |
+345 | pub struct Aggregate {
+    |            --------- fields in this struct
+346 |     group_by: Vec<String>,
+    |     ^^^^^^^^
+347 |     aggregates: Vec<(AggregateFunction, String)>,
+    |     ^^^^^^^^^^
+348 |     state: HashMap<Vec<Value>, Vec<f64>>,
+    |     ^^^^^
+
+warning: fields `order_by` and `buffer` are never read
+   --> crates/ruvector-graph/src/executor/operators.rs:416:5
+    |
+415 | pub struct Sort {
+    |            ---- fields in this struct
+416 |     order_by: Vec<(String, crate::executor::plan::SortOrder)>,
+    |     ^^^^^^^^
+417 |     buffer: Vec<HashMap<String, Value>>,
+    |     ^^^^^^
+
+warning: field `executor` is never read
+   --> crates/ruvector-graph/src/executor/parallel.rs:274:5
+    |
+272 | pub struct ParallelJoin {
+    |            ------------ field in this struct
+273 |     strategy: ParallelJoinStrategy,
+274 |     executor: Arc<ParallelExecutor>,
+    |     ^^^^^^^^
+
+warning: field `plan` is never read
+   --> crates/ruvector-graph/src/executor/pipeline.rs:131:5
+    |
+130 | pub struct Pipeline {
+    |            -------- field in this struct
+131 |     plan: PhysicalPlan,
+    |     ^^^^
+
+warning: fields `id`, `isolation_level`, and `start_time` are never read
+  --> crates/ruvector-graph/src/transaction.rs:70:5
+   |
+69 | struct TxnMetadata {
+   |        ----------- fields in this struct
+70 |     id: TxnId,
+   |     ^^
+71 |     state: TxnState,
+72 |     isolation_level: IsolationLevel,
+   |     ^^^^^^^^^^^^^^^
+73 |     start_time: Timestamp,
+   |     ^^^^^^^^^^
+
+warning: field `deleted_hyperedges` is never read
+   --> crates/ruvector-graph/src/transaction.rs:272:5
+    |
+266 | struct WriteSet {
+    |        -------- field in this struct
+...
+272 |     deleted_hyperedges: HashSet<HyperedgeId>,
+    |     ^^^^^^^^^^^^^^^^^^
+    |
+    = note: `WriteSet` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: constant `CACHE_LINE_SIZE` is never used
+  --> crates/ruvector-graph/src/optimization/cache_hierarchy.rs:11:7
+   |
+11 | const CACHE_LINE_SIZE: usize = 64;
+   |       ^^^^^^^^^^^^^^^
+
+warning: constant `L1_CACHE_SIZE` is never used
+  --> crates/ruvector-graph/src/optimization/cache_hierarchy.rs:14:7
+   |
+14 | const L1_CACHE_SIZE: usize = 32 * 1024;
+   |       ^^^^^^^^^^^^^
+
+warning: constant `L2_CACHE_SIZE` is never used
+  --> crates/ruvector-graph/src/optimization/cache_hierarchy.rs:17:7
+   |
+17 | const L2_CACHE_SIZE: usize = 256 * 1024;
+   |       ^^^^^^^^^^^^^
+
+warning: constant `L3_CACHE_SIZE` is never used
+  --> crates/ruvector-graph/src/optimization/cache_hierarchy.rs:20:7
+   |
+20 | const L3_CACHE_SIZE: usize = 8 * 1024 * 1024;
+   |       ^^^^^^^^^^^^^
+
+warning: method `evict_cold` is never used
+  --> crates/ruvector-graph/src/optimization/cache_hierarchy.rs:90:8
+   |
+32 | impl CacheHierarchy {
+   | ------------------- method in this implementation
+...
+90 |     fn evict_cold(&self) {
+   |        ^^^^^^^^^^
+
+warning: field `capacity` is never read
+   --> crates/ruvector-graph/src/optimization/cache_hierarchy.rs:211:5
+    |
+208 | struct ColdStorage {
+    |        ----------- field in this struct
+...
+211 |     capacity: usize,
+    |     ^^^^^^^^
+
+warning: method `get_lru_nodes` is never used
+   --> crates/ruvector-graph/src/optimization/cache_hierarchy.rs:285:8
+    |
+257 | impl AccessTracker {
+    | ------------------ method in this implementation
+...
+285 |     fn get_lru_nodes(&self, count: usize) -> Vec<u64> {
+    |        ^^^^^^^^^^^^^
+
+warning: field `sorted_indexes` is never read
+  --> crates/ruvector-graph/src/optimization/index_compression.rs:18:5
+   |
+14 | pub struct CompressedIndex {
+   |            --------------- field in this struct
+...
+18 |     sorted_indexes: Arc<RwLock<HashMap<String, DeltaEncodedList>>>,
+   |     ^^^^^^^^^^^^^^
+
+warning: method `len` is never used
+   --> crates/ruvector-graph/src/optimization/index_compression.rs:349:8
+    |
+322 | impl StringDictionary {
+    | --------------------- method in this implementation
+...
+349 |     fn len(&self) -> usize {
+    |        ^^^
+
+warning: field `max_size` is never read
+   --> crates/ruvector-graph/src/optimization/memory_pool.rs:295:5
+    |
+289 | pub struct ObjectPool<T> {
+    |            ---------- field in this struct
+...
+295 |     max_size: usize,
+    |     ^^^^^^^^
+
+warning: method `avg_time_ns` is never used
+   --> crates/ruvector-graph/src/optimization/query_jit.rs:255:8
+    |
+231 | impl QueryStats {
+    | --------------- method in this implementation
+...
+255 |     fn avg_time_ns(&self, pattern: &str) -> Option<u64> {
+    |        ^^^^^^^^^^^
+
+warning: field `options` is never read
+  --> crates/ruvector-graph/src/hybrid/cypher_extensions.rs:13:5
+   |
+11 | pub struct VectorCypherParser {
+   |            ------------------ field in this struct
+12 |     /// Parse options
+13 |     options: ParserOptions,
+   |     ^^^^^^^
+
+warning: methods `aggregate_with_attention` and `activate` are never used
+   --> crates/ruvector-graph/src/hybrid/graph_neural.rs:180:8
+    |
+ 62 | impl GraphNeuralEngine {
+    | ---------------------- methods in this implementation
+...
+180 |     fn aggregate_with_attention(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+191 |     fn activate(&self, x: f32) -> f32 {
+    |        ^^^^^^^^
+
+   Compiling csv v1.4.0
+   Compiling term v0.7.0
+   Compiling nalgebra v0.33.2
+   Compiling console_error_panic_hook v0.1.7
+   Compiling ruvector-attention v0.1.0 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-attention)
+   Compiling async-stream-impl v0.3.6
+   Compiling encode_unicode v1.0.0
+warning: unused import: `AttentionError`
+ --> crates/ruvector-attention/src/hyperbolic/mixed_curvature.rs:4:37
+  |
+4 | use crate::error::{AttentionResult, AttentionError};
+  |                                     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling async-stream v0.3.6
+   Compiling prettytable-rs v0.10.0
+warning: unused variable: `avg_count`
+  --> crates/ruvector-attention/src/moe/router.rs:91:13
+   |
+91 |         let avg_count = expert_counts.iter().sum::<f32>() / self.num_experts as f32;
+   |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_avg_count`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `avg_weight`
+  --> crates/ruvector-attention/src/moe/router.rs:92:13
+   |
+92 |         let avg_weight = total_weight.iter().sum::<f32>() / self.num_experts as f32;
+   |             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_avg_weight`
+
+warning: unused variable: `keys`
+  --> crates/ruvector-attention/src/sdk/pipeline.rs:39:38
+   |
+39 |     pub fn run(&self, query: &[f32], keys: &[&[f32]], values: &[&[f32]]) -> AttentionResult<Vec<f32>> {
+   |                                      ^^^^ help: if this is intentional, prefix it with an underscore: `_keys`
+
+warning: unused variable: `values`
+  --> crates/ruvector-attention/src/sdk/pipeline.rs:39:55
+   |
+39 |     pub fn run(&self, query: &[f32], keys: &[&[f32]], values: &[&[f32]]) -> AttentionResult<Vec<f32>> {
+   |                                                       ^^^^^^ help: if this is intentional, prefix it with an underscore: `_values`
+
+   Compiling ruvector-router-core v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-router-core)
+   Compiling ruvector-tiny-dancer-core v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-tiny-dancer-core)
+   Compiling ndarray-npy v0.9.1
+   Compiling refrag-pipeline-example v0.1.0 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/examples/refrag-pipeline)
+   Compiling tracing-wasm v0.2.1
+warning: unused import: `Array2`
+ --> examples/refrag-pipeline/src/compress.rs:8:23
+  |
+8 | use ndarray::{Array1, Array2};
+  |                       ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Read`
+ --> examples/refrag-pipeline/src/compress.rs:9:15
+  |
+9 | use std::io::{Read, Write};
+  |               ^^^^
+
+warning: unused import: `RefragEntry`
+ --> examples/refrag-pipeline/src/sense.rs:8:20
+  |
+8 | use crate::types::{RefragEntry, RefragResponseType};
+  |                    ^^^^^^^^^^^
+
+warning: unused import: `BatchCompressor`
+ --> examples/refrag-pipeline/src/store.rs:6:23
+  |
+6 | use crate::compress::{BatchCompressor, CompressionStrategy, TensorCompressor};
+  |                       ^^^^^^^^^^^^^^^
+
+warning: unused import: `PolicyDecision`
+ --> examples/refrag-pipeline/src/store.rs:8:20
+  |
+8 | use crate::sense::{PolicyDecision, PolicyNetwork, RefragAction};
+  |                    ^^^^^^^^^^^^^^
+
+warning: unused imports: `SearchQuery`, `SearchResult`, and `VectorEntry`
+  --> examples/refrag-pipeline/src/store.rs:12:21
+   |
+12 | use ruvector_core::{SearchQuery, SearchResult, VectorEntry};
+   |                     ^^^^^^^^^^^  ^^^^^^^^^^^^  ^^^^^^^^^^^
+
+warning: unused import: `Arc`
+  --> examples/refrag-pipeline/src/store.rs:15:17
+   |
+15 | use std::sync::{Arc, RwLock};
+   |                 ^^^
+
+warning: unused import: `Write`
+ --> examples/refrag-pipeline/src/compress.rs:9:21
+  |
+9 | use std::io::{Read, Write};
+  |                     ^^^^^
+
+   Compiling shellexpand v3.1.1
+   Compiling ruvector-attention-node v0.1.0 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-attention-node)
+   Compiling ruvector-node v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-node)
+warning: multiple fields are never read
+   --> crates/ruvector-tiny-dancer-core/src/training.rs:275:5
+    |
+273 | struct AdamOptimizer {
+    |        ------------- fields in this struct
+274 |     /// First moment estimates
+275 |     m_weights: Vec<Array2<f32>>,
+    |     ^^^^^^^^^
+276 |     m_biases: Vec<Array1<f32>>,
+    |     ^^^^^^^^
+277 |     /// Second moment estimates
+278 |     v_weights: Vec<Array2<f32>>,
+    |     ^^^^^^^^^
+279 |     v_biases: Vec<Array1<f32>>,
+    |     ^^^^^^^^
+...
+283 |     beta1: f32,
+    |     ^^^^^
+284 |     beta2: f32,
+    |     ^^^^^
+285 |     epsilon: f32,
+    |     ^^^^^^^
+    |
+    = note: `AdamOptimizer` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling ruvector-gnn-node v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-gnn-node)
+   Compiling ruvector-graph-node v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-graph-node)
+   Compiling ruvector-tiny-dancer-node v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-tiny-dancer-node)
+   Compiling ruvector-router-ffi v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-router-ffi)
+warning: `refrag-pipeline-example` (lib) generated 8 warnings (run `cargo fix --lib -p refrag-pipeline-example` to apply 7 suggestions)
+warning: `ruvector-attention` (lib) generated 5 warnings (run `cargo fix --lib -p ruvector-attention` to apply 5 suggestions)
+   Compiling ruvector-metrics v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-metrics)
+   Compiling ruvector-filter v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-filter)
+   Compiling ruvector-collections v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-collections)
+   Compiling imageproc v0.25.0
+   Compiling ruvector-router-cli v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-router-cli)
+warning: `ruvector-tiny-dancer-core` (lib) generated 1 warning
+   Compiling ruvector-tiny-dancer-wasm v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-tiny-dancer-wasm)
+warning: unexpected `cfg` condition value: `console_error_panic_hook`
+  --> crates/ruvector-tiny-dancer-wasm/src/lib.rs:16:11
+   |
+16 |     #[cfg(feature = "console_error_panic_hook")]
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: remove the condition
+   |
+   = note: no expected values for `feature`
+   = help: consider adding `console_error_panic_hook` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unused import: `std::sync::Arc`
+  --> crates/ruvector-attention-node/src/async_ops.rs:16:5
+   |
+16 | use std::sync::Arc;
+   |     ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ruvector-graph` (lib) generated 81 warnings (run `cargo fix --lib -p ruvector-graph` to apply 51 suggestions)
+   Compiling ruvector-cli v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-cli)
+   Compiling ruvector-graph-wasm v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-graph-wasm)
+warning: unused imports: `Context` and `Poll`
+ --> crates/ruvector-graph-node/src/streaming.rs:8:17
+  |
+8 | use std::task::{Context, Poll};
+  |                 ^^^^^^^  ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `export_csv`, `export_json`, and `format_error`
+ --> crates/ruvector-cli/src/cli/commands.rs:4:5
+  |
+4 |     export_csv, export_json, format_error, format_search_results, format_stats, format_success,
+  |     ^^^^^^^^^^  ^^^^^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `DbOptions`
+  --> crates/ruvector-cli/src/cli/commands.rs:11:13
+   |
+11 |     types::{DbOptions, SearchQuery, VectorEntry},
+   |             ^^^^^^^^^
+
+warning: unused imports: `PathBuf` and `Path`
+  --> crates/ruvector-cli/src/cli/commands.rs:14:17
+   |
+14 | use std::path::{Path, PathBuf};
+   |                 ^^^^  ^^^^^^^
+
+warning: unused import: `ProgressTracker`
+ --> crates/ruvector-cli/src/cli/graph.rs:3:61
+  |
+3 | use crate::cli::{format_error, format_info, format_success, ProgressTracker};
+  |                                                             ^^^^^^^^^^^^^^^
+
+warning: unused import: `Context`
+ --> crates/ruvector-cli/src/cli/graph.rs:5:14
+  |
+5 | use anyhow::{Context, Result};
+  |              ^^^^^^^
+
+   Compiling ruvector-router-wasm v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-router-wasm)
+warning: unused import: `commands::*`
+ --> crates/ruvector-cli/src/cli/mod.rs:8:9
+  |
+8 | pub use commands::*;
+  |         ^^^^^^^^^^^
+
+warning: unused import: `graph::*`
+  --> crates/ruvector-cli/src/cli/mod.rs:10:9
+   |
+10 | pub use graph::*;
+   |         ^^^^^^^^
+
+warning: `ruvector-tiny-dancer-wasm` (lib) generated 1 warning
+warning: variable does not need to be mutable
+   --> crates/ruvector-graph-node/src/lib.rs:148:17
+    |
+148 |             let mut gdb = graph_db.write().expect("RwLock poisoned");
+    |                 ----^^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates/ruvector-graph-node/src/lib.rs:267:17
+    |
+267 |             let mut result_edges: Vec<JsEdgeResult> = Vec::new();
+    |                 ----^^^^^^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: unused imports: `Array` and `Promise`
+  --> crates/ruvector-graph-wasm/src/lib.rs:14:14
+   |
+14 | use js_sys::{Array, Object, Promise, Reflect};
+   |              ^^^^^          ^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `TemporalGranularity` and `TemporalHyperedge`
+  --> crates/ruvector-graph-wasm/src/lib.rs:17:50
+   |
+17 |     Hyperedge as CoreHyperedge, HypergraphIndex, TemporalGranularity, TemporalHyperedge,
+   |                                                  ^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `from_value` and `to_value`
+  --> crates/ruvector-graph-wasm/src/lib.rs:20:26
+   |
+20 | use serde_wasm_bindgen::{from_value, to_value};
+   |                          ^^^^^^^^^^  ^^^^^^^^
+
+warning: unused imports: `GraphError` and `QueryResult`
+ --> crates/ruvector-graph-wasm/src/async_ops.rs:3:20
+  |
+3 | use crate::types::{GraphError, QueryResult};
+  |                    ^^^^^^^^^^  ^^^^^^^^^^^
+
+warning: unused import: `wasm_bindgen_futures::JsFuture`
+ --> crates/ruvector-graph-wasm/src/async_ops.rs:6:5
+  |
+6 | use wasm_bindgen_futures::JsFuture;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Array`
+ --> crates/ruvector-graph-wasm/src/types.rs:3:14
+  |
+3 | use js_sys::{Array, Object, Reflect};
+  |              ^^^^^
+
+warning: unused import: `DbOptions`
+  --> crates/ruvector-cli/src/mcp/handlers.rs:10:13
+   |
+10 |     types::{DbOptions, DistanceMetric, SearchQuery, VectorEntry},
+   |             ^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `IntoResponse`, `StatusCode`, and `header`
+ --> crates/ruvector-cli/src/mcp/transport.rs:7:12
+  |
+7 |     http::{header, StatusCode},
+  |            ^^^^^^  ^^^^^^^^^^
+8 |     response::{sse::Event, IntoResponse, Sse},
+  |                            ^^^^^^^^^^^^
+
+warning: unused import: `gnn_cache::*`
+ --> crates/ruvector-cli/src/mcp/mod.rs:8:9
+  |
+8 | pub use gnn_cache::*;
+  |         ^^^^^^^^^^^^
+
+warning: unused import: `handlers::*`
+ --> crates/ruvector-cli/src/mcp/mod.rs:9:9
+  |
+9 | pub use handlers::*;
+  |         ^^^^^^^^^^^
+
+warning: unused import: `protocol::*`
+  --> crates/ruvector-cli/src/mcp/mod.rs:10:9
+   |
+10 | pub use protocol::*;
+   |         ^^^^^^^^^^^
+
+warning: unused import: `transport::*`
+  --> crates/ruvector-cli/src/mcp/mod.rs:11:9
+   |
+11 | pub use transport::*;
+   |         ^^^^^^^^^^^^
+
+warning: unused variable: `format`
+   --> crates/ruvector-cli/src/cli/commands.rs:226:5
+    |
+226 |     format: &str,
+    |     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_format`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `db`
+   --> crates/ruvector-cli/src/cli/commands.rs:232:9
+    |
+232 |     let db = VectorDB::new(db_options).context("Failed to open database")?;
+    |         ^^ help: if this is intentional, prefix it with an underscore: `_db`
+
+warning: unused variable: `db_path`
+   --> crates/ruvector-cli/src/cli/commands.rs:254:5
+    |
+254 |     db_path: &str,
+    |     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_db_path`
+
+warning: unused variable: `source_path`
+   --> crates/ruvector-cli/src/cli/commands.rs:256:5
+    |
+256 |     source_path: &str,
+    |     ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_source_path`
+
+warning: unused variable: `config`
+   --> crates/ruvector-cli/src/cli/commands.rs:257:5
+    |
+257 |     config: &Config,
+    |     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+
+warning: unused variable: `id`
+   --> crates/ruvector-cli/src/cli/format.rs:117:5
+    |
+117 |     id: &str,
+    |     ^^ help: if this is intentional, prefix it with an underscore: `_id`
+
+warning: unused variable: `config`
+   --> crates/ruvector-cli/src/cli/graph.rs:152:60
+    |
+152 | pub fn create_graph(path: &str, name: &str, indexed: bool, config: &Config) -> Result<()> {
+    |                                                            ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+
+warning: unused variable: `db_path`
+   --> crates/ruvector-cli/src/cli/graph.rs:182:5
+    |
+182 |     db_path: &str,
+    |     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_db_path`
+
+warning: unused variable: `config`
+   --> crates/ruvector-cli/src/cli/graph.rs:186:5
+    |
+186 |     config: &Config,
+    |     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+
+warning: unused variable: `db_path`
+   --> crates/ruvector-cli/src/cli/graph.rs:299:5
+    |
+299 |     db_path: &str,
+    |     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_db_path`
+
+warning: unused variable: `config`
+   --> crates/ruvector-cli/src/cli/graph.rs:304:5
+    |
+304 |     config: &Config,
+    |     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+
+warning: unused variable: `db_path`
+   --> crates/ruvector-cli/src/cli/graph.rs:354:5
+    |
+354 |     db_path: &str,
+    |     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_db_path`
+
+warning: unused variable: `config`
+   --> crates/ruvector-cli/src/cli/graph.rs:358:5
+    |
+358 |     config: &Config,
+    |     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+
+warning: unused variable: `config`
+   --> crates/ruvector-cli/src/cli/graph.rs:403:55
+    |
+403 | pub fn show_graph_info(db_path: &str, detailed: bool, config: &Config) -> Result<()> {
+    |                                                       ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+
+warning: unused variable: `db_path`
+   --> crates/ruvector-cli/src/cli/graph.rs:429:5
+    |
+429 |     db_path: &str,
+    |     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_db_path`
+
+warning: unused variable: `config`
+   --> crates/ruvector-cli/src/cli/graph.rs:432:5
+    |
+432 |     config: &Config,
+    |     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+
+warning: unused variable: `config`
+   --> crates/ruvector-cli/src/cli/graph.rs:476:5
+    |
+476 |     config: &Config,
+    |     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+
+warning: unused variable: `results`
+   --> crates/ruvector-cli/src/cli/graph.rs:534:29
+    |
+534 | fn format_graph_results_csv(results: &[serde_json::Value]) -> Result<String> {
+    |                             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_results`
+
+   Compiling ruvector-attention-wasm v0.1.0 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-attention-wasm)
+warning: unused variable: `create_clause`
+   --> crates/ruvector-graph-node/src/lib.rs:295:39
+    |
+295 |                     Statement::Create(create_clause) => {
+    |                                       ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_create_clause`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `cypher`
+   --> crates/ruvector-graph-node/src/lib.rs:328:30
+    |
+328 |     pub fn query_sync(&self, cypher: String) -> Result<JsQueryResult> {
+    |                              ^^^^^^ help: if this is intentional, prefix it with an underscore: `_cypher`
+
+warning: unused variable: `callback`
+   --> crates/ruvector-graph-node/src/lib.rs:511:29
+    |
+511 |     pub fn subscribe(&self, callback: JsFunction) -> Result<()> {
+    |                             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_callback`
+
+warning: unused variable: `id`
+   --> crates/ruvector-graph-wasm/src/lib.rs:392:14
+    |
+392 |         for (id, node) in self.nodes.lock().iter() {
+    |              ^^ help: if this is intentional, prefix it with an underscore: `_id`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `id`
+   --> crates/ruvector-graph-wasm/src/lib.rs:416:14
+    |
+416 |         for (id, edge) in self.edges.lock().iter() {
+    |              ^^ help: if this is intentional, prefix it with an underscore: `_id`
+
+warning: field `distance_metric` is never read
+  --> crates/ruvector-graph-wasm/src/lib.rs:54:5
+   |
+44 | pub struct GraphDB {
+   |            ------- field in this struct
+...
+54 |     distance_metric: DistanceMetric,
+   |     ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `format_warning` is never used
+  --> crates/ruvector-cli/src/cli/format.rs:57:8
+   |
+57 | pub fn format_warning(msg: &str) -> String {
+   |        ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `export_json` is never used
+  --> crates/ruvector-cli/src/cli/format.rs:67:8
+   |
+67 | pub fn export_json(entries: &[VectorEntry]) -> anyhow::Result<String> {
+   |        ^^^^^^^^^^^
+
+warning: function `export_csv` is never used
+  --> crates/ruvector-cli/src/cli/format.rs:73:8
+   |
+73 | pub fn export_csv(entries: &[VectorEntry]) -> anyhow::Result<String> {
+   |        ^^^^^^^^^^
+
+warning: function `format_graph_node` is never used
+  --> crates/ruvector-cli/src/cli/format.rs:96:8
+   |
+96 | pub fn format_graph_node(
+   |        ^^^^^^^^^^^^^^^^^
+
+warning: function `format_graph_relationship` is never used
+   --> crates/ruvector-cli/src/cli/format.rs:116:8
+    |
+116 | pub fn format_graph_relationship(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `format_graph_table` is never used
+   --> crates/ruvector-cli/src/cli/format.rs:143:8
+    |
+143 | pub fn format_graph_table(headers: &[String], rows: &[Vec<String>]) -> String {
+    |        ^^^^^^^^^^^^^^^^^^
+
+warning: function `format_graph_stats` is never used
+   --> crates/ruvector-cli/src/cli/format.rs:165:8
+    |
+165 | pub fn format_graph_stats(
+    |        ^^^^^^^^^^^^^^^^^^
+
+warning: methods `create_spinner` and `finish_all` are never used
+  --> crates/ruvector-cli/src/cli/progress.rs:34:12
+   |
+11 | impl ProgressTracker {
+   | -------------------- methods in this implementation
+...
+34 |     pub fn create_spinner(&self, message: &str) -> ProgressBar {
+   |            ^^^^^^^^^^^^^^
+...
+47 |     pub fn finish_all(&self) {
+   |            ^^^^^^^^^^
+
+warning: method `save` is never used
+   --> crates/ruvector-cli/src/config.rs:237:12
+    |
+151 | impl Config {
+    | ----------- method in this implementation
+...
+237 |     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+    |            ^^^^
+
+warning: field `causal_memory` is never read
+  --> crates/ruvector-graph-node/src/lib.rs:34:5
+   |
+32 | pub struct GraphDatabase {
+   |            ------------- field in this struct
+33 |     hypergraph: Arc<RwLock<CoreHypergraphIndex>>,
+34 |     causal_memory: Arc<RwLock<CoreCausalMemory>>,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `inner` is never read
+  --> crates/ruvector-graph-node/src/streaming.rs:13:5
+   |
+12 | pub struct QueryResultStream {
+   |            ----------------- field in this struct
+13 |     inner: Pin<Box<dyn Stream<Item = JsQueryResult> + Send>>,
+   |     ^^^^^
+
+warning: unused variable: `scale`
+  --> crates/ruvector-attention-wasm/src/attention.rs:22:5
+   |
+22 |     scale: Option<f32>,
+   |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_scale`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `handler`
+   --> crates/ruvector-cli/src/mcp/transport.rs:132:11
+    |
+132 |     State(handler): State<Arc<McpHandler>>,
+    |           ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_handler`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `save` is never used
+   --> crates/ruvector-cli/src/config.rs:237:12
+    |
+151 | impl Config {
+    | ----------- method in this implementation
+...
+237 |     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+    |            ^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `created_at` is never read
+  --> crates/ruvector-cli/src/mcp/gnn_cache.rs:27:9
+   |
+25 | pub struct CacheEntry<T> {
+   |            ---------- field in this struct
+26 |     pub value: T,
+27 |     pub created_at: Instant,
+   |         ^^^^^^^^^^
+   |
+   = note: `CacheEntry` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: field `preload_common` is never read
+  --> crates/ruvector-cli/src/mcp/gnn_cache.rs:60:9
+   |
+52 | pub struct GnnCacheConfig {
+   |            -------------- field in this struct
+...
+60 |     pub preload_common: bool,
+   |         ^^^^^^^^^^^^^^
+   |
+   = note: `GnnCacheConfig` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: methods `clear` and `preload_common_layers` are never used
+   --> crates/ruvector-cli/src/mcp/gnn_cache.rs:255:18
+    |
+151 | impl GnnCache {
+    | ------------- methods in this implementation
+...
+255 |     pub async fn clear(&self) {
+    |                  ^^^^^
+...
+261 |     pub async fn preload_common_layers(&self) {
+    |                  ^^^^^^^^^^^^^^^^^^^^^
+
+warning: associated function `with_preload` is never used
+  --> crates/ruvector-cli/src/mcp/handlers.rs:46:18
+   |
+33 | impl McpHandler {
+   | --------------- associated function in this implementation
+...
+46 |     pub async fn with_preload(config: Config) -> Self {
+   |                  ^^^^^^^^^^^^
+
+warning: method `with_data` is never used
+  --> crates/ruvector-cli/src/mcp/protocol.rs:44:12
+   |
+35 | impl McpError {
+   | ------------- method in this implementation
+...
+44 |     pub fn with_data(mut self, data: Value) -> Self {
+   |            ^^^^^^^^^
+
+warning: struct `McpResource` is never constructed
+  --> crates/ruvector-cli/src/mcp/protocol.rs:90:12
+   |
+90 | pub struct McpResource {
+   |            ^^^^^^^^^^^
+
+warning: struct `McpPrompt` is never constructed
+   --> crates/ruvector-cli/src/mcp/protocol.rs:100:12
+    |
+100 | pub struct McpPrompt {
+    |            ^^^^^^^^^
+
+warning: struct `PromptArgument` is never constructed
+   --> crates/ruvector-cli/src/mcp/protocol.rs:107:12
+    |
+107 | pub struct PromptArgument {
+    |            ^^^^^^^^^^^^^^
+
+warning: constant `INVALID_REQUEST` is never used
+  --> crates/ruvector-cli/src/mcp/protocol.rs:53:15
+   |
+53 |     pub const INVALID_REQUEST: i32 = -32600;
+   |               ^^^^^^^^^^^^^^^
+
+warning: `ruvector-attention-wasm` (lib) generated 1 warning (run `cargo fix --lib -p ruvector-attention-wasm` to apply 1 suggestion)
+warning: unused imports: `ExpandLayer`, `PolicyNetwork`, and `ProjectorRegistry`
+  --> examples/refrag-pipeline/src/benchmark.rs:9:14
+   |
+ 9 |     expand::{ExpandLayer, Projector, ProjectorRegistry},
+   |              ^^^^^^^^^^^             ^^^^^^^^^^^^^^^^^
+10 |     sense::{LinearPolicy, MLPPolicy, PolicyModel, PolicyNetwork, ThresholdPolicy},
+   |                                                   ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ruvector-graph-wasm` (lib) generated 9 warnings (run `cargo fix --lib -p ruvector-graph-wasm` to apply 8 suggestions)
+   Compiling ruvector-wasm v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-wasm)
+warning: unused imports: `compress::CompressionStrategy`, `expand::ExpandLayer`, and `sense::PolicyNetwork`
+  --> examples/refrag-pipeline/src/main.rs:9:5
+   |
+ 9 |     compress::CompressionStrategy,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |     expand::ExpandLayer,
+   |     ^^^^^^^^^^^^^^^^^^^
+11 |     sense::PolicyNetwork,
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling ruvector-gnn-wasm v0.0.0 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-gnn-wasm)
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `wasm_bindgen`
+  --> crates/ruvector-gnn-wasm/src/lib.rs:16:5
+   |
+16 | use wasm_bindgen::prelude::*;
+   |     ^^^^^^^^^^^^ use of unresolved module or unlinked crate `wasm_bindgen`
+   |
+help: if you wanted to use a crate named `wasm_bindgen`, use `cargo add wasm_bindgen` to add it to your `Cargo.toml` and import it in your code
+   |
+10 + extern crate wasm_bindgen;
+   |
+
+error[E0432]: unresolved import `ruvector_gnn`
+  --> crates/ruvector-gnn-wasm/src/lib.rs:10:5
+   |
+10 | use ruvector_gnn::{
+   |     ^^^^^^^^^^^^ use of unresolved module or unlinked crate `ruvector_gnn`
+   |
+help: if you wanted to use a crate named `ruvector_gnn`, use `cargo add ruvector_gnn` to add it to your `Cargo.toml` and import it in your code
+   |
+10 + extern crate ruvector_gnn;
+   |
+
+error[E0432]: unresolved import `serde`
+  --> crates/ruvector-gnn-wasm/src/lib.rs:15:5
+   |
+15 | use serde::{Deserialize, Serialize};
+   |     ^^^^^ use of unresolved module or unlinked crate `serde`
+   |
+help: if you wanted to use a crate named `serde`, use `cargo add serde` to add it to your `Cargo.toml` and import it in your code
+   |
+10 + extern crate serde;
+   |
+
+error: cannot find attribute `wasm_bindgen` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:350:3
+    |
+350 | #[wasm_bindgen(js_name = cosineSimilarity)]
+    |   ^^^^^^^^^^^^
+    |
+    = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:337:3
+    |
+337 | #[wasm_bindgen]
+    |   ^^^^^^^^^^^^
+    |
+    = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:313:3
+    |
+313 | #[wasm_bindgen(js_name = hierarchicalForward)]
+    |   ^^^^^^^^^^^^
+    |
+    = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:285:3
+    |
+285 | #[wasm_bindgen(js_name = differentiableSearch)]
+    |   ^^^^^^^^^^^^
+    |
+    = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:150:3
+    |
+150 | #[wasm_bindgen]
+    |   ^^^^^^^^^^^^
+    |
+    = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:153:7
+    |
+153 |     #[wasm_bindgen(constructor)]
+    |       ^^^^^^^^^^^^
+    |
+    = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:173:7
+    |
+173 |     #[wasm_bindgen]
+    |       ^^^^^^^^^^^^
+    |
+    = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:193:7
+    |
+193 |     #[wasm_bindgen(js_name = compressWithLevel)]
+    |       ^^^^^^^^^^^^
+    |
+    = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:236:7
+    |
+236 |     #[wasm_bindgen]
+    |       ^^^^^^^^^^^^
+    |
+    = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:256:7
+    |
+256 |     #[wasm_bindgen(js_name = getCompressionRatio)]
+    |       ^^^^^^^^^^^^
+    |
+    = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:145:3
+    |
+145 | #[wasm_bindgen]
+    |   ^^^^^^^^^^^^
+    |
+    = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+  --> crates/ruvector-gnn-wasm/src/lib.rs:68:3
+   |
+68 | #[wasm_bindgen]
+   |   ^^^^^^^^^^^^
+   |
+   = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+  --> crates/ruvector-gnn-wasm/src/lib.rs:77:7
+   |
+77 |     #[wasm_bindgen(constructor)]
+   |       ^^^^^^^^^^^^
+   |
+   = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:103:7
+    |
+103 |     #[wasm_bindgen]
+    |       ^^^^^^^^^^^^
+    |
+    = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:134:7
+    |
+134 |     #[wasm_bindgen(getter, js_name = outputDim)]
+    |       ^^^^^^^^^^^^
+    |
+    = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+  --> crates/ruvector-gnn-wasm/src/lib.rs:62:3
+   |
+62 | #[wasm_bindgen]
+   |   ^^^^^^^^^^^^
+   |
+   = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+  --> crates/ruvector-gnn-wasm/src/lib.rs:39:3
+   |
+39 | #[wasm_bindgen]
+   |   ^^^^^^^^^^^^
+   |
+   = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+  --> crates/ruvector-gnn-wasm/src/lib.rs:42:7
+   |
+42 |     #[wasm_bindgen(constructor)]
+   |       ^^^^^^^^^^^^
+   |
+   = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+  --> crates/ruvector-gnn-wasm/src/lib.rs:31:3
+   |
+31 | #[wasm_bindgen]
+   |   ^^^^^^^^^^^^
+   |
+   = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+error: cannot find attribute `wasm_bindgen` in this scope
+  --> crates/ruvector-gnn-wasm/src/lib.rs:19:3
+   |
+19 | #[wasm_bindgen(start)]
+   |   ^^^^^^^^^^^^
+   |
+   = note: `wasm_bindgen` is in scope, but it is a crate, not an attribute
+
+warning: unused imports: `Array` and `Uint8Array`
+  --> crates/ruvector-wasm/src/lib.rs:11:14
+   |
+11 | use js_sys::{Array, Float32Array, Object, Promise, Reflect, Uint8Array};
+   |              ^^^^^                                          ^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::collections::HashMap`
+  --> crates/ruvector-wasm/src/lib.rs:26:5
+   |
+26 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `wasm_bindgen_futures::JsFuture`
+  --> crates/ruvector-wasm/src/lib.rs:29:5
+   |
+29 | use wasm_bindgen_futures::JsFuture;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `IdbDatabase`, `IdbFactory`, `IdbObjectStore`, `IdbRequest`, `IdbTransaction`, and `Window`
+  --> crates/ruvector-wasm/src/lib.rs:31:14
+   |
+31 |     console, IdbDatabase, IdbFactory, IdbObjectStore, IdbRequest, IdbTransaction, Window,
+   |              ^^^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^^^^^  ^^^^^^
+
+error[E0412]: cannot find type `JsValue` in this scope
+  --> crates/ruvector-gnn-wasm/src/lib.rs:83:34
+   |
+83 |     ) -> Result<JsRuvectorLayer, JsValue> {
+   |                                  ^^^^^^^ not found in this scope
+   |
+help: you might be missing a type parameter
+   |
+69 | impl<JsValue> JsRuvectorLayer {
+   |     +++++++++
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:107:30
+    |
+107 |         neighbor_embeddings: JsValue,
+    |                              ^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:109:27
+    |
+109 |     ) -> Result<Vec<f32>, JsValue> {
+    |                           ^^^^^^^ not found in this scope
+    |
+help: you might be missing a type parameter
+    |
+ 69 | impl<JsValue> JsRuvectorLayer {
+    |     +++++++++
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:174:77
+    |
+174 |     pub fn compress(&self, embedding: Vec<f32>, access_freq: f32) -> Result<JsValue, JsValue> {
+    |                                                                             ^^^^^^^ not found in this scope
+    |
+help: you might be missing a type parameter
+    |
+151 | impl<JsValue> JsTensorCompress {
+    |     +++++++++
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:174:86
+    |
+174 |     pub fn compress(&self, embedding: Vec<f32>, access_freq: f32) -> Result<JsValue, JsValue> {
+    |                                                                                      ^^^^^^^ not found in this scope
+    |
+help: you might be missing a type parameter
+    |
+151 | impl<JsValue> JsTensorCompress {
+    |     +++++++++
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:198:17
+    |
+198 |     ) -> Result<JsValue, JsValue> {
+    |                 ^^^^^^^ not found in this scope
+    |
+help: you might be missing a type parameter
+    |
+151 | impl<JsValue> JsTensorCompress {
+    |     +++++++++
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:198:26
+    |
+198 |     ) -> Result<JsValue, JsValue> {
+    |                          ^^^^^^^ not found in this scope
+    |
+help: you might be missing a type parameter
+    |
+151 | impl<JsValue> JsTensorCompress {
+    |     +++++++++
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:237:42
+    |
+237 |     pub fn decompress(&self, compressed: JsValue) -> Result<Vec<f32>, JsValue> {
+    |                                          ^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:237:71
+    |
+237 |     pub fn decompress(&self, compressed: JsValue) -> Result<Vec<f32>, JsValue> {
+    |                                                                       ^^^^^^^ not found in this scope
+    |
+help: you might be missing a type parameter
+    |
+151 | impl<JsValue> JsTensorCompress {
+    |     +++++++++
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:288:27
+    |
+288 |     candidate_embeddings: JsValue,
+    |                           ^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:290:13
+    |
+290 | ) -> Result<JsValue, JsValue> {
+    |             ^^^^^^^ not found in this scope
+    |
+help: you might be missing a type parameter
+    |
+286 | pub fn differentiable_search<JsValue>(
+    |                             +++++++++
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:290:22
+    |
+290 | ) -> Result<JsValue, JsValue> {
+    |                      ^^^^^^^ not found in this scope
+    |
+help: you might be missing a type parameter
+    |
+286 | pub fn differentiable_search<JsValue>(
+    |                             +++++++++
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:316:23
+    |
+316 |     layer_embeddings: JsValue,
+    |                       ^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:318:23
+    |
+318 | ) -> Result<Vec<f32>, JsValue> {
+    |                       ^^^^^^^ not found in this scope
+    |
+help: you might be missing a type parameter
+    |
+314 | pub fn hierarchical_forward<JsValue>(
+    |                            +++++++++
+
+error[E0412]: cannot find type `JsValue` in this scope
+   --> crates/ruvector-gnn-wasm/src/lib.rs:351:67
+    |
+351 | pub fn cosine_similarity(a: Vec<f32>, b: Vec<f32>) -> Result<f32, JsValue> {
+    |                                                                   ^^^^^^^ not found in this scope
+    |
+help: you might be missing a type parameter
+    |
+351 | pub fn cosine_similarity<JsValue>(a: Vec<f32>, b: Vec<f32>) -> Result<f32, JsValue> {
+    |                         +++++++++
+
+   Compiling ruvector-snapshot v0.1.18 (/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/crates/ruvector-snapshot)
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+  --> crates/ruvector-gnn-wasm/src/lib.rs:85:24
+   |
+85 |             return Err(JsValue::from_str("Dropout must be between 0.0 and 1.0"));
+   |                        ^^^^^^^ use of undeclared type `JsValue`
+
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:113:17
+    |
+113 |                 JsValue::from_str(&format!("Failed to parse neighbor embeddings: {}", e))
+    |                 ^^^^^^^ use of undeclared type `JsValue`
+
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:118:24
+    |
+118 |             return Err(JsValue::from_str(&format!(
+    |                        ^^^^^^^ use of undeclared type `JsValue`
+
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:178:26
+    |
+178 |             .map_err(|e| JsValue::from_str(&format!("Compression failed: {}", e)))?;
+    |                          ^^^^^^^ use of undeclared type `JsValue`
+
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:182:26
+    |
+182 |             .map_err(|e| JsValue::from_str(&format!("Serialization failed: {}", e)))
+    |                          ^^^^^^^ use of undeclared type `JsValue`
+
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:212:28
+    |
+212 |                 return Err(JsValue::from_str(&format!(
+    |                            ^^^^^^^ use of undeclared type `JsValue`
+
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:222:26
+    |
+222 |             .map_err(|e| JsValue::from_str(&format!("Compression failed: {}", e)))?;
+    |                          ^^^^^^^ use of undeclared type `JsValue`
+
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:226:26
+    |
+226 |             .map_err(|e| JsValue::from_str(&format!("Serialization failed: {}", e)))
+    |                          ^^^^^^^ use of undeclared type `JsValue`
+
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:239:26
+    |
+239 |             .map_err(|e| JsValue::from_str(&format!("Deserialization failed: {}", e)))?;
+    |                          ^^^^^^^ use of undeclared type `JsValue`
+
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:244:26
+    |
+244 |             .map_err(|e| JsValue::from_str(&format!("Decompression failed: {}", e)))?;
+    |                          ^^^^^^^ use of undeclared type `JsValue`
+
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:293:22
+    |
+293 |         .map_err(|e| JsValue::from_str(&format!("Failed to parse candidate embeddings: {}", e)))?;
+    |                      ^^^^^^^ use of undeclared type `JsValue`
+
+error[E0277]: the trait bound `SearchResultInternal: serde::Serialize` is not satisfied
+   --> crates/ruvector-gnn-wasm/src/lib.rs:300:34
+    |
+300 |     serde_wasm_bindgen::to_value(&result)
+    |     ---------------------------- ^^^^^^^ unsatisfied trait bound
+    |     |
+    |     required by a bound introduced by this call
+    |
+help: the trait `serde_core::ser::Serialize` is not implemented for `SearchResultInternal`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:50:1
+    |
+ 50 | struct SearchResultInternal {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Serialize)]` to your `SearchResultInternal` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `serde_core::ser::Serialize`:
+              &'a T
+              &'a mut T
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+              (T0, T1, T2, T3)
+              (T0, T1, T2, T3, T4)
+            and 126 others
+note: required by a bound in `to_value`
+   --> /Users/kpnaidu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-wasm-bindgen-0.6.5/src/lib.rs:78:20
+    |
+ 78 | pub fn to_value<T: serde::ser::Serialize + ?Sized>(value: &T) -> Result<JsValue> {
+    |                    ^^^^^^^^^^^^^^^^^^^^^ required by this bound in `to_value`
+
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:301:22
+    |
+301 |         .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+    |                      ^^^^^^^ use of undeclared type `JsValue`
+
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:321:22
+    |
+321 |         .map_err(|e| JsValue::from_str(&format!("Failed to parse layer embeddings: {}", e)))?;
+    |                      ^^^^^^^ use of undeclared type `JsValue`
+
+error[E0433]: failed to resolve: use of undeclared type `JsValue`
+   --> crates/ruvector-gnn-wasm/src/lib.rs:353:20
+    |
+353 |         return Err(JsValue::from_str(&format!(
+    |                    ^^^^^^^ use of undeclared type `JsValue`
+
+Some errors have detailed explanations: E0277, E0412, E0432, E0433.
+For more information about an error, try `rustc --explain E0277`.
+error: could not compile `ruvector-gnn-wasm` (lib) due to 53 previous errors
+warning: build failed, waiting for other jobs to finish...
+warning: unused import: `std::collections::HashMap`
+  --> crates/ruvector-bench/src/bin/memory_benchmark.rs:18:5
+   |
+18 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: type alias `WasmResult` is never used
+  --> crates/ruvector-wasm/src/lib.rs:66:6
+   |
+66 | type WasmResult<T> = Result<T, WasmError>;
+   |      ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `refrag-pipeline-example` (bin "refrag-benchmark") generated 1 warning (run `cargo fix --bin "refrag-benchmark" -p refrag-pipeline-example` to apply 1 suggestion)
+warning: `refrag-pipeline-example` (bin "refrag-demo") generated 1 warning (run `cargo fix --bin "refrag-demo" -p refrag-pipeline-example` to apply 1 suggestion)
+warning: `ruvector-wasm` (lib) generated 5 warnings (run `cargo fix --lib -p ruvector-wasm` to apply 4 suggestions)
+warning: `ruvector-cli` (bin "ruvector") generated 34 warnings (run `cargo fix --bin "ruvector" -p ruvector-cli` to apply 25 suggestions)
+warning: `ruvector-bench` (bin "memory-benchmark") generated 1 warning (run `cargo fix --bin "memory-benchmark" -p ruvector-bench` to apply 1 suggestion)
+warning: `ruvector-graph-node` (lib) generated 8 warnings (run `cargo fix --lib -p ruvector-graph-node` to apply 6 suggestions)
+warning: `ruvector-attention-node` (lib) generated 1 warning (run `cargo fix --lib -p ruvector-attention-node` to apply 1 suggestion)
+warning: `ruvector-cli` (bin "ruvector-mcp") generated 17 warnings (run `cargo fix --bin "ruvector-mcp" -p ruvector-cli` to apply 7 suggestions)

@@ -241,16 +241,31 @@ impl ExternalParser {
         Ok(converted)
     }
 
-    /// Check if a file needs external parsing
+    /// Check if a file needs external parsing (API or local tools)
     pub fn needs_external_parsing(filename: &str) -> bool {
         let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
-        matches!(ext.as_str(), "doc" | "ppt" | "xls" | "rtf" | "odt" | "odp" | "ods")
+        matches!(ext.as_str(),
+            "doc" | "ppt" | "xls" | "rtf" | "odt" | "odp" | "ods" | "epub" |
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tiff" | "tif"
+        )
     }
 
     /// Check if a file needs LibreOffice conversion
     pub fn needs_conversion(filename: &str) -> bool {
         let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
         matches!(ext.as_str(), "doc" | "ppt" | "xls")
+    }
+
+    /// Check if a file is an image that needs OCR
+    pub fn needs_ocr(filename: &str) -> bool {
+        let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+        matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tiff" | "tif")
+    }
+
+    /// Check if a file can be converted with pandoc
+    pub fn can_use_pandoc(filename: &str) -> bool {
+        let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+        matches!(ext.as_str(), "docx" | "doc" | "odt" | "rtf" | "pptx" | "epub" | "html" | "htm")
     }
 
     /// Check if pdftotext is available
@@ -418,6 +433,52 @@ impl ExternalParser {
 
         tracing::info!("OCR extracted {} characters from {} pages", all_text.len(), page_images.len());
         Ok(all_text)
+    }
+
+    /// Extract text from image using OCR (tesseract)
+    pub fn convert_image_with_ocr(&self, data: &[u8]) -> Result<String> {
+        use std::fs;
+
+        if !Self::has_tesseract() {
+            return Err(Error::Internal(
+                "Image OCR requires tesseract. Install with: apt install tesseract-ocr".to_string()
+            ));
+        }
+
+        let temp_dir = std::env::temp_dir().join(format!("goal-rag-img-ocr-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir)
+            .map_err(|e| Error::Internal(format!("Failed to create temp dir: {}", e)))?;
+
+        let image_path = temp_dir.join("input.png");
+        fs::write(&image_path, data)
+            .map_err(|e| Error::Internal(format!("Failed to write temp image: {}", e)))?;
+
+        // Run tesseract on the image
+        let ocr_output = Command::new("tesseract")
+            .args([
+                image_path.to_str().unwrap(),
+                "stdout",
+                "-l", "eng",  // English language
+            ])
+            .output()
+            .map_err(|e| Error::Internal(format!("tesseract failed: {}", e)))?;
+
+        // Cleanup
+        fs::remove_dir_all(&temp_dir).ok();
+
+        if !ocr_output.status.success() {
+            let stderr = String::from_utf8_lossy(&ocr_output.stderr);
+            return Err(Error::Internal(format!("tesseract error: {}", stderr)));
+        }
+
+        let text = String::from_utf8_lossy(&ocr_output.stdout).to_string();
+
+        if text.trim().is_empty() {
+            return Err(Error::Internal("OCR produced no text from image".to_string()));
+        }
+
+        tracing::info!("Image OCR extracted {} characters", text.len());
+        Ok(text)
     }
 
     /// Fallback: Convert PDF using temp files
