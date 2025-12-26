@@ -336,8 +336,59 @@ impl ProcessingWorker {
             config.chunking.chunk_overlap,
         );
 
-        // Parse file to get content hash
-        let parsed = pipeline.parse_file(&processed_filename, &processed_data)?;
+        // Parse file to get content hash, with fallback for PDFs
+        let parsed = match pipeline.parse_file(&processed_filename, &processed_data) {
+            Ok(p) => p,
+            Err(e) if ext == "pdf" => {
+                // PDF parsing failed, try comprehensive fallback (OCR, Unstructured API)
+                tracing::warn!(
+                    "[{}] Native PDF parsing failed: {}. Trying fallback methods...",
+                    filename, e
+                );
+
+                match timeout(
+                    op_timeout,
+                    external_parser.convert_pdf_comprehensive(data)
+                ).await {
+                    Ok(Ok((text, method))) => {
+                        tracing::info!(
+                            "[{}] Fallback succeeded via {}, extracted {} chars",
+                            filename, method, text.len()
+                        );
+                        // Process as text content
+                        let text_filename = format!("{}.txt", filename.trim_end_matches(".pdf"));
+                        return Self::process_text_content(
+                            state,
+                            job_queue,
+                            job_id,
+                            &original_filename,
+                            Some(&text_filename),
+                            text.as_bytes(),
+                            Some(data),
+                            parallel_embeddings,
+                        ).await.map(FileProcessResult::New);
+                    }
+                    Ok(Err(fallback_err)) => {
+                        tracing::error!(
+                            "[{}] All PDF extraction methods failed. Original: {}, Fallback: {}",
+                            filename, e, fallback_err
+                        );
+                        return Err(Error::file_parse(
+                            filename,
+                            format!("PDF extraction failed. Install poppler-utils and tesseract-ocr for better support. Error: {}", e)
+                        ));
+                    }
+                    Err(_) => {
+                        tracing::error!("[{}] PDF fallback timeout after {}s", filename, op_timeout.as_secs());
+                        return Err(Error::file_parse(
+                            filename,
+                            format!("PDF extraction timeout. The file may be too large or complex.")
+                        ));
+                    }
+                }
+            }
+            Err(e) => return Err(e),
+        };
 
         // Check file status for deduplication (use original filename for tracking)
         match state.check_file_status(&original_filename, &parsed.content_hash) {
