@@ -472,12 +472,13 @@ impl ProcessingWorker {
         let parsed = match pipeline.parse_file(&processed_filename, &processed_data) {
             Ok(p) => p,
             Err(e) if ext == "pdf" => {
-                // PDF parsing failed, try comprehensive fallback (OCR, Unstructured API)
+                // PDF parsing failed, try comprehensive fallback (OCR, Unstructured API, Document AI)
                 tracing::warn!(
                     "[{}] Native PDF parsing failed: {}. Trying fallback methods...",
                     filename, e
                 );
 
+                // First try local tools (pdftotext, OCR)
                 match timeout(
                     op_timeout,
                     external_parser.convert_pdf_comprehensive(data)
@@ -501,6 +502,49 @@ impl ProcessingWorker {
                         ).await;
                     }
                     Ok(Err(fallback_err)) => {
+                        // Local methods failed, try Document AI if available (GCP only)
+                        #[cfg(feature = "gcp")]
+                        if let Some(doc_ai) = state.document_ai() {
+                            tracing::info!(
+                                "[{}] Local PDF extraction failed, trying Document AI...",
+                                filename
+                            );
+                            match timeout(
+                                Duration::from_secs(180), // 3 min for Document AI
+                                doc_ai.process_pdf(data, filename)
+                            ).await {
+                                Ok(Ok(result)) => {
+                                    tracing::info!(
+                                        "[{}] Document AI succeeded, extracted {} chars from {} pages",
+                                        filename, result.text.len(), result.total_pages
+                                    );
+                                    let text_filename = format!("{}.txt", filename.trim_end_matches(".pdf"));
+                                    return Self::process_text_content(
+                                        state,
+                                        job_queue,
+                                        job_id,
+                                        &original_filename,
+                                        Some(&text_filename),
+                                        result.text.as_bytes(),
+                                        Some(data),
+                                        parallel_embeddings,
+                                    ).await;
+                                }
+                                Ok(Err(doc_ai_err)) => {
+                                    tracing::error!(
+                                        "[{}] Document AI also failed: {}",
+                                        filename, doc_ai_err
+                                    );
+                                }
+                                Err(_) => {
+                                    tracing::error!(
+                                        "[{}] Document AI timeout after 180s",
+                                        filename
+                                    );
+                                }
+                            }
+                        }
+
                         tracing::error!(
                             "[{}] All PDF extraction methods failed. Original: {}, Fallback: {}",
                             filename, e, fallback_err
