@@ -589,6 +589,28 @@ impl ProcessingWorker {
                     file_type: parsed.file_type.clone(),
                 });
             }
+            FileStatus::ExistsInRegistry(record) => {
+                return Ok(FileProcessResult::Skipped {
+                    reason: format!(
+                        "already in GCS (hash: {}..., uploaded: {})",
+                        &record.content_hash[..12.min(record.content_hash.len())],
+                        record.first_seen_at.format("%Y-%m-%d")
+                    ),
+                    skip_reason: SkipReason::Unchanged,
+                    content_hash: record.content_hash.clone(),
+                    file_size: file_size as u64,
+                    file_type: parsed.file_type.clone(),
+                });
+            }
+            FileStatus::DuplicateInRegistry(record) => {
+                return Ok(FileProcessResult::Skipped {
+                    reason: format!("duplicate of '{}' in GCS", record.filename),
+                    skip_reason: SkipReason::Duplicate { existing_filename: record.filename.clone() },
+                    content_hash: record.content_hash.clone(),
+                    file_size: file_size as u64,
+                    file_type: parsed.file_type.clone(),
+                });
+            }
             FileStatus::Modified(existing) => {
                 // Delete old document and its chunks
                 let deleted = state.delete_document_with_chunks(&existing.id)?;
@@ -683,6 +705,30 @@ impl ProcessingWorker {
                     reason: format!("duplicate of '{}'", existing.filename),
                     skip_reason: SkipReason::Duplicate { existing_filename: existing.filename.clone() },
                     content_hash: existing.content_hash.clone(),
+                    file_size: original_size,
+                    file_type: crate::types::FileType::Txt,
+                });
+            }
+            crate::server::state::FileStatus::ExistsInRegistry(record) => {
+                tracing::info!("[{}] Already in GCS registry, skipping", original_filename);
+                return Ok(FileProcessResult::Skipped {
+                    reason: format!(
+                        "already in GCS (hash: {}..., uploaded: {})",
+                        &record.content_hash[..12.min(record.content_hash.len())],
+                        record.first_seen_at.format("%Y-%m-%d")
+                    ),
+                    skip_reason: SkipReason::Unchanged,
+                    content_hash: record.content_hash.clone(),
+                    file_size: original_size,
+                    file_type: crate::types::FileType::Txt,
+                });
+            }
+            crate::server::state::FileStatus::DuplicateInRegistry(record) => {
+                tracing::info!("[{}] Duplicate of {} in GCS, skipping", original_filename, record.filename);
+                return Ok(FileProcessResult::Skipped {
+                    reason: format!("duplicate of '{}' in GCS", record.filename),
+                    skip_reason: SkipReason::Duplicate { existing_filename: record.filename.clone() },
+                    content_hash: record.content_hash.clone(),
                     file_size: original_size,
                     file_type: crate::types::FileType::Txt,
                 });
