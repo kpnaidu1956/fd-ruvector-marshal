@@ -1,6 +1,7 @@
 //! API routes for the RAG server
 
 pub mod documents;
+pub mod files;
 pub mod ingest;
 pub mod jobs;
 pub mod query;
@@ -33,6 +34,14 @@ pub fn api_routes(max_upload_size: usize) -> Router<AppState> {
         // Job management
         .route("/jobs", get(jobs::list_jobs))
         .route("/jobs/:id", get(jobs::get_job_progress))
+        // File status and tracking
+        .route("/files", get(files::list_files))
+        .route("/files/check", post(files::check_files))
+        .route("/files/failed", get(files::list_failed_files))
+        .route("/files/failed", delete(files::clear_failed_files))
+        .route("/files/stats", get(files::file_stats))
+        .route("/files/:filename", get(files::get_file_status))
+        .route("/files/:filename", delete(files::delete_file_record))
         // Query
         .route("/query", post(query::query_rag))
         // V2 Query (frontend-friendly format)
@@ -61,6 +70,13 @@ async fn info() -> axum::Json<serde_json::Value> {
             "GET /api/documents": "List all documents",
             "GET /api/documents/:id": "Get document details",
             "DELETE /api/documents/:id": "Delete a document",
+            "GET /api/files": "List all tracked files with status",
+            "POST /api/files/check": "Check file status before upload (deduplication)",
+            "GET /api/files/failed": "List failed files with error details",
+            "DELETE /api/files/failed": "Clear all failed file records for retry",
+            "GET /api/files/stats": "Get file registry statistics",
+            "GET /api/files/:filename": "Get specific file status",
+            "DELETE /api/files/:filename": "Remove file record for re-upload",
             "GET /api/capabilities": "Check document extraction capabilities"
         },
         "features": {

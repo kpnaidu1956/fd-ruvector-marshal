@@ -11,7 +11,7 @@ use crate::ingestion::{ExternalParser, IngestPipeline};
 #[cfg(feature = "gcp")]
 use crate::providers::document_store::DocumentStoreProvider;
 use crate::server::state::{AppState, FileStatus};
-use crate::types::Document;
+use crate::types::{Document, FileType, SkipReason};
 
 use super::job_queue::{FileData, Job, JobQueue, JobStatus, ProcessingStage};
 
@@ -19,11 +19,24 @@ use super::job_queue::{FileData, Job, JobQueue, JobStatus, ProcessingStage};
 #[derive(Debug)]
 pub enum FileProcessResult {
     /// New file processed
-    New(Document),
+    New {
+        document: Document,
+        file_size: u64,
+    },
     /// File was modified, reprocessed
-    Updated(Document, usize),
+    Updated {
+        document: Document,
+        file_size: u64,
+        old_chunks_deleted: usize,
+    },
     /// File was skipped (unchanged or duplicate)
-    Skipped(String),
+    Skipped {
+        reason: String,
+        skip_reason: SkipReason,
+        content_hash: String,
+        file_size: u64,
+        file_type: FileType,
+    },
 }
 
 /// Worker for processing documents in the background
@@ -163,22 +176,64 @@ impl ProcessingWorker {
         // Process results
         for (filename, result) in results {
             match result {
-                Ok(FileProcessResult::New(doc)) => {
-                    self.state.add_document(doc);
+                Ok(FileProcessResult::New { document, file_size }) => {
+                    // Record success in file registry
+                    self.state.record_file_success(
+                        &filename,
+                        &document.content_hash,
+                        file_size,
+                        document.file_type.clone(),
+                        document.id,
+                        document.total_chunks,
+                        Some(job_id),
+                    );
+                    self.state.add_document(document);
                     self.job_queue.increment_files_processed(job_id);
                     tracing::info!("Processed new file: {}", filename);
                 }
-                Ok(FileProcessResult::Updated(doc, old_chunks)) => {
-                    self.state.add_document(doc);
+                Ok(FileProcessResult::Updated { document, file_size, old_chunks_deleted }) => {
+                    // Record success in file registry
+                    self.state.record_file_success(
+                        &filename,
+                        &document.content_hash,
+                        file_size,
+                        document.file_type.clone(),
+                        document.id,
+                        document.total_chunks,
+                        Some(job_id),
+                    );
+                    self.state.add_document(document);
                     self.job_queue.increment_files_processed(job_id);
-                    tracing::info!("Updated file: {}, deleted {} old chunks", filename, old_chunks);
+                    tracing::info!("Updated file: {}, deleted {} old chunks", filename, old_chunks_deleted);
                 }
-                Ok(FileProcessResult::Skipped(reason)) => {
+                Ok(FileProcessResult::Skipped { reason, skip_reason, content_hash, file_size, file_type }) => {
+                    // Record skip in file registry
+                    self.state.record_file_skipped(
+                        &filename,
+                        &content_hash,
+                        file_size,
+                        file_type,
+                        skip_reason,
+                        Some(job_id),
+                    );
                     tracing::info!("Skipped {}: {}", filename, reason);
                     self.job_queue.add_skipped_file(job_id, &filename, &reason);
                 }
                 Err(e) => {
                     let error_msg = e.to_string();
+                    // Record failure in file registry
+                    let ext = filename.rsplit('.').next().unwrap_or("");
+                    let file_type = FileType::from_extension(ext);
+                    // We don't have content hash for failed files, use empty string
+                    self.state.record_file_failed(
+                        &filename,
+                        "",
+                        0,
+                        file_type,
+                        &error_msg,
+                        "parsing",
+                        Some(job_id),
+                    );
                     tracing::error!("Failed to process {}: {}", filename, error_msg);
                     self.job_queue.add_file_error(
                         job_id,
@@ -235,7 +290,7 @@ impl ProcessingWorker {
                         text.as_bytes(),
                         Some(data),          // Original PDF data for GCS storage
                         parallel_embeddings,
-                    ).await.map(FileProcessResult::New);
+                    ).await;
                 }
                 Err(e) => {
                     tracing::warn!("[{}] pdftotext failed: {}, falling back to Rust parser", filename, e);
@@ -314,7 +369,7 @@ impl ProcessingWorker {
                             text.as_bytes(),
                             Some(data),
                             parallel_embeddings,
-                        ).await.map(FileProcessResult::New);
+                        ).await;
                     }
                     Err(e) => {
                         tracing::warn!("[{}] Local OCR failed: {}, trying Unstructured API", filename, e);
@@ -365,7 +420,7 @@ impl ProcessingWorker {
                             text.as_bytes(),
                             Some(data),
                             parallel_embeddings,
-                        ).await.map(FileProcessResult::New);
+                        ).await;
                     }
                     Err(e) => {
                         tracing::warn!("[{}] pandoc failed: {}, trying Unstructured API", filename, e);
@@ -443,7 +498,7 @@ impl ProcessingWorker {
                             text.as_bytes(),
                             Some(data),
                             parallel_embeddings,
-                        ).await.map(FileProcessResult::New);
+                        ).await;
                     }
                     Ok(Err(fallback_err)) => {
                         tracing::error!(
@@ -470,16 +525,25 @@ impl ProcessingWorker {
         // Check file status for deduplication (use original filename for tracking)
         match state.check_file_status(&original_filename, &parsed.content_hash) {
             FileStatus::Unchanged(existing) => {
-                return Ok(FileProcessResult::Skipped(format!(
-                    "unchanged (hash: {}...)",
-                    &existing.content_hash[..12.min(existing.content_hash.len())]
-                )));
+                return Ok(FileProcessResult::Skipped {
+                    reason: format!(
+                        "unchanged (hash: {}...)",
+                        &existing.content_hash[..12.min(existing.content_hash.len())]
+                    ),
+                    skip_reason: SkipReason::Unchanged,
+                    content_hash: existing.content_hash.clone(),
+                    file_size: file_size as u64,
+                    file_type: parsed.file_type.clone(),
+                });
             }
             FileStatus::Duplicate(existing) => {
-                return Ok(FileProcessResult::Skipped(format!(
-                    "duplicate of '{}'",
-                    existing.filename
-                )));
+                return Ok(FileProcessResult::Skipped {
+                    reason: format!("duplicate of '{}'", existing.filename),
+                    skip_reason: SkipReason::Duplicate { existing_filename: existing.filename.clone() },
+                    content_hash: existing.content_hash.clone(),
+                    file_size: file_size as u64,
+                    file_type: parsed.file_type.clone(),
+                });
             }
             FileStatus::Modified(existing) => {
                 // Delete old document and its chunks
@@ -501,7 +565,11 @@ impl ProcessingWorker {
                     &parsed,
                     parallel_embeddings,
                 ).await?;
-                return Ok(FileProcessResult::Updated(doc, deleted));
+                return Ok(FileProcessResult::Updated {
+                    document: doc,
+                    file_size: file_size as u64,
+                    old_chunks_deleted: deleted,
+                });
             }
             FileStatus::New => {
                 // Process new file
@@ -515,7 +583,10 @@ impl ProcessingWorker {
                     &parsed,
                     parallel_embeddings,
                 ).await?;
-                return Ok(FileProcessResult::New(doc));
+                return Ok(FileProcessResult::New {
+                    document: doc,
+                    file_size: file_size as u64,
+                });
             }
         }
     }
@@ -524,6 +595,7 @@ impl ProcessingWorker {
     /// - `original_filename`: The filename as uploaded by user (used for display/citations)
     /// - `internal_filename`: The converted filename if different (e.g., "report.pdf" -> "report.txt")
     /// - `original_data`: Original file bytes for GCS storage (optional)
+    /// Returns FileProcessResult to properly handle skipped files
     async fn process_text_content(
         state: &AppState,
         job_queue: &Arc<JobQueue>,
@@ -533,7 +605,7 @@ impl ProcessingWorker {
         text_data: &[u8],
         original_data: Option<&[u8]>,
         parallel_embeddings: usize,
-    ) -> Result<Document> {
+    ) -> Result<FileProcessResult> {
         let config = state.config();
         let content = String::from_utf8_lossy(text_data).to_string();
 
@@ -543,17 +615,47 @@ impl ProcessingWorker {
         hasher.update(content.as_bytes());
         let content_hash = format!("{:x}", hasher.finalize());
 
-        // Check for duplicates using original filename
+        let text_size = text_data.len() as u64;
+        let original_size = original_data.map(|d| d.len() as u64).unwrap_or(text_size);
+
+        // Check for duplicates using original filename - return Skipped, not Error
         match state.check_file_status(original_filename, &content_hash) {
             crate::server::state::FileStatus::Unchanged(existing) => {
                 tracing::info!("[{}] Unchanged, skipping", original_filename);
-                return Err(Error::Internal(format!("File unchanged: {}", existing.filename)));
+                return Ok(FileProcessResult::Skipped {
+                    reason: format!(
+                        "unchanged (hash: {}...)",
+                        &existing.content_hash[..12.min(existing.content_hash.len())]
+                    ),
+                    skip_reason: SkipReason::Unchanged,
+                    content_hash: existing.content_hash.clone(),
+                    file_size: original_size,
+                    file_type: crate::types::FileType::Txt,
+                });
             }
             crate::server::state::FileStatus::Duplicate(existing) => {
                 tracing::info!("[{}] Duplicate of {}, skipping", original_filename, existing.filename);
-                return Err(Error::Internal(format!("Duplicate of: {}", existing.filename)));
+                return Ok(FileProcessResult::Skipped {
+                    reason: format!("duplicate of '{}'", existing.filename),
+                    skip_reason: SkipReason::Duplicate { existing_filename: existing.filename.clone() },
+                    content_hash: existing.content_hash.clone(),
+                    file_size: original_size,
+                    file_type: crate::types::FileType::Txt,
+                });
             }
-            _ => {}
+            crate::server::state::FileStatus::Modified(existing) => {
+                // Delete old document and its chunks, then continue processing
+                let deleted = state.delete_document_with_chunks(&existing.id)?;
+                tracing::info!(
+                    "[{}] File modified, deleted {} old chunks, reprocessing",
+                    original_filename,
+                    deleted
+                );
+                // Continue to process the new version below
+            }
+            crate::server::state::FileStatus::New => {
+                // Continue to process new file below
+            }
         }
 
         // Create document with original and internal filenames
@@ -683,7 +785,10 @@ impl ProcessingWorker {
         doc.total_chunks = total_chunks as u32;
         tracing::info!("[{}] COMPLETE: {} chunks stored", original_filename, total_chunks);
 
-        Ok(doc)
+        Ok(FileProcessResult::New {
+            document: doc,
+            file_size: original_size,
+        })
     }
 
     /// Process file content (chunking, embedding, storing)
