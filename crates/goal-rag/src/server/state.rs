@@ -19,7 +19,7 @@ use crate::providers::{
     ollama::{OllamaEmbedder, OllamaLlm},
 };
 #[cfg(feature = "gcp")]
-use crate::providers::gcp::GcsDocumentStore;
+use crate::providers::gcp::{DocumentAiClient, GcsDocumentStore};
 use crate::retrieval::VectorStore;
 use crate::types::{Chunk, Document, FileRecord, FileRecordStatus, SkipReason};
 
@@ -65,6 +65,9 @@ struct AppStateInner {
     /// GCS document store (only for GCP backend)
     #[cfg(feature = "gcp")]
     document_store: Option<Arc<GcsDocumentStore>>,
+    /// Document AI client for advanced PDF extraction (only for GCP backend)
+    #[cfg(feature = "gcp")]
+    document_ai: Option<Arc<DocumentAiClient>>,
 }
 
 impl AppState {
@@ -83,6 +86,8 @@ impl AppState {
         // Initialize document store (GCP only)
         #[cfg(feature = "gcp")]
         let mut gcs_document_store: Option<Arc<GcsDocumentStore>> = None;
+        #[cfg(feature = "gcp")]
+        let mut document_ai_client: Option<Arc<DocumentAiClient>> = None;
 
         // Initialize providers based on backend
         let (embedding_provider, llm_provider, vector_store_provider): (
@@ -146,11 +151,27 @@ impl AppState {
                     ).await?;
                     gcs_document_store = Some(Arc::new(document_store));
 
+                    // Initialize Document AI client if processor is configured
+                    if let Some(ref processor_name) = gcp_config.document_ai_processor {
+                        if gcp_config.use_document_ai_fallback {
+                            let doc_ai = DocumentAiClient::new(
+                                Arc::clone(&auth),
+                                processor_name.clone(),
+                            );
+                            document_ai_client = Some(Arc::new(doc_ai));
+                            tracing::info!(
+                                "Document AI initialized (processor: {})",
+                                processor_name
+                            );
+                        }
+                    }
+
                     tracing::info!(
-                        "GCP providers initialized (embedding: {}, llm: {}, gcs: {})",
+                        "GCP providers initialized (embedding: {}, llm: {}, gcs: {}, document_ai: {})",
                         gcp_config.embedding_model,
                         gcp_config.generation_model,
-                        gcp_config.gcs_bucket
+                        gcp_config.gcs_bucket,
+                        if document_ai_client.is_some() { "enabled" } else { "disabled" }
                     );
 
                     (embedder, llm, vector_provider)
@@ -220,6 +241,8 @@ impl AppState {
                 ready: RwLock::new(true),
                 #[cfg(feature = "gcp")]
                 document_store: gcs_document_store,
+                #[cfg(feature = "gcp")]
+                document_ai: document_ai_client,
             }),
         };
 
@@ -389,6 +412,12 @@ impl AppState {
     #[cfg(feature = "gcp")]
     pub fn document_store(&self) -> Option<&Arc<GcsDocumentStore>> {
         self.inner.document_store.as_ref()
+    }
+
+    /// Get Document AI client (only available with GCP backend and processor configured)
+    #[cfg(feature = "gcp")]
+    pub fn document_ai(&self) -> Option<&Arc<DocumentAiClient>> {
+        self.inner.document_ai.as_ref()
     }
 
     /// Get documents map

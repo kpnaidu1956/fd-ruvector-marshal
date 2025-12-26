@@ -253,6 +253,14 @@ pub struct GcpConfig {
     /// Generation model (default: "gemini-2.5-pro")
     #[serde(default = "default_generation_model")]
     pub generation_model: String,
+    /// Document AI processor ID for PDF extraction (optional)
+    /// e.g., "projects/my-project/locations/us/processors/abc123"
+    /// If not set, Document AI fallback is disabled
+    #[serde(default)]
+    pub document_ai_processor: Option<String>,
+    /// Enable Document AI as fallback for failed PDF parsing (default: true if processor is set)
+    #[serde(default = "default_use_document_ai")]
+    pub use_document_ai_fallback: bool,
 }
 
 fn default_embedding_model() -> String {
@@ -269,4 +277,8 @@ fn default_gcs_originals_prefix() -> String {
 
 fn default_gcs_plaintext_prefix() -> String {
     "plaintext/".to_string()
+}
+
+fn default_use_document_ai() -> bool {
+    true
 }
