@@ -83,7 +83,7 @@ impl DocumentAiClient {
         );
 
         let response = client
-            .post(&self.endpoint())
+            .post(self.endpoint())
             .json(&request)
             .send()
             .await

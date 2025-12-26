@@ -165,7 +165,7 @@ impl AnswerCache {
             for doc_id in doc_ids {
                 doc_to_q
                     .entry(doc_id)
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(key.clone());
             }
         }

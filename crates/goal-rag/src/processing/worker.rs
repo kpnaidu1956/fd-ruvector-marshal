@@ -558,7 +558,7 @@ impl ProcessingWorker {
                         tracing::error!("[{}] PDF fallback timeout after {}s", filename, op_timeout.as_secs());
                         return Err(Error::file_parse(
                             filename,
-                            format!("PDF extraction timeout. The file may be too large or complex.")
+                            "PDF extraction timeout. The file may be too large or complex.".to_string()
                         ));
                     }
                 }
@@ -569,7 +569,7 @@ impl ProcessingWorker {
         // Check file status for deduplication (use original filename for tracking)
         match state.check_file_status(&original_filename, &parsed.content_hash) {
             FileStatus::Unchanged(existing) => {
-                return Ok(FileProcessResult::Skipped {
+                Ok(FileProcessResult::Skipped {
                     reason: format!(
                         "unchanged (hash: {}...)",
                         &existing.content_hash[..12.min(existing.content_hash.len())]
@@ -578,19 +578,19 @@ impl ProcessingWorker {
                     content_hash: existing.content_hash.clone(),
                     file_size: file_size as u64,
                     file_type: parsed.file_type.clone(),
-                });
+                })
             }
             FileStatus::Duplicate(existing) => {
-                return Ok(FileProcessResult::Skipped {
+                Ok(FileProcessResult::Skipped {
                     reason: format!("duplicate of '{}'", existing.filename),
                     skip_reason: SkipReason::Duplicate { existing_filename: existing.filename.clone() },
                     content_hash: existing.content_hash.clone(),
                     file_size: file_size as u64,
                     file_type: parsed.file_type.clone(),
-                });
+                })
             }
             FileStatus::ExistsInRegistry(record) => {
-                return Ok(FileProcessResult::Skipped {
+                Ok(FileProcessResult::Skipped {
                     reason: format!(
                         "already in GCS (hash: {}..., uploaded: {})",
                         &record.content_hash[..12.min(record.content_hash.len())],
@@ -600,16 +600,16 @@ impl ProcessingWorker {
                     content_hash: record.content_hash.clone(),
                     file_size: file_size as u64,
                     file_type: parsed.file_type.clone(),
-                });
+                })
             }
             FileStatus::DuplicateInRegistry(record) => {
-                return Ok(FileProcessResult::Skipped {
+                Ok(FileProcessResult::Skipped {
                     reason: format!("duplicate of '{}' in GCS", record.filename),
                     skip_reason: SkipReason::Duplicate { existing_filename: record.filename.clone() },
                     content_hash: record.content_hash.clone(),
                     file_size: file_size as u64,
                     file_type: parsed.file_type.clone(),
-                });
+                })
             }
             FileStatus::Modified(existing) => {
                 // Delete old document and its chunks
@@ -631,11 +631,11 @@ impl ProcessingWorker {
                     &parsed,
                     parallel_embeddings,
                 ).await?;
-                return Ok(FileProcessResult::Updated {
+                Ok(FileProcessResult::Updated {
                     document: doc,
                     file_size: file_size as u64,
                     old_chunks_deleted: deleted,
-                });
+                })
             }
             FileStatus::New => {
                 // Process new file
@@ -649,10 +649,10 @@ impl ProcessingWorker {
                     &parsed,
                     parallel_embeddings,
                 ).await?;
-                return Ok(FileProcessResult::New {
+                Ok(FileProcessResult::New {
                     document: doc,
                     file_size: file_size as u64,
-                });
+                })
             }
         }
     }

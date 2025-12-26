@@ -7,6 +7,7 @@ use crate::ingestion::ExternalParserConfig;
 
 /// Main RAG system configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct RagConfig {
     /// Backend provider (local or gcp)
     #[serde(default)]
@@ -30,21 +31,6 @@ pub struct RagConfig {
     pub gcp: Option<GcpConfig>,
 }
 
-impl Default for RagConfig {
-    fn default() -> Self {
-        Self {
-            backend: BackendProvider::default(),
-            server: ServerConfig::default(),
-            embeddings: EmbeddingConfig::default(),
-            chunking: ChunkingConfig::default(),
-            llm: LlmConfig::default(),
-            vector_db: VectorDbConfig::default(),
-            external_parser: ExternalParserConfig::default(),
-            processing: ProcessingConfig::default(),
-            gcp: None,
-        }
-    }
-}
 
 /// Processing configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

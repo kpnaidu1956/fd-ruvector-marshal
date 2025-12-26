@@ -215,29 +215,29 @@ async fn process_file_with_dedup(
     // Check file status for deduplication
     match state.check_file_status(filename, &parsed.content_hash) {
         FileStatus::Unchanged(existing) => {
-            return Ok(ProcessResult::Skipped(format!(
+            Ok(ProcessResult::Skipped(format!(
                 "unchanged (hash: {}...)",
                 &existing.content_hash[..12]
-            )));
+            )))
         }
         FileStatus::Duplicate(existing) => {
-            return Ok(ProcessResult::Skipped(format!(
+            Ok(ProcessResult::Skipped(format!(
                 "duplicate of '{}'",
                 existing.filename
-            )));
+            )))
         }
         FileStatus::ExistsInRegistry(record) => {
-            return Ok(ProcessResult::Skipped(format!(
+            Ok(ProcessResult::Skipped(format!(
                 "already in GCS (hash: {}..., uploaded: {})",
                 &record.content_hash[..record.content_hash.len().min(12)],
                 record.first_seen_at.format("%Y-%m-%d")
-            )));
+            )))
         }
         FileStatus::DuplicateInRegistry(record) => {
-            return Ok(ProcessResult::Skipped(format!(
+            Ok(ProcessResult::Skipped(format!(
                 "duplicate of '{}' in GCS",
                 record.filename
-            )));
+            )))
         }
         FileStatus::Modified(existing) => {
             // Delete old document and its chunks
@@ -250,12 +250,12 @@ async fn process_file_with_dedup(
 
             // Process the new version
             let (doc, chunk_count) = process_file_internal(state, filename, data, &parsed, options).await?;
-            return Ok(ProcessResult::Updated(doc, chunk_count, deleted));
+            Ok(ProcessResult::Updated(doc, chunk_count, deleted))
         }
         FileStatus::New => {
             // Process new file
             let (doc, chunk_count) = process_file_internal(state, filename, data, &parsed, options).await?;
-            return Ok(ProcessResult::New(doc, chunk_count));
+            Ok(ProcessResult::New(doc, chunk_count))
         }
     }
 }

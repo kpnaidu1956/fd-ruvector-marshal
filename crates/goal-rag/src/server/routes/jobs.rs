@@ -25,8 +25,10 @@ pub async fn ingest_async(
     mut multipart: Multipart,
 ) -> Result<Json<AsyncIngestResponse>> {
     let mut files = Vec::new();
-    let mut options = ProcessingOptions::default();
-    options.parallel_embeddings = num_cpus::get().min(8);
+    let mut options = ProcessingOptions {
+        parallel_embeddings: num_cpus::get().min(8),
+        ..Default::default()
+    };
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         Error::Internal(format!("Failed to read multipart field: {}", e))

@@ -90,14 +90,10 @@ fn cleanup_pdf_text(text: &str) -> String {
 
     // Replace common ASCII approximations
     result = result
-        .replace('\u{2010}', "-")  // Hyphen -> regular hyphen
-        .replace('\u{2011}', "-")  // Non-breaking hyphen -> hyphen
-        .replace('\u{2013}', "-")  // En dash -> hyphen
+        .replace(['\u{2010}', '\u{2011}', '\u{2013}'], "-")  // En dash -> hyphen
         .replace('\u{2014}', "--") // Em dash -> double hyphen
-        .replace('\u{2018}', "'")  // Left single quote -> apostrophe
-        .replace('\u{2019}', "'")  // Right single quote -> apostrophe
-        .replace('\u{201C}', "\"") // Left double quote -> quote
-        .replace('\u{201D}', "\"") // Right double quote -> quote
+        .replace(['\u{2018}', '\u{2019}'], "'")  // Right single quote -> apostrophe
+        .replace(['\u{201C}', '\u{201D}'], "\"") // Right double quote -> quote
         .replace('\u{2022}', "* ") // Bullet -> asterisk
         .replace('\u{2026}', "...") // Ellipsis -> three dots
         .replace('\u{00A0}', " ")  // Non-breaking space -> space
@@ -625,11 +621,9 @@ impl FileParser {
         }
 
         // Read rows
-        for result in reader.records() {
-            if let Ok(record) = result {
-                content.push_str(&record.iter().collect::<Vec<_>>().join(" | "));
-                content.push('\n');
-            }
+        for record in reader.records().flatten() {
+            content.push_str(&record.iter().collect::<Vec<_>>().join(" | "));
+            content.push('\n');
         }
 
         let pages = vec![PageContent {

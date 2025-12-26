@@ -89,7 +89,7 @@ impl VectorStore {
         let mut doc_chunks = self.document_chunks.write();
         doc_chunks
             .entry(chunk.document_id)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(chunk_id);
 
         Ok(())
@@ -104,10 +104,10 @@ impl VectorStore {
     ) -> Result<Vec<SearchResult>> {
         // Build metadata filter
         let filter = document_filter.map(|_doc_ids| {
-            let filter = HashMap::new();
+            
             // For now, we'll filter in post-processing
             // In production, implement proper metadata filtering in ruvector-core
-            filter
+            HashMap::new()
         });
 
         let query = CoreSearchQuery {

@@ -206,7 +206,7 @@ impl FileRegistryDb {
         let mut stmt = conn.prepare("SELECT * FROM file_registry ORDER BY last_processed_at DESC")
             .map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
 
-        let records = stmt.query_map([], |row| row_to_file_record(row))
+        let records = stmt.query_map([], row_to_file_record)
             .map_err(|e| Error::Internal(format!("Failed to list file records: {}", e)))?
             .filter_map(|r| r.ok())
             .collect();
@@ -222,7 +222,7 @@ impl FileRegistryDb {
             "SELECT * FROM file_registry WHERE status = ?1 ORDER BY last_processed_at DESC"
         ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
 
-        let records = stmt.query_map(params![status_to_string(&status)], |row| row_to_file_record(row))
+        let records = stmt.query_map(params![status_to_string(&status)], row_to_file_record)
             .map_err(|e| Error::Internal(format!("Failed to list file records: {}", e)))?
             .filter_map(|r| r.ok())
             .collect();

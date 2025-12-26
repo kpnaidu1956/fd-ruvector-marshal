@@ -41,7 +41,9 @@ impl RagServer {
             .allow_methods(Any)
             .allow_headers(Any);
 
-        let router = Router::new()
+        
+
+        Router::new()
             // Health check
             .route("/health", get(health_check))
             .route("/ready", get(readiness))
@@ -51,9 +53,7 @@ impl RagServer {
             // Middleware layers (order matters - applied bottom to top)
             .layer(TraceLayer::new_for_http())
             .layer(CompressionLayer::new())
-            .layer(cors);
-
-        router
+            .layer(cors)
     }
 
     /// Start the server
