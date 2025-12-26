@@ -75,6 +75,9 @@ dashmap = { workspace = true }
 num_cpus = "1.16"
 futures = "0.3"
 
+# Database
+rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
+
 # CLI (optional)
 clap = { workspace = true, optional = true }
 indicatif = { workspace = true, optional = true }

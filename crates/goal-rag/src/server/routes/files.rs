@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::server::state::{AppState, FileRegistryStats};
+use crate::storage::SyncStatus;
 use crate::types::{
     FileCheckItem, FileCheckRequest, FileCheckResponse, FileCheckResult, FileCheckSummary,
     FileRecord, FileRecordStatus, FileRecordSummary, FileUploadAdvice,
@@ -453,4 +454,84 @@ pub struct FileStatsResponse {
     pub skipped: usize,
     pub success_rate: f32,
     pub error_breakdown: std::collections::HashMap<String, usize>,
+}
+
+// ============================================================================
+// GCS Sync Endpoints
+// ============================================================================
+
+/// POST /api/files/sync - Sync file registry from GCS bucket
+#[cfg(feature = "gcp")]
+pub async fn sync_from_gcs(
+    State(state): State<AppState>,
+) -> Result<Json<SyncResponse>> {
+    let (synced, failed) = state.sync_from_gcs().await?;
+
+    Ok(Json(SyncResponse {
+        success: true,
+        files_synced: synced,
+        files_failed: failed,
+        message: format!(
+            "Synced {} files from GCS bucket ({} failed)",
+            synced, failed
+        ),
+        sync_status: state.get_sync_status(),
+    }))
+}
+
+/// GET /api/files/sync/status - Get last sync status
+pub async fn get_sync_status(
+    State(state): State<AppState>,
+) -> Json<SyncStatusResponse> {
+    let sync_status = state.get_sync_status();
+    let db_stats = state.database_stats();
+
+    Json(SyncStatusResponse {
+        last_sync: sync_status,
+        database_stats: db_stats,
+    })
+}
+
+#[derive(Debug, Serialize)]
+pub struct SyncResponse {
+    pub success: bool,
+    pub files_synced: usize,
+    pub files_failed: usize,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sync_status: Option<SyncStatus>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SyncStatusResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_sync: Option<SyncStatus>,
+    pub database_stats: crate::storage::FileRegistryDbStats,
+}
+
+/// GET /api/files/gcs-counts - Get file counts from GCS bucket
+#[cfg(feature = "gcp")]
+pub async fn get_gcs_counts(
+    State(state): State<AppState>,
+) -> Result<Json<GcsCountsResponse>> {
+    let document_store = state.document_store()
+        .ok_or_else(|| Error::Internal("GCS document store not available".to_string()))?;
+
+    let (originals, plaintext) = document_store.get_file_counts().await?;
+
+    Ok(Json(GcsCountsResponse {
+        originals_count: originals,
+        plaintext_count: plaintext,
+        failed_estimate: if originals > plaintext { originals - plaintext } else { 0 },
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct GcsCountsResponse {
+    /// Number of original files in GCS
+    pub originals_count: usize,
+    /// Number of plaintext files in GCS (successfully processed)
+    pub plaintext_count: usize,
+    /// Estimated number of failed files (originals without plaintext)
+    pub failed_estimate: usize,
 }

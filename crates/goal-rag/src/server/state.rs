@@ -21,6 +21,7 @@ use crate::providers::{
 #[cfg(feature = "gcp")]
 use crate::providers::gcp::{DocumentAiClient, GcsDocumentStore};
 use crate::retrieval::VectorStore;
+use crate::storage::{FileRegistryDb, FileRegistryDbStats, SyncStatus};
 use crate::types::{Chunk, Document, FileRecord, FileRecordStatus, SkipReason};
 
 /// Shared application state
@@ -50,16 +51,16 @@ struct AppStateInner {
     knowledge_store: KnowledgeStore,
     /// Answer cache with document-based invalidation
     answer_cache: AnswerCache,
-    /// Document registry (persisted to disk)
+    /// Document registry (in-memory cache, backed by database)
     documents: DashMap<Uuid, Document>,
     /// Chunk metadata store (for Vertex AI lookups)
     chunks: DashMap<Uuid, Chunk>,
-    /// File registry for tracking all file processing status
+    /// File registry (in-memory cache for fast lookups)
     file_registry: DashMap<String, FileRecord>,
-    /// Path to documents registry file
+    /// SQLite database for persistent storage
+    database: Arc<FileRegistryDb>,
+    /// Path for documents JSON (legacy, for backwards compatibility)
     documents_path: PathBuf,
-    /// Path to file registry file
-    file_registry_path: PathBuf,
     /// Ready state
     ready: RwLock<bool>,
     /// GCS document store (only for GCP backend)
@@ -204,15 +205,29 @@ impl AppState {
         let answer_cache = AnswerCache::new(1000, 3600);
         tracing::info!("Answer cache initialized");
 
-        // Load persisted documents registry
+        // Initialize SQLite database
+        let db_path = storage_dir.join("rag_registry.db");
+        let database = Arc::new(FileRegistryDb::new(&db_path)?);
+        tracing::info!("Database initialized at {:?}", db_path);
+
+        // Load file registry from database into memory cache
+        let file_registry = DashMap::new();
+        match database.list_file_records() {
+            Ok(records) => {
+                for record in records {
+                    file_registry.insert(record.filename.clone(), record);
+                }
+                tracing::info!("Loaded {} file records from database", file_registry.len());
+            }
+            Err(e) => {
+                tracing::warn!("Failed to load file registry from database: {}", e);
+            }
+        }
+
+        // Load documents from legacy JSON file if database is empty
         let documents_path = storage_dir.join("documents.json");
         let documents = Self::load_documents(&documents_path);
         tracing::info!("Loaded {} documents from registry", documents.len());
-
-        // Load persisted file registry
-        let file_registry_path = storage_dir.join("file_registry.json");
-        let file_registry = Self::load_file_registry(&file_registry_path);
-        tracing::info!("Loaded {} file records from registry", file_registry.len());
 
         // Initialize job queue and start workers
         let worker_count = num_cpus::get().min(4);  // Max 4 workers
@@ -236,8 +251,8 @@ impl AppState {
                 documents,
                 chunks: DashMap::new(),
                 file_registry,
+                database,
                 documents_path,
-                file_registry_path,
                 ready: RwLock::new(true),
                 #[cfg(feature = "gcp")]
                 document_store: gcs_document_store,
@@ -302,50 +317,90 @@ impl AppState {
         }
     }
 
-    /// Load file registry from disk
-    fn load_file_registry(path: &PathBuf) -> DashMap<String, FileRecord> {
-        let registry = DashMap::new();
-
-        if path.exists() {
-            match fs::read_to_string(path) {
-                Ok(content) => {
-                    match serde_json::from_str::<Vec<FileRecord>>(&content) {
-                        Ok(records) => {
-                            for record in records {
-                                registry.insert(record.filename.clone(), record);
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to parse file_registry.json: {}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to read file_registry.json: {}", e);
-                }
-            }
-        }
-
-        registry
+    /// Get database reference
+    pub fn database(&self) -> &Arc<FileRegistryDb> {
+        &self.inner.database
     }
 
-    /// Save file registry to disk
-    fn save_file_registry(&self) {
-        let records: Vec<FileRecord> = self.inner.file_registry
-            .iter()
-            .map(|entry| entry.value().clone())
-            .collect();
+    /// Sync file registry from GCS bucket
+    /// Returns (files_synced, failed_count)
+    #[cfg(feature = "gcp")]
+    pub async fn sync_from_gcs(&self) -> Result<(usize, usize)> {
+        let document_store = self.document_store()
+            .ok_or_else(|| Error::Internal("GCS document store not available".to_string()))?;
 
-        match serde_json::to_string_pretty(&records) {
-            Ok(content) => {
-                if let Err(e) = fs::write(&self.inner.file_registry_path, content) {
-                    tracing::error!("Failed to save file_registry.json: {}", e);
-                }
+        let start = std::time::Instant::now();
+        let files = document_store.sync_from_bucket().await?;
+
+        let mut synced = 0;
+        let mut failed = 0;
+
+        for file_info in &files {
+            // Update database
+            if let Err(e) = self.inner.database.sync_from_gcs(
+                &file_info.filename,
+                file_info.document_id,
+                file_info.content_hash.as_deref().unwrap_or(""),
+                file_info.file_size,
+                &file_info.file_type,
+                file_info.has_plaintext,
+                &file_info.original_uri,
+                file_info.plaintext_uri.as_deref(),
+            ) {
+                tracing::warn!("Failed to sync file {}: {}", file_info.filename, e);
+                failed += 1;
+                continue;
             }
-            Err(e) => {
-                tracing::error!("Failed to serialize file registry: {}", e);
-            }
+
+            // Update in-memory cache
+            let status = if file_info.has_plaintext {
+                FileRecordStatus::Success
+            } else {
+                FileRecordStatus::Failed
+            };
+
+            let record = FileRecord {
+                id: file_info.document_id,
+                filename: file_info.filename.clone(),
+                content_hash: file_info.content_hash.clone().unwrap_or_default(),
+                file_size: file_info.file_size,
+                file_type: crate::types::FileType::from_extension(&file_info.file_type),
+                status,
+                document_id: Some(file_info.document_id),
+                chunks_created: None,
+                skip_reason: None,
+                error_message: if file_info.has_plaintext { None } else {
+                    Some("No plaintext found - processing may have failed".to_string())
+                },
+                failed_at_stage: None,
+                job_id: None,
+                first_seen_at: chrono::Utc::now(),
+                last_processed_at: chrono::Utc::now(),
+                upload_count: 1,
+                original_url: Some(file_info.original_uri.clone()),
+                plaintext_url: file_info.plaintext_uri.clone(),
+            };
+
+            self.inner.file_registry.insert(file_info.filename.clone(), record);
+            synced += 1;
         }
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        if let Err(e) = self.inner.database.update_sync_status(synced, duration_ms) {
+            tracing::warn!("Failed to update sync status: {}", e);
+        }
+
+        tracing::info!(
+            "GCS sync complete: {} files synced, {} failed, took {}ms",
+            synced, failed, duration_ms
+        );
+
+        Ok((synced, failed))
+    }
+
+    /// Get GCS sync status
+    pub fn get_sync_status(&self) -> Option<SyncStatus> {
+        self.inner.database.get_sync_status().ok().flatten()
     }
 
     /// Get external parser
@@ -555,8 +610,12 @@ impl AppState {
             chunks_created,
             job_id,
         );
+        // Save to database
+        if let Err(e) = self.inner.database.upsert_file_record(&record) {
+            tracing::error!("Failed to save file record to database: {}", e);
+        }
+        // Update in-memory cache
         self.inner.file_registry.insert(filename.to_string(), record);
-        self.save_file_registry();
     }
 
     /// Record a skipped file
@@ -569,23 +628,27 @@ impl AppState {
         skip_reason: SkipReason,
         job_id: Option<Uuid>,
     ) {
-        // Update existing record if it exists
-        if let Some(mut existing) = self.inner.file_registry.get_mut(filename) {
+        let record = if let Some(mut existing) = self.inner.file_registry.get_mut(filename) {
             existing.update_for_reupload(job_id);
             existing.status = FileRecordStatus::Skipped;
             existing.skip_reason = Some(skip_reason);
+            existing.clone()
         } else {
-            let record = FileRecord::skipped(
+            FileRecord::skipped(
                 filename.to_string(),
                 content_hash.to_string(),
                 file_size,
                 file_type,
                 skip_reason,
                 job_id,
-            );
-            self.inner.file_registry.insert(filename.to_string(), record);
+            )
+        };
+        // Save to database
+        if let Err(e) = self.inner.database.upsert_file_record(&record) {
+            tracing::error!("Failed to save file record to database: {}", e);
         }
-        self.save_file_registry();
+        // Update in-memory cache
+        self.inner.file_registry.insert(filename.to_string(), record);
     }
 
     /// Record a failed file
@@ -599,12 +662,12 @@ impl AppState {
         failed_at_stage: &str,
         job_id: Option<Uuid>,
     ) {
-        // Update existing record if it exists
-        if let Some(mut existing) = self.inner.file_registry.get_mut(filename) {
+        let record = if let Some(mut existing) = self.inner.file_registry.get_mut(filename) {
             existing.update_for_reupload(job_id);
             existing.mark_failed(error_message.to_string(), failed_at_stage.to_string());
+            existing.clone()
         } else {
-            let record = FileRecord::failed(
+            FileRecord::failed(
                 filename.to_string(),
                 content_hash.to_string(),
                 file_size,
@@ -612,10 +675,14 @@ impl AppState {
                 error_message.to_string(),
                 failed_at_stage.to_string(),
                 job_id,
-            );
-            self.inner.file_registry.insert(filename.to_string(), record);
+            )
+        };
+        // Save to database
+        if let Err(e) = self.inner.database.upsert_file_record(&record) {
+            tracing::error!("Failed to save file record to database: {}", e);
         }
-        self.save_file_registry();
+        // Update in-memory cache
+        self.inner.file_registry.insert(filename.to_string(), record);
     }
 
     /// Get file record by filename
@@ -689,15 +756,26 @@ impl AppState {
 
     /// Remove a file record
     pub fn remove_file_record(&self, filename: &str) -> Option<FileRecord> {
-        let removed = self.inner.file_registry.remove(filename).map(|(_, r)| r);
-        if removed.is_some() {
-            self.save_file_registry();
+        // Remove from database
+        if let Err(e) = self.inner.database.delete_file_record(filename) {
+            tracing::error!("Failed to delete file record from database: {}", e);
         }
-        removed
+        // Remove from in-memory cache
+        self.inner.file_registry.remove(filename).map(|(_, r)| r)
     }
 
     /// Clear all failed file records (for retry)
     pub fn clear_failed_files(&self) -> usize {
+        // Clear from database
+        let db_count = match self.inner.database.clear_failed_files() {
+            Ok(count) => count,
+            Err(e) => {
+                tracing::error!("Failed to clear failed files from database: {}", e);
+                0
+            }
+        };
+
+        // Clear from in-memory cache
         let failed_keys: Vec<String> = self.inner
             .file_registry
             .iter()
@@ -705,15 +783,21 @@ impl AppState {
             .map(|e| e.key().clone())
             .collect();
 
-        let count = failed_keys.len();
-        for key in failed_keys {
-            self.inner.file_registry.remove(&key);
+        for key in &failed_keys {
+            self.inner.file_registry.remove(key);
         }
 
-        if count > 0 {
-            self.save_file_registry();
-        }
-        count
+        db_count.max(failed_keys.len())
+    }
+
+    /// Get database statistics
+    pub fn database_stats(&self) -> FileRegistryDbStats {
+        self.inner.database.get_stats().unwrap_or(FileRegistryDbStats {
+            total: 0,
+            success: 0,
+            failed: 0,
+            skipped: 0,
+        })
     }
 }
 
