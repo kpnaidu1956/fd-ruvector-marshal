@@ -846,75 +846,53 @@ impl ExternalParser {
     }
 
     /// Get parsing strategies in order based on file characteristics
+    /// For PDFs, always try pdftotext first (fastest), then OCR, then cloud
     fn get_parsing_order(&self, characteristics: &FileCharacteristics, ext: &str) -> Vec<&'static str> {
         let mut strategies = Vec::new();
 
-        match characteristics.recommended_parser {
-            ParserStrategy::NativeOnly => {
-                strategies.push("native");
-                if ext == "pdf" && Self::has_pdftotext() {
-                    strategies.push("pdftotext");
-                }
-                if Self::has_pandoc() && Self::can_use_pandoc(&format!("file.{}", ext)) {
-                    strategies.push("pandoc");
-                }
+        if ext == "pdf" {
+            // For PDFs, always try pdftotext first (it's fast and handles fonts well)
+            if Self::has_pdftotext() {
+                strategies.push("pdftotext");
             }
-            ParserStrategy::LocalToolsFirst => {
-                // Local tools first
-                if ext == "pdf" {
-                    if Self::has_pdftotext() {
-                        strategies.push("pdftotext");
-                    }
-                    if Self::has_tesseract() && Self::has_pdftoppm() {
-                        strategies.push("ocr");
-                    }
+
+            // For scanned/encrypted PDFs, prioritize OCR and cloud
+            if characteristics.is_scanned_pdf || characteristics.is_encrypted || characteristics.complexity_score > 0.5 {
+                if Self::has_tesseract() && Self::has_pdftoppm() {
+                    strategies.push("ocr");
                 }
-                if Self::has_pandoc() && Self::can_use_pandoc(&format!("file.{}", ext)) {
-                    strategies.push("pandoc");
+                if self.config.enabled {
+                    strategies.push("unstructured");
                 }
-                strategies.push("native");
+            } else {
+                // For simple PDFs, try OCR after pdftotext fails
+                if Self::has_tesseract() && Self::has_pdftoppm() {
+                    strategies.push("ocr");
+                }
                 if self.config.enabled {
                     strategies.push("unstructured");
                 }
             }
-            ParserStrategy::CloudFirst => {
-                // Cloud services first (for complex/large files)
-                if self.config.enabled {
-                    strategies.push("unstructured");
-                }
-                if ext == "pdf" {
-                    if Self::has_tesseract() && Self::has_pdftoppm() {
-                        strategies.push("ocr");
-                    }
-                    if Self::has_pdftotext() {
-                        strategies.push("pdftotext");
-                    }
-                }
-                strategies.push("native");
+        } else {
+            // Non-PDF: try pandoc first for supported formats
+            if Self::has_pandoc() && Self::can_use_pandoc(&format!("file.{}", ext)) {
+                strategies.push("pandoc");
             }
-            ParserStrategy::ParallelAttempt => {
-                // For very complex files, try cloud first then everything else
-                if self.config.enabled {
-                    strategies.push("unstructured");
-                }
-                if ext == "pdf" {
-                    if Self::has_tesseract() && Self::has_pdftoppm() {
-                        strategies.push("ocr");
-                    }
-                    if Self::has_pdftotext() {
-                        strategies.push("pdftotext");
-                    }
-                }
-                if Self::has_pandoc() && Self::can_use_pandoc(&format!("file.{}", ext)) {
-                    strategies.push("pandoc");
-                }
-                strategies.push("native");
+            if self.config.enabled {
+                strategies.push("unstructured");
             }
         }
 
         // Remove duplicates while preserving order
         let mut seen = std::collections::HashSet::new();
         strategies.retain(|s| seen.insert(*s));
+
+        // Ensure we have at least one strategy
+        if strategies.is_empty() {
+            if self.config.enabled {
+                strategies.push("unstructured");
+            }
+        }
 
         strategies
     }
