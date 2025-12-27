@@ -528,7 +528,13 @@ impl ProcessingWorker {
                         external_parser.parse_with_unstructured(filename, data)
                     ).await;
                     match parse_result {
-                        Ok(Ok(parsed)) => (format!("{}.txt", filename), parsed.content.into_bytes()),
+                        Ok(Ok(parsed)) => {
+                            let stem = std::path::Path::new(filename)
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("document");
+                            (format!("{}.txt", stem), parsed.content.into_bytes())
+                        }
                         Ok(Err(e)) => {
                             tracing::error!("[{}] External parser failed: {}", filename, e);
                             return Err(e);
@@ -557,7 +563,11 @@ impl ProcessingWorker {
                 match external_parser.convert_image_with_ocr(data) {
                     Ok(text) => {
                         tracing::info!("[{}] OCR extracted {} chars", filename, text.len());
-                        let text_filename = format!("{}.txt", filename.rsplit('.').next().unwrap_or(filename));
+                        let stem = std::path::Path::new(filename)
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("document");
+                        let text_filename = format!("{}.txt", stem);
                         return Self::process_text_content(
                             state,
                             job_queue,
@@ -583,7 +593,11 @@ impl ProcessingWorker {
             match parse_result {
                 Ok(Ok(parsed)) => {
                     tracing::info!("[{}] Unstructured OCR successful", filename);
-                    (format!("{}.txt", filename), parsed.content.into_bytes())
+                    let stem = std::path::Path::new(filename)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("document");
+                    (format!("{}.txt", stem), parsed.content.into_bytes())
                 }
                 Ok(Err(e)) => {
                     tracing::error!("[{}] Image OCR failed: {}", filename, e);
@@ -608,7 +622,11 @@ impl ProcessingWorker {
                 match external_parser.convert_with_pandoc(filename, data) {
                     Ok(text) => {
                         tracing::info!("[{}] pandoc extracted {} chars", filename, text.len());
-                        let text_filename = format!("{}.txt", filename.rsplit('.').next().unwrap_or(filename));
+                        let stem = std::path::Path::new(filename)
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("document");
+                        let text_filename = format!("{}.txt", stem);
                         return Self::process_text_content(
                             state,
                             job_queue,
@@ -634,7 +652,11 @@ impl ProcessingWorker {
             match parse_result {
                 Ok(Ok(parsed)) => {
                     tracing::info!("[{}] External parsing successful", filename);
-                    (format!("{}.txt", filename), parsed.content.into_bytes())
+                    let stem = std::path::Path::new(filename)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("document");
+                    (format!("{}.txt", stem), parsed.content.into_bytes())
                 }
                 Ok(Err(e)) => {
                     tracing::error!("[{}] External parser failed: {}", filename, e);
