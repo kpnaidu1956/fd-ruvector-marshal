@@ -151,8 +151,8 @@ async fn string_search_query(
 ) -> Result<Json<QueryResponse>> {
     tracing::info!("String search: \"{}\"", query);
 
-    // Perform literal string search
-    let results = state.vector_store().string_search(query, 10)?;
+    // Perform literal string search (uses SQLite FTS for GCP, HNSW for local)
+    let results = state.vector_store_provider().string_search(query, 10).await?;
 
     let processing_time_ms = start.elapsed().as_millis() as u64;
 
@@ -211,7 +211,7 @@ pub async fn string_search(
 ) -> Result<Json<StringSearchResponse>> {
     let start = Instant::now();
 
-    let results = state.vector_store().string_search(&request.query, request.limit.unwrap_or(10))?;
+    let results = state.vector_store_provider().string_search(&request.query, request.limit.unwrap_or(10)).await?;
     let processing_time_ms = start.elapsed().as_millis() as u64;
 
     Ok(Json(StringSearchResponse::new(request.query, results, processing_time_ms)))
@@ -239,7 +239,7 @@ pub async fn query_rag_v2(
 
     // For string search queries, use literal text matching
     if matches!(query_type, QueryType::StringSearch) {
-        let results = state.vector_store().string_search(&request.question, 10)?;
+        let results = state.vector_store_provider().string_search(&request.question, 10).await?;
         let processing_time_ms = start.elapsed().as_millis() as u64;
 
         let total_matches: usize = results.iter().map(|r| r.match_count).sum();

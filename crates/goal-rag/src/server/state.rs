@@ -35,8 +35,8 @@ struct AppStateInner {
     config: RagConfig,
     /// Vector store for chunks (provider abstraction)
     vector_store_provider: Arc<dyn VectorStoreProvider>,
-    /// Legacy vector store (for backwards compatibility)
-    vector_store: Arc<VectorStore>,
+    /// Legacy local vector store (only for Local backend, None for GCP)
+    vector_store: Option<Arc<VectorStore>>,
     /// Embedding provider (Ollama or Vertex AI)
     embedding_provider: Arc<dyn EmbeddingProvider>,
     /// LLM provider (Ollama or Gemini)
@@ -76,9 +76,8 @@ impl AppState {
     pub async fn new(config: RagConfig) -> Result<Self> {
         tracing::info!("Initializing RAG application state (backend: {:?})...", config.backend);
 
-        // Initialize vector store (always local for now)
-        let vector_store = Arc::new(VectorStore::new(&config)?);
-        tracing::info!("Vector store initialized");
+        // Local vector store - only created for Local backend
+        let mut local_vector_store: Option<Arc<VectorStore>> = None;
 
         // Initialize Ollama client (for local backend, also used as fallback)
         let ollama = Arc::new(OllamaClient::new(&config.llm));
@@ -90,6 +89,15 @@ impl AppState {
         #[cfg(feature = "gcp")]
         let mut document_ai_client: Option<Arc<DocumentAiClient>> = None;
 
+        // Initialize SQLite database early (needed for both backends)
+        let storage_dir = config.vector_db.storage_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        let db_path = storage_dir.join("rag_registry.db");
+        let database = Arc::new(FileRegistryDb::new(&db_path)?);
+        tracing::info!("Database initialized at {:?}", db_path);
+
         // Initialize providers based on backend
         let (embedding_provider, llm_provider, vector_store_provider): (
             Arc<dyn EmbeddingProvider>,
@@ -98,12 +106,25 @@ impl AppState {
         ) = match config.backend {
             BackendProvider::Local => {
                 tracing::info!("Using local backend (Ollama + HNSW)");
+
+                // Create local vector store
+                let vector_store = Arc::new(VectorStore::new(&config)?);
+                tracing::info!("Local vector store initialized");
+
                 let embedder = Arc::new(OllamaEmbedder::new(
                     &config.llm,
                     config.embeddings.dimensions,
                 ));
                 let llm = Arc::new(OllamaLlm::new(&config.llm));
-                let vector_provider = Arc::new(LocalVectorStore::new(Arc::clone(&vector_store)));
+                // Pass database for SQLite FTS-based string search
+                let vector_provider = Arc::new(LocalVectorStore::new(
+                    Arc::clone(&vector_store),
+                    Arc::clone(&database),
+                ));
+
+                // Store for later use
+                local_vector_store = Some(vector_store);
+
                 (embedder, llm, vector_provider)
             }
             BackendProvider::Gcp => {
@@ -141,7 +162,10 @@ impl AppState {
                         gcp_config.vector_search_endpoint.clone(),
                         gcp_config.vector_search_public_domain.clone(),
                         gcp_config.deployed_index_id.clone(),
+                        Arc::clone(&database),  // Pass database for FTS and chunk tracking
                     ));
+
+                    tracing::info!("GCP backend: using Vertex AI Vector Search (no local HNSW)");
 
                     // Initialize GCS document store
                     let document_store = GcsDocumentStore::new(
@@ -192,11 +216,6 @@ impl AppState {
         tracing::info!("External parser initialized (enabled: {})", config.external_parser.enabled);
 
         // Initialize knowledge store for learning
-        let storage_dir = config.vector_db.storage_path
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("."));
-
         let knowledge_path = storage_dir.join("knowledge.json");
         let knowledge_store = KnowledgeStore::new(knowledge_path);
         tracing::info!("Knowledge store initialized");
@@ -204,11 +223,6 @@ impl AppState {
         // Initialize answer cache (1000 entries, 1 hour TTL)
         let answer_cache = AnswerCache::new(1000, 3600);
         tracing::info!("Answer cache initialized");
-
-        // Initialize SQLite database
-        let db_path = storage_dir.join("rag_registry.db");
-        let database = Arc::new(FileRegistryDb::new(&db_path)?);
-        tracing::info!("Database initialized at {:?}", db_path);
 
         // Load file registry from database into memory cache
         let file_registry = DashMap::new();
@@ -231,16 +245,25 @@ impl AppState {
 
         // Initialize job queue and start workers
         let worker_count = num_cpus::get().min(4);  // Max 4 workers
-        let (job_queue, receiver) = JobQueue::new(worker_count);
+        let (job_queue, receiver) = JobQueue::new(worker_count, database.clone());
         let job_queue = Arc::new(job_queue);
         tracing::info!("Job queue initialized with {} workers", worker_count);
+
+        // Check for incomplete jobs from previous session
+        let incomplete_jobs = job_queue.get_incomplete_jobs();
+        if !incomplete_jobs.is_empty() {
+            tracing::info!(
+                "Found {} incomplete jobs from previous session - will resume after startup",
+                incomplete_jobs.len()
+            );
+        }
 
         // Create the state first (without the worker running)
         let state = Self {
             inner: Arc::new(AppStateInner {
                 config,
                 vector_store_provider,
-                vector_store,
+                vector_store: local_vector_store,
                 embedding_provider,
                 llm_provider,
                 ollama,
@@ -263,10 +286,37 @@ impl AppState {
 
         // Start background worker with a clone of the state
         let worker_state = state.clone();
-        let worker = ProcessingWorker::new(worker_state, job_queue);
+        let worker = ProcessingWorker::new(worker_state, job_queue.clone());
         tokio::spawn(async move {
             worker.run(receiver).await;
         });
+
+        // Resume incomplete jobs from previous session
+        if !incomplete_jobs.is_empty() {
+            let resume_queue = job_queue.clone();
+            tokio::spawn(async move {
+                // Wait a bit for the worker to start
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+                for job_record in incomplete_jobs {
+                    let job_id = job_record.id;
+                    tracing::info!(
+                        "Resuming job {} ({} files processed, {} pending)",
+                        job_id,
+                        job_record.files_processed,
+                        job_record.total_files - job_record.files_processed
+                    );
+                    match resume_queue.resume_job(job_record).await {
+                        Some(id) => {
+                            tracing::info!("Successfully resumed job {}", id);
+                        }
+                        None => {
+                            tracing::warn!("Failed to resume job {} (no pending files with data)", job_id);
+                        }
+                    }
+                }
+            });
+        }
 
         Ok(state)
     }
@@ -437,9 +487,10 @@ impl AppState {
         &self.inner.config
     }
 
-    /// Get vector store
-    pub fn vector_store(&self) -> &Arc<VectorStore> {
-        &self.inner.vector_store
+    /// Get vector store (only available for Local backend)
+    /// Prefer using vector_store_provider() for new code
+    pub fn vector_store(&self) -> Option<&Arc<VectorStore>> {
+        self.inner.vector_store.as_ref()
     }
 
     /// Get Ollama client (for embeddings and generation)
@@ -599,13 +650,13 @@ impl AppState {
         FileStatus::New
     }
 
-    /// Delete document and its chunks
-    pub fn delete_document_with_chunks(&self, doc_id: &Uuid) -> crate::error::Result<usize> {
+    /// Delete document and its chunks (async version using provider)
+    pub async fn delete_document_with_chunks(&self, doc_id: &Uuid) -> crate::error::Result<usize> {
         // Invalidate cached answers that cite this document
         self.inner.answer_cache.invalidate_by_document(doc_id);
 
-        // Delete chunks from vector store
-        let deleted = self.inner.vector_store.delete_by_document(doc_id)?;
+        // Delete chunks from vector store provider (works for both Local and GCP)
+        let deleted = self.inner.vector_store_provider.delete_by_document(doc_id).await?;
 
         // Remove from document registry
         self.inner.documents.remove(doc_id);
