@@ -80,7 +80,11 @@ pub async fn ingest_files(
                     // Fall back to external parsing
                     match parse_with_external(&state, &filename, &data).await {
                         Ok(content) => {
-                            let new_name = format!("{}.txt", filename);
+                            let stem = std::path::Path::new(&filename)
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("document");
+                            let new_name = format!("{}.txt", stem);
                             (new_name, content.into_bytes())
                         }
                         Err(e2) => {
@@ -97,7 +101,11 @@ pub async fn ingest_files(
             // Use external API for other unsupported formats
             match parse_with_external(&state, &filename, &data).await {
                 Ok(content) => {
-                    let new_name = format!("{}.txt", filename);
+                    let stem = std::path::Path::new(&filename)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("document");
+                    let new_name = format!("{}.txt", stem);
                     (new_name, content.into_bytes())
                 }
                 Err(e) => {
