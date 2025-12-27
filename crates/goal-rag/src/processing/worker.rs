@@ -420,10 +420,11 @@ impl ProcessingWorker {
         // Store original filename for reporting/citations
         let original_filename = filename.to_string();
 
-        // For complex PDFs (encrypted, scanned, high complexity), use full escalation
-        if ext == "pdf" && (characteristics.is_encrypted || characteristics.is_scanned_pdf || characteristics.complexity_score > 0.5) {
+        // For ALL PDFs, use escalation parsing to ensure robust handling
+        // Small simple-looking PDFs can still have parsing issues (font encoding, etc.)
+        if ext == "pdf" {
             tracing::info!(
-                "[{}] Using escalation parsing for complex PDF (encrypted: {}, scanned: {}, complexity: {:.2})",
+                "[{}] Using escalation parsing for PDF (encrypted: {}, scanned: {}, complexity: {:.2})",
                 filename, characteristics.is_encrypted, characteristics.is_scanned_pdf, characteristics.complexity_score
             );
 
@@ -492,42 +493,6 @@ impl ProcessingWorker {
                         }
                     }
                     return Err(e);
-                }
-            }
-        }
-
-        // For simple PDFs, try pdftotext first (much faster and handles fonts better)
-        if ext == "pdf" && ExternalParser::has_pdftotext() {
-            tracing::info!("[{}] Using pdftotext for PDF extraction", filename);
-            match external_parser.convert_pdf_with_pdftotext(data) {
-                Ok(text) => {
-                    tracing::info!("[{}] pdftotext extracted {} chars", filename, text.len());
-                    // Create a text file from the extracted content
-                    let text_filename = format!("{}.txt", filename.trim_end_matches(".pdf"));
-                    let attempts = vec![ParserAttempt {
-                        parser_name: "pdftotext".to_string(),
-                        success: true,
-                        error: None,
-                        chars_extracted: Some(text.len()),
-                        duration_ms: 0,
-                    }];
-                    return Self::process_text_content_with_metadata(
-                        state,
-                        job_queue,
-                        job_id,
-                        &original_filename,
-                        Some(&text_filename),
-                        text.as_bytes(),
-                        Some(data),
-                        parallel_embeddings,
-                        Some(characteristics),
-                        Some("pdftotext".to_string()),
-                        attempts,
-                    ).await;
-                }
-                Err(e) => {
-                    tracing::warn!("[{}] pdftotext failed: {}, falling back to Rust parser", filename, e);
-                    // Continue with normal processing
                 }
             }
         }
@@ -796,7 +761,85 @@ impl ProcessingWorker {
                     }
                 }
             }
-            Err(e) => return Err(e),
+            Err(e) => {
+                // Non-PDF parsing failed - try pandoc fallback for supported formats
+                if ExternalParser::has_pandoc() && ExternalParser::can_use_pandoc(filename) {
+                    tracing::warn!(
+                        "[{}] Native parsing failed: {}. Trying pandoc fallback...",
+                        filename, e
+                    );
+                    match external_parser.convert_with_pandoc(filename, data) {
+                        Ok(text) if !text.trim().is_empty() => {
+                            tracing::info!(
+                                "[{}] Pandoc fallback succeeded: {} chars extracted",
+                                filename, text.len()
+                            );
+                            let text_filename = format!("{}.txt", filename.rsplit('.').next().unwrap_or(filename));
+                            return Self::process_text_content(
+                                state,
+                                job_queue,
+                                job_id,
+                                &original_filename,
+                                Some(&text_filename),
+                                text.as_bytes(),
+                                Some(data),
+                                parallel_embeddings,
+                            ).await;
+                        }
+                        Ok(_) => {
+                            tracing::warn!("[{}] Pandoc returned empty output", filename);
+                        }
+                        Err(pandoc_err) => {
+                            tracing::warn!("[{}] Pandoc fallback failed: {}", filename, pandoc_err);
+                        }
+                    }
+                }
+
+                // Try Unstructured API as last resort
+                if external_parser.is_available() {
+                    tracing::info!("[{}] Trying Unstructured API fallback...", filename);
+                    match timeout(
+                        op_timeout,
+                        external_parser.parse_with_unstructured(filename, data)
+                    ).await {
+                        Ok(Ok(parsed_ext)) if !parsed_ext.content.trim().is_empty() => {
+                            tracing::info!(
+                                "[{}] Unstructured API succeeded: {} chars, {} pages",
+                                filename, parsed_ext.content.len(), parsed_ext.total_pages
+                            );
+                            let text_filename = format!("{}.txt", filename.rsplit('.').next().unwrap_or(filename));
+                            return Self::process_text_content(
+                                state,
+                                job_queue,
+                                job_id,
+                                &original_filename,
+                                Some(&text_filename),
+                                parsed_ext.content.as_bytes(),
+                                Some(data),
+                                parallel_embeddings,
+                            ).await;
+                        }
+                        Ok(Ok(_)) => {
+                            tracing::warn!("[{}] Unstructured API returned empty content", filename);
+                        }
+                        Ok(Err(api_err)) => {
+                            tracing::warn!("[{}] Unstructured API failed: {}", filename, api_err);
+                        }
+                        Err(_) => {
+                            tracing::warn!("[{}] Unstructured API timeout", filename);
+                        }
+                    }
+                }
+
+                // All fallbacks failed
+                return Err(Error::file_parse(
+                    filename,
+                    format!(
+                        "Document parsing failed. Install pandoc for better {} support. Error: {}",
+                        ext.to_uppercase(), e
+                    )
+                ));
+            }
         };
 
         // Check file status for deduplication (use original filename for tracking)
