@@ -12,7 +12,7 @@ use std::process::Command;
 use std::time::Duration;
 
 use crate::error::{Error, Result};
-use crate::processing::{FileCharacteristics, ParserStrategy, PdfAnalysis};
+use crate::processing::{FileCharacteristics, PdfAnalysis};
 
 /// External parser configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -847,7 +847,7 @@ impl ExternalParser {
 
     /// Get parsing strategies in order based on file characteristics
     /// For PDFs, always try pdftotext first (fastest), then OCR, then cloud
-    fn get_parsing_order(&self, characteristics: &FileCharacteristics, ext: &str) -> Vec<&'static str> {
+    fn get_parsing_order(&self, _characteristics: &FileCharacteristics, ext: &str) -> Vec<&'static str> {
         let mut strategies = Vec::new();
 
         if ext == "pdf" {

@@ -77,6 +77,8 @@ impl AppState {
         tracing::info!("Initializing RAG application state (backend: {:?})...", config.backend);
 
         // Local vector store - only created for Local backend
+        // GCP backend keeps this as None, Local backend assigns Some()
+        #[allow(unused_assignments)]
         let mut local_vector_store: Option<Arc<VectorStore>> = None;
 
         // Initialize Ollama client (for local backend, also used as fallback)
