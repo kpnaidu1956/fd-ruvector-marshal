@@ -50,8 +50,8 @@ pub async fn delete_document(
         .remove_document(&id)
         .ok_or_else(|| Error::DocumentNotFound(id.to_string()))?;
 
-    // Delete all chunks for this document
-    let deleted_chunks = state.vector_store().delete_by_document(&id)?;
+    // Delete all chunks for this document (uses provider abstraction)
+    let deleted_chunks = state.vector_store_provider().delete_by_document(&id).await?;
 
     tracing::info!(
         "Deleted document '{}' and {} chunks",

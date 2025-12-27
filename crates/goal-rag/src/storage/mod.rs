@@ -4,4 +4,10 @@
 
 mod database;
 
-pub use database::{FileRegistryDb, FileRegistryDbStats, SyncStatus};
+pub use database::{
+    FileRegistryDb, FileRegistryDbStats, SyncStatus,
+    // Job persistence types
+    JobFileRecord, JobFileStatus, JobOptions, JobRecord, PersistedJobStage, PersistedJobStatus,
+    // Chunk content types (for FTS)
+    ChunkContentRecord, ChunkSearchResult,
+};

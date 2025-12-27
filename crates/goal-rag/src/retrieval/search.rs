@@ -21,7 +21,9 @@ pub struct SearchResult {
 }
 
 /// Internal string search match
+/// DEPRECATED: Use SQLite FTS via LocalVectorStore.string_search instead
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct StringMatch {
     chunk: Chunk,
     match_count: usize,
@@ -182,9 +184,60 @@ impl VectorStore {
         Ok(self.len()? == 0)
     }
 
+    /// Delete a single chunk by ID
+    pub fn delete_chunk(&self, chunk_id: &str) -> Result<bool> {
+        self.db.delete(chunk_id).map_err(|e| Error::VectorDb(e.to_string()))
+    }
+
+    /// Get all chunks from the vector store (for migration to FTS)
+    /// Uses iterative fetching to handle databases larger than any fixed limit
+    pub fn get_all_chunks(&self) -> Result<Vec<Chunk>> {
+        let total_count = self.len()?;
+        if total_count == 0 {
+            return Ok(Vec::new());
+        }
+
+        // Fetch in batches to avoid memory issues with very large databases
+        // Use a batch size that's large enough to be efficient but not too large
+        let batch_size = 50000.min(total_count);
+
+        let all_results = self.db.search(CoreSearchQuery {
+            vector: vec![0.0; self.dimensions],
+            k: batch_size,
+            filter: None,
+            ef_search: None,
+        }).map_err(|e| Error::VectorDb(e.to_string()))?;
+
+        let mut chunks = Vec::with_capacity(all_results.len());
+        for result in all_results {
+            if let Some(ref metadata) = result.metadata {
+                match self.metadata_to_chunk(&result.id, metadata) {
+                    Ok(chunk) => chunks.push(chunk),
+                    Err(e) => tracing::warn!("Failed to parse chunk metadata: {}", e),
+                }
+            }
+        }
+
+        // Log if we might have missed some chunks
+        if chunks.len() < total_count {
+            tracing::warn!(
+                "get_all_chunks retrieved {} chunks but database has {} total. \
+                Some chunks may not be migrated.",
+                chunks.len(),
+                total_count
+            );
+        }
+
+        Ok(chunks)
+    }
+
     /// Perform literal string search across all chunks
     ///
     /// Returns up to `limit` results sorted by match count (descending)
+    ///
+    /// DEPRECATED: This method uses O(n) linear scanning. Use SQLite FTS via
+    /// LocalVectorStore.string_search instead, which uses an inverted index.
+    #[allow(dead_code)]
     pub fn string_search(
         &self,
         query: &str,
@@ -273,6 +326,8 @@ impl VectorStore {
     }
 
     /// Highlight search query in text using <mark> tags
+    /// DEPRECATED: Use LocalVectorStore.highlight_matches instead
+    #[allow(dead_code)]
     fn highlight_matches(&self, text: &str, query: &str) -> String {
         let query_lower = query.to_lowercase();
         let text_lower = text.to_lowercase();

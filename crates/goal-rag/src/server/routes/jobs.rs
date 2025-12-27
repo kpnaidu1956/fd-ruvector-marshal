@@ -310,3 +310,375 @@ struct IngestOptions {
     chunk_size: Option<usize>,
     chunk_overlap: Option<usize>,
 }
+
+/// GET /api/jobs/:id/files - Get per-file progress with tier and parser details
+pub async fn get_job_files_progress(
+    State(state): State<AppState>,
+    Path(job_id): Path<Uuid>,
+) -> Result<Json<JobFilesProgressResponse>> {
+    let progress = state
+        .job_queue()
+        .get_progress(job_id)
+        .ok_or_else(|| Error::DocumentNotFound(format!("Job {} not found", job_id)))?;
+
+    let files: Vec<FileProgressResponse> = progress
+        .file_progress
+        .iter()
+        .map(|f| {
+            let parser_attempts: Vec<ParserAttemptResponse> = f
+                .parser_attempts
+                .iter()
+                .map(|a| ParserAttemptResponse {
+                    parser_name: a.parser_name.clone(),
+                    success: a.success,
+                    error: a.error.clone(),
+                    chars_extracted: a.chars_extracted,
+                    duration_ms: a.duration_ms,
+                })
+                .collect();
+
+            FileProgressResponse {
+                filename: f.filename.clone(),
+                size_bytes: f.size_bytes,
+                tier: format!("{:?}", f.tier).to_lowercase(),
+                status: format!("{:?}", f.status).to_lowercase(),
+                parser_method: f.parser_method.clone(),
+                parser_attempts,
+                started_at: f.started_at.to_rfc3339(),
+                completed_at: f.completed_at.map(|t| t.to_rfc3339()),
+                duration_ms: f.duration_ms,
+                error: f.error.clone(),
+            }
+        })
+        .collect();
+
+    // Calculate tier summary
+    let tier_summary = TierSummary {
+        fast: files.iter().filter(|f| f.tier == "fast").count(),
+        medium: files.iter().filter(|f| f.tier == "medium").count(),
+        heavy: files.iter().filter(|f| f.tier == "heavy").count(),
+        complex: files.iter().filter(|f| f.tier == "complex").count(),
+    };
+
+    // Calculate status summary
+    let status_summary = StatusSummary {
+        queued: files.iter().filter(|f| f.status == "queued").count(),
+        parsing: files.iter().filter(|f| f.status == "parsing").count(),
+        chunking: files.iter().filter(|f| f.status == "chunking").count(),
+        embedding: files.iter().filter(|f| f.status == "embedding").count(),
+        storing: files.iter().filter(|f| f.status == "storing").count(),
+        complete: files.iter().filter(|f| f.status == "complete").count(),
+        skipped: files.iter().filter(|f| f.status == "skipped").count(),
+        failed: files.iter().filter(|f| f.status == "failed").count(),
+    };
+
+    Ok(Json(JobFilesProgressResponse {
+        job_id,
+        total_files: files.len(),
+        files,
+        tier_summary,
+        status_summary,
+    }))
+}
+
+/// Response for per-file progress
+#[derive(Debug, Serialize)]
+pub struct JobFilesProgressResponse {
+    pub job_id: Uuid,
+    pub total_files: usize,
+    pub files: Vec<FileProgressResponse>,
+    pub tier_summary: TierSummary,
+    pub status_summary: StatusSummary,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FileProgressResponse {
+    pub filename: String,
+    pub size_bytes: u64,
+    pub tier: String,
+    pub status: String,
+    pub parser_method: Option<String>,
+    pub parser_attempts: Vec<ParserAttemptResponse>,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+    pub duration_ms: Option<u64>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ParserAttemptResponse {
+    pub parser_name: String,
+    pub success: bool,
+    pub error: Option<String>,
+    pub chars_extracted: Option<usize>,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TierSummary {
+    pub fast: usize,
+    pub medium: usize,
+    pub heavy: usize,
+    pub complex: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StatusSummary {
+    pub queued: usize,
+    pub parsing: usize,
+    pub chunking: usize,
+    pub embedding: usize,
+    pub storing: usize,
+    pub complete: usize,
+    pub skipped: usize,
+    pub failed: usize,
+}
+
+/// GET /api/system/parsers - Get available parsers and their status
+pub async fn get_parsers_status() -> Json<ParsersStatusResponse> {
+    use crate::ingestion::ExternalParser;
+
+    let has_pdftotext = ExternalParser::has_pdftotext();
+    let has_tesseract = ExternalParser::has_tesseract();
+    let has_pdftoppm = ExternalParser::has_pdftoppm();
+    let has_pandoc = ExternalParser::has_pandoc();
+
+    // Check for LibreOffice
+    let has_libreoffice = std::process::Command::new("libreoffice")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    // Check for Unstructured API
+    let has_unstructured = std::env::var("UNSTRUCTURED_API_KEY").is_ok();
+
+    // Check for Document AI
+    let has_document_ai = std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok()
+        && std::env::var("DOCUMENT_AI_PROCESSOR_ID").is_ok();
+
+    let parsers = vec![
+        ParserInfo {
+            name: "native_rust".to_string(),
+            level: 1,
+            available: true,
+            purpose: "Fast in-memory parsing (pdf-extract, docx_rs, calamine)".to_string(),
+            install_hint: None,
+        },
+        ParserInfo {
+            name: "pdftotext".to_string(),
+            level: 2,
+            available: has_pdftotext,
+            purpose: "Fast PDF extraction with good font handling".to_string(),
+            install_hint: Some("apt install poppler-utils".to_string()),
+        },
+        ParserInfo {
+            name: "tesseract_ocr".to_string(),
+            level: 3,
+            available: has_tesseract && has_pdftoppm,
+            purpose: "OCR for scanned PDFs and images".to_string(),
+            install_hint: Some("apt install tesseract-ocr poppler-utils".to_string()),
+        },
+        ParserInfo {
+            name: "unstructured_api".to_string(),
+            level: 4,
+            available: has_unstructured,
+            purpose: "Cloud API for complex document parsing".to_string(),
+            install_hint: Some("Set UNSTRUCTURED_API_KEY environment variable".to_string()),
+        },
+        ParserInfo {
+            name: "document_ai".to_string(),
+            level: 5,
+            available: has_document_ai,
+            purpose: "GCP Document AI for best OCR quality".to_string(),
+            install_hint: Some("Set GOOGLE_APPLICATION_CREDENTIALS and DOCUMENT_AI_PROCESSOR_ID".to_string()),
+        },
+        ParserInfo {
+            name: "pandoc".to_string(),
+            level: 2,
+            available: has_pandoc,
+            purpose: "Document conversion (DOCX, RTF, EPUB, ODT)".to_string(),
+            install_hint: Some("apt install pandoc".to_string()),
+        },
+        ParserInfo {
+            name: "libreoffice".to_string(),
+            level: 3,
+            available: has_libreoffice,
+            purpose: "Legacy format conversion (DOC, PPT, XLS)".to_string(),
+            install_hint: Some("apt install libreoffice".to_string()),
+        },
+    ];
+
+    let available_count = parsers.iter().filter(|p| p.available).count();
+    let escalation_depth = parsers.iter()
+        .filter(|p| p.available && p.level <= 5)
+        .map(|p| p.level)
+        .max()
+        .unwrap_or(1);
+
+    Json(ParsersStatusResponse {
+        parsers,
+        available_count,
+        total_count: 7,
+        escalation_depth,
+        recommendations: get_parser_recommendations(
+            has_pdftotext,
+            has_tesseract,
+            has_unstructured,
+            has_document_ai,
+        ),
+    })
+}
+
+fn get_parser_recommendations(
+    has_pdftotext: bool,
+    has_tesseract: bool,
+    has_unstructured: bool,
+    has_document_ai: bool,
+) -> Vec<String> {
+    let mut recommendations = Vec::new();
+
+    if !has_pdftotext {
+        recommendations.push("Install poppler-utils for faster PDF extraction".to_string());
+    }
+    if !has_tesseract {
+        recommendations.push("Install tesseract-ocr for scanned document support".to_string());
+    }
+    if !has_unstructured && !has_document_ai {
+        recommendations.push("Configure Unstructured API or Document AI for complex document handling".to_string());
+    }
+    if recommendations.is_empty() {
+        recommendations.push("All recommended parsers are available".to_string());
+    }
+
+    recommendations
+}
+
+#[derive(Debug, Serialize)]
+pub struct ParsersStatusResponse {
+    pub parsers: Vec<ParserInfo>,
+    pub available_count: usize,
+    pub total_count: usize,
+    pub escalation_depth: u8,
+    pub recommendations: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ParserInfo {
+    pub name: String,
+    pub level: u8,
+    pub available: bool,
+    pub purpose: String,
+    pub install_hint: Option<String>,
+}
+
+/// POST /api/jobs/:id/resume - Resume an incomplete/failed job
+pub async fn resume_job(
+    State(state): State<AppState>,
+    Path(job_id): Path<Uuid>,
+) -> Result<Json<ResumeJobResponse>> {
+    // Check if job exists in memory first
+    if let Some(progress) = state.job_queue().get_progress(job_id) {
+        // If job is already processing or pending, don't resume
+        if progress.status == crate::processing::JobStatus::Processing {
+            return Err(Error::Internal("Job is already processing".to_string()));
+        }
+        if progress.status == crate::processing::JobStatus::Pending {
+            return Err(Error::Internal("Job is already pending".to_string()));
+        }
+    }
+
+    // Try to get the job from the database
+    let job_record = state.database().get_job(job_id)
+        .map_err(|e| Error::Internal(format!("Failed to get job: {}", e)))?
+        .ok_or_else(|| Error::DocumentNotFound(format!("Job {} not found in database", job_id)))?;
+
+    // Check if job has pending files
+    let pending_files = state.job_queue().get_pending_files(job_id);
+    if pending_files.is_empty() {
+        return Err(Error::Internal("No pending files to resume".to_string()));
+    }
+
+    // Resume the job
+    match state.job_queue().resume_job(job_record).await {
+        Some(resumed_id) => {
+            Ok(Json(ResumeJobResponse {
+                job_id: resumed_id,
+                pending_files: pending_files.len(),
+                already_processed: state.job_queue().get_progress(resumed_id)
+                    .map(|p| p.files_processed)
+                    .unwrap_or(0),
+                message: format!(
+                    "Job {} resumed with {} pending files",
+                    resumed_id,
+                    pending_files.len()
+                ),
+            }))
+        }
+        None => {
+            Err(Error::Internal("Failed to resume job - no file data available".to_string()))
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResumeJobResponse {
+    pub job_id: Uuid,
+    pub pending_files: usize,
+    pub already_processed: usize,
+    pub message: String,
+}
+
+/// GET /api/jobs/incomplete - Get all incomplete jobs that can be resumed
+pub async fn list_incomplete_jobs(
+    State(state): State<AppState>,
+) -> Json<IncompleteJobsResponse> {
+    let incomplete_jobs = state.job_queue().get_incomplete_jobs();
+
+    let jobs: Vec<IncompleteJobInfo> = incomplete_jobs
+        .into_iter()
+        .map(|job| {
+            let pending_files = state.job_queue().get_pending_files(job.id);
+            IncompleteJobInfo {
+                job_id: job.id,
+                status: format!("{:?}", job.status).to_lowercase(),
+                stage: format!("{:?}", job.stage).to_lowercase(),
+                total_files: job.total_files,
+                files_processed: job.files_processed,
+                files_remaining: job.total_files.saturating_sub(job.files_processed),
+                pending_files_with_data: pending_files.iter().filter(|f| f.file_data.is_some()).count(),
+                can_resume: !pending_files.is_empty() && pending_files.iter().any(|f| f.file_data.is_some()),
+                created_at: job.created_at.to_rfc3339(),
+                updated_at: job.updated_at.to_rfc3339(),
+                error: job.error,
+            }
+        })
+        .collect();
+
+    let total_incomplete = jobs.len();
+    Json(IncompleteJobsResponse {
+        jobs,
+        total_incomplete,
+    })
+}
+
+#[derive(Debug, Serialize)]
+pub struct IncompleteJobsResponse {
+    pub jobs: Vec<IncompleteJobInfo>,
+    pub total_incomplete: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct IncompleteJobInfo {
+    pub job_id: Uuid,
+    pub status: String,
+    pub stage: String,
+    pub total_files: usize,
+    pub files_processed: usize,
+    pub files_remaining: usize,
+    pub pending_files_with_data: usize,
+    pub can_resume: bool,
+    pub created_at: String,
+    pub updated_at: String,
+    pub error: Option<String>,
+}

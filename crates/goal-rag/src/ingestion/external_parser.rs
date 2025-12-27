@@ -12,6 +12,7 @@ use std::process::Command;
 use std::time::Duration;
 
 use crate::error::{Error, Result};
+use crate::processing::{FileCharacteristics, ParserStrategy, PdfAnalysis};
 
 /// External parser configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -694,4 +695,297 @@ pub struct ExternalPage {
     pub page_number: u32,
     /// Page content
     pub content: String,
+}
+
+/// Record of a parser attempt for tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParserAttempt {
+    /// Parser/method name
+    pub parser_name: String,
+    /// Whether the attempt succeeded
+    pub success: bool,
+    /// Error message if failed
+    pub error: Option<String>,
+    /// Number of characters extracted (if successful)
+    pub chars_extracted: Option<usize>,
+    /// Duration of the attempt in milliseconds
+    pub duration_ms: u64,
+}
+
+/// Result of full escalation parsing
+#[derive(Debug, Clone)]
+pub struct EscalationResult {
+    /// Extracted text content
+    pub content: String,
+    /// Method that succeeded
+    pub method: String,
+    /// All attempts made (for debugging/logging)
+    pub attempts: Vec<ParserAttempt>,
+    /// Total duration in milliseconds
+    pub total_duration_ms: u64,
+}
+
+impl ExternalParser {
+    /// Parse with full escalation strategy - try ALL methods before failing
+    ///
+    /// Escalation order based on characteristics:
+    /// 1. Native Rust parser (if not encrypted/scanned)
+    /// 2. pdftotext (fast, handles fonts well)
+    /// 3. OCR (tesseract for scanned docs)
+    /// 4. Unstructured API (cloud, handles complex cases)
+    /// 5. Document AI (GCP, best OCR quality) - called externally
+    ///
+    /// Returns detailed results including all attempts for debugging
+    pub async fn parse_with_full_escalation(
+        &self,
+        filename: &str,
+        data: &[u8],
+        characteristics: &FileCharacteristics,
+    ) -> Result<EscalationResult> {
+        use std::time::Instant;
+
+        let start = Instant::now();
+        let mut attempts = Vec::new();
+        let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+
+        // Determine parsing order based on strategy
+        let strategies = self.get_parsing_order(characteristics, &ext);
+
+        tracing::info!(
+            "[{}] Starting escalation parsing: size={}KB, tier={}, strategy={:?}, encrypted={}, scanned={}",
+            filename,
+            characteristics.size_bytes / 1024,
+            characteristics.tier,
+            characteristics.recommended_parser,
+            characteristics.is_encrypted,
+            characteristics.is_scanned_pdf
+        );
+
+        for strategy in strategies {
+            let attempt_start = Instant::now();
+            let result = match strategy {
+                "native" => self.try_native_parsing(filename, data).await,
+                "pdftotext" => self.try_pdftotext(data),
+                "pandoc" => self.try_pandoc(filename, data),
+                "ocr" => self.try_ocr(data, &ext),
+                "unstructured" => self.try_unstructured(filename, data).await,
+                _ => Err(Error::Internal(format!("Unknown strategy: {}", strategy))),
+            };
+
+            let duration_ms = attempt_start.elapsed().as_millis() as u64;
+
+            match result {
+                Ok(text) if !text.trim().is_empty() => {
+                    let chars = text.len();
+                    attempts.push(ParserAttempt {
+                        parser_name: strategy.to_string(),
+                        success: true,
+                        error: None,
+                        chars_extracted: Some(chars),
+                        duration_ms,
+                    });
+
+                    tracing::info!(
+                        "[{}] Escalation SUCCESS with '{}': {} chars in {}ms",
+                        filename, strategy, chars, duration_ms
+                    );
+
+                    return Ok(EscalationResult {
+                        content: text,
+                        method: strategy.to_string(),
+                        attempts,
+                        total_duration_ms: start.elapsed().as_millis() as u64,
+                    });
+                }
+                Ok(_) => {
+                    attempts.push(ParserAttempt {
+                        parser_name: strategy.to_string(),
+                        success: false,
+                        error: Some("Empty output".to_string()),
+                        chars_extracted: Some(0),
+                        duration_ms,
+                    });
+                    tracing::debug!("[{}] '{}' returned empty output", filename, strategy);
+                }
+                Err(e) => {
+                    attempts.push(ParserAttempt {
+                        parser_name: strategy.to_string(),
+                        success: false,
+                        error: Some(e.to_string()),
+                        chars_extracted: None,
+                        duration_ms,
+                    });
+                    tracing::debug!("[{}] '{}' failed: {}", filename, strategy, e);
+                }
+            }
+        }
+
+        // All methods failed - return detailed error
+        let error_details = attempts
+            .iter()
+            .map(|a| {
+                format!(
+                    "  - {}: {} ({}ms)",
+                    a.parser_name,
+                    a.error.as_deref().unwrap_or("empty output"),
+                    a.duration_ms
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Err(Error::file_parse(
+            filename,
+            format!(
+                "All {} parsing methods failed after {}ms:\n{}",
+                attempts.len(),
+                start.elapsed().as_millis(),
+                error_details
+            ),
+        ))
+    }
+
+    /// Get parsing strategies in order based on file characteristics
+    fn get_parsing_order(&self, characteristics: &FileCharacteristics, ext: &str) -> Vec<&'static str> {
+        let mut strategies = Vec::new();
+
+        match characteristics.recommended_parser {
+            ParserStrategy::NativeOnly => {
+                strategies.push("native");
+                if ext == "pdf" && Self::has_pdftotext() {
+                    strategies.push("pdftotext");
+                }
+                if Self::has_pandoc() && Self::can_use_pandoc(&format!("file.{}", ext)) {
+                    strategies.push("pandoc");
+                }
+            }
+            ParserStrategy::LocalToolsFirst => {
+                // Local tools first
+                if ext == "pdf" {
+                    if Self::has_pdftotext() {
+                        strategies.push("pdftotext");
+                    }
+                    if Self::has_tesseract() && Self::has_pdftoppm() {
+                        strategies.push("ocr");
+                    }
+                }
+                if Self::has_pandoc() && Self::can_use_pandoc(&format!("file.{}", ext)) {
+                    strategies.push("pandoc");
+                }
+                strategies.push("native");
+                if self.config.enabled {
+                    strategies.push("unstructured");
+                }
+            }
+            ParserStrategy::CloudFirst => {
+                // Cloud services first (for complex/large files)
+                if self.config.enabled {
+                    strategies.push("unstructured");
+                }
+                if ext == "pdf" {
+                    if Self::has_tesseract() && Self::has_pdftoppm() {
+                        strategies.push("ocr");
+                    }
+                    if Self::has_pdftotext() {
+                        strategies.push("pdftotext");
+                    }
+                }
+                strategies.push("native");
+            }
+            ParserStrategy::ParallelAttempt => {
+                // For very complex files, try cloud first then everything else
+                if self.config.enabled {
+                    strategies.push("unstructured");
+                }
+                if ext == "pdf" {
+                    if Self::has_tesseract() && Self::has_pdftoppm() {
+                        strategies.push("ocr");
+                    }
+                    if Self::has_pdftotext() {
+                        strategies.push("pdftotext");
+                    }
+                }
+                if Self::has_pandoc() && Self::can_use_pandoc(&format!("file.{}", ext)) {
+                    strategies.push("pandoc");
+                }
+                strategies.push("native");
+            }
+        }
+
+        // Remove duplicates while preserving order
+        let mut seen = std::collections::HashSet::new();
+        strategies.retain(|s| seen.insert(*s));
+
+        strategies
+    }
+
+    /// Try native Rust parsing
+    async fn try_native_parsing(&self, _filename: &str, _data: &[u8]) -> Result<String> {
+        // Native parsing is handled by the main parser - this is just a placeholder
+        // The actual native parsing should be called from the worker with the full parser
+        Err(Error::Internal("Native parsing should be called from main parser".to_string()))
+    }
+
+    /// Try pdftotext extraction
+    fn try_pdftotext(&self, data: &[u8]) -> Result<String> {
+        if !Self::has_pdftotext() {
+            return Err(Error::Internal("pdftotext not available".to_string()));
+        }
+        self.convert_pdf_with_pdftotext(data)
+    }
+
+    /// Try pandoc conversion
+    fn try_pandoc(&self, filename: &str, data: &[u8]) -> Result<String> {
+        if !Self::has_pandoc() {
+            return Err(Error::Internal("pandoc not available".to_string()));
+        }
+        if !Self::can_use_pandoc(filename) {
+            return Err(Error::Internal("pandoc doesn't support this format".to_string()));
+        }
+        self.convert_with_pandoc(filename, data)
+    }
+
+    /// Try OCR extraction
+    fn try_ocr(&self, data: &[u8], ext: &str) -> Result<String> {
+        if !Self::has_tesseract() {
+            return Err(Error::Internal("tesseract not available".to_string()));
+        }
+
+        if ext == "pdf" {
+            if !Self::has_pdftoppm() {
+                return Err(Error::Internal("pdftoppm not available for PDF OCR".to_string()));
+            }
+            self.convert_pdf_with_ocr(data)
+        } else if Self::needs_ocr(&format!("file.{}", ext)) {
+            self.convert_image_with_ocr(data)
+        } else {
+            Err(Error::Internal("OCR not applicable for this format".to_string()))
+        }
+    }
+
+    /// Try Unstructured API
+    async fn try_unstructured(&self, filename: &str, data: &[u8]) -> Result<String> {
+        if !self.config.enabled {
+            return Err(Error::Internal("Unstructured API disabled".to_string()));
+        }
+        let result = self.parse_with_unstructured(filename, data).await?;
+        Ok(result.content)
+    }
+
+    /// Analyze a PDF file and return characteristics
+    pub fn analyze_pdf(&self, filename: &str, data: &[u8]) -> FileCharacteristics {
+        let analysis = PdfAnalysis::analyze(data);
+        FileCharacteristics::for_pdf(filename, data.len() as u64, &analysis)
+    }
+
+    /// Analyze any file and return characteristics
+    pub fn analyze_file(&self, filename: &str, data: &[u8]) -> FileCharacteristics {
+        let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+
+        if ext == "pdf" {
+            self.analyze_pdf(filename, data)
+        } else {
+            FileCharacteristics::for_file(filename, data.len() as u64)
+        }
+    }
 }

@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 use crate::error::Result;
 use crate::types::Chunk;
+use crate::types::response::StringSearchResult;
 
 /// Search result from vector store
 #[derive(Debug, Clone)]
@@ -32,13 +33,20 @@ pub trait VectorStoreProvider: Send + Sync {
         Ok(())
     }
 
-    /// Search for similar chunks
+    /// Search for similar chunks by embedding similarity
     async fn search(
         &self,
         query_embedding: &[f32],
         top_k: usize,
         document_filter: Option<&[Uuid]>,
     ) -> Result<Vec<VectorSearchResult>>;
+
+    /// Perform literal string search across all chunks
+    async fn string_search(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<StringSearchResult>>;
 
     /// Delete all chunks for a document
     async fn delete_by_document(&self, document_id: &Uuid) -> Result<usize>;

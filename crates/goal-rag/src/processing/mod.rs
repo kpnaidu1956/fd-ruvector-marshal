@@ -1,9 +1,14 @@
 //! Background processing with job queue and progress tracking
 
+mod file_tier;
 mod job_queue;
 mod worker;
 
+pub use file_tier::{
+    FileCharacteristics, FileTier, ParserStrategy, PdfAnalysis,
+};
 pub use job_queue::{
-    FileData, FileError, Job, JobQueue, JobProgress, JobStatus, ProcessingOptions, ProcessingStage, QueueStats,
+    FileData, FileError, FileProcessingStatus, FileProgressRecord, Job, JobQueue, JobProgress,
+    JobStatus, ParserAttemptRecord, ProcessingOptions, ProcessingStage, QueueStats,
 };
 pub use worker::ProcessingWorker;

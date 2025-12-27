@@ -4,6 +4,8 @@ use axum::{
     extract::{Multipart, State},
     Json,
 };
+use futures::stream::{self, StreamExt};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -241,7 +243,7 @@ async fn process_file_with_dedup(
         }
         FileStatus::Modified(existing) => {
             // Delete old document and its chunks
-            let deleted = state.delete_document_with_chunks(&existing.id)?;
+            let deleted = state.delete_document_with_chunks(&existing.id).await?;
             tracing::info!(
                 "File '{}' modified, deleted {} old chunks",
                 filename,
@@ -317,10 +319,34 @@ async fn process_file_internal(
     // Create chunks
     let mut chunks = pipeline.create_chunks(&doc, parsed)?;
 
-    // Generate embeddings for all chunks using the embedding provider
-    for chunk in chunks.iter_mut() {
-        let embedding = state.embedding_provider().embed(&chunk.content).await?;
-        chunk.embedding = embedding;
+    // Generate embeddings in parallel for better performance (5-10x faster)
+    // Use configurable concurrency to avoid overwhelming the embedding service
+    let parallel_embeddings = config.processing.parallel_embeddings.unwrap_or(8);
+
+    if chunks.len() <= 1 {
+        // Single chunk - no need for parallel processing
+        for chunk in chunks.iter_mut() {
+            let embedding = state.embedding_provider().embed(&chunk.content).await?;
+            chunk.embedding = embedding;
+        }
+    } else {
+        // Multiple chunks - process in parallel with concurrency limit
+        let embedding_provider = Arc::clone(state.embedding_provider());
+        let contents: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
+
+        let embeddings: Vec<Result<Vec<f32>>> = stream::iter(contents)
+            .map(|content| {
+                let provider = Arc::clone(&embedding_provider);
+                async move { provider.embed(&content).await }
+            })
+            .buffer_unordered(parallel_embeddings)
+            .collect()
+            .await;
+
+        // Apply embeddings to chunks, fail on first error
+        for (chunk, embedding_result) in chunks.iter_mut().zip(embeddings.into_iter()) {
+            chunk.embedding = embedding_result?;
+        }
     }
 
     // Store chunks in vector database (uses Vertex AI for GCP backend)

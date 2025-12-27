@@ -33,7 +33,12 @@ pub fn api_routes(max_upload_size: usize) -> Router<AppState> {
         )
         // Job management
         .route("/jobs", get(jobs::list_jobs))
+        .route("/jobs/incomplete", get(jobs::list_incomplete_jobs))
         .route("/jobs/:id", get(jobs::get_job_progress))
+        .route("/jobs/:id/files", get(jobs::get_job_files_progress))
+        .route("/jobs/:id/resume", post(jobs::resume_job))
+        // System information
+        .route("/system/parsers", get(jobs::get_parsers_status))
         // File status and tracking
         .route("/files", get(files::list_files))
         .route("/files/check", post(files::check_files))
@@ -72,7 +77,11 @@ async fn info() -> axum::Json<serde_json::Value> {
             "POST /api/ingest": "Upload and process documents (sync)",
             "POST /api/ingest/async": "Upload documents for async processing",
             "GET /api/jobs": "List all jobs and queue stats",
+            "GET /api/jobs/incomplete": "List incomplete jobs that can be resumed",
             "GET /api/jobs/:id": "Get job progress",
+            "GET /api/jobs/:id/files": "Get per-file progress with tier and parser details",
+            "POST /api/jobs/:id/resume": "Resume an incomplete/failed job",
+            "GET /api/system/parsers": "Get available parsers and their status",
             "POST /api/query": "Query with citations (v1)",
             "POST /api/v2/query": "Query with citations (v2 - frontend-friendly format)",
             "POST /api/string-search": "Literal string search",

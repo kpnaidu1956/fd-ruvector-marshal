@@ -36,11 +36,15 @@ pub struct RagConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessingConfig {
     /// Timeout for processing a single file in seconds (default: 300 = 5 minutes)
+    /// This is the fallback timeout if tiered processing is disabled
     pub file_timeout_secs: u64,
     /// Number of parallel file workers
     pub parallel_files: Option<usize>,
     /// Number of parallel embeddings per file
     pub parallel_embeddings: Option<usize>,
+    /// Tiered processing configuration (size-based routing)
+    #[serde(default)]
+    pub tiered: TieredProcessingConfig,
 }
 
 impl Default for ProcessingConfig {
@@ -49,6 +53,117 @@ impl Default for ProcessingConfig {
             file_timeout_secs: 300, // 5 minutes
             parallel_files: None,   // Auto-detect from CPU count
             parallel_embeddings: None,
+            tiered: TieredProcessingConfig::default(),
+        }
+    }
+}
+
+/// Tiered processing configuration for size-based file routing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TieredProcessingConfig {
+    /// Enable tiered processing (default: true)
+    #[serde(default = "default_tiered_enabled")]
+    pub enabled: bool,
+
+    // Size thresholds (bytes)
+    /// Files smaller than this are "fast" tier (default: 10MB)
+    #[serde(default = "default_fast_threshold")]
+    pub fast_threshold: u64,
+    /// Files smaller than this are "medium" tier (default: 100MB)
+    #[serde(default = "default_medium_threshold")]
+    pub medium_threshold: u64,
+    /// Files smaller than this are "heavy" tier (default: 1GB)
+    #[serde(default = "default_heavy_threshold")]
+    pub heavy_threshold: u64,
+
+    // Timeouts (seconds)
+    /// Timeout for fast tier files (default: 120s = 2 minutes)
+    #[serde(default = "default_fast_timeout")]
+    pub fast_timeout_secs: u64,
+    /// Timeout for medium tier files (default: 300s = 5 minutes)
+    #[serde(default = "default_medium_timeout")]
+    pub medium_timeout_secs: u64,
+    /// Timeout for heavy tier files (default: 900s = 15 minutes)
+    #[serde(default = "default_heavy_timeout")]
+    pub heavy_timeout_secs: u64,
+    /// Timeout for complex tier files (default: 1200s = 20 minutes)
+    #[serde(default = "default_complex_timeout")]
+    pub complex_timeout_secs: u64,
+
+    // Worker counts
+    /// Workers for fast tier (default: CPU count, max 8)
+    pub fast_workers: Option<usize>,
+    /// Workers for medium tier (default: 4)
+    pub medium_workers: Option<usize>,
+    /// Workers for heavy tier (default: 2)
+    pub heavy_workers: Option<usize>,
+
+    // Parser preferences
+    /// Prefer cloud services for scanned PDFs (default: true)
+    #[serde(default = "default_prefer_cloud_scanned")]
+    pub prefer_cloud_for_scanned: bool,
+    /// Prefer cloud services for encrypted PDFs (default: true)
+    #[serde(default = "default_prefer_cloud_encrypted")]
+    pub prefer_cloud_for_encrypted: bool,
+    /// Enable parallel parsing attempts for complex files (default: false)
+    #[serde(default)]
+    pub enable_parallel_parsing: bool,
+}
+
+fn default_tiered_enabled() -> bool { true }
+fn default_fast_threshold() -> u64 { 10 * 1024 * 1024 }      // 10MB
+fn default_medium_threshold() -> u64 { 100 * 1024 * 1024 }   // 100MB
+fn default_heavy_threshold() -> u64 { 1024 * 1024 * 1024 }   // 1GB
+fn default_fast_timeout() -> u64 { 120 }
+fn default_medium_timeout() -> u64 { 300 }
+fn default_heavy_timeout() -> u64 { 900 }
+fn default_complex_timeout() -> u64 { 1200 }
+fn default_prefer_cloud_scanned() -> bool { true }
+fn default_prefer_cloud_encrypted() -> bool { true }
+
+impl Default for TieredProcessingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            fast_threshold: 10 * 1024 * 1024,      // 10MB
+            medium_threshold: 100 * 1024 * 1024,   // 100MB
+            heavy_threshold: 1024 * 1024 * 1024,   // 1GB
+            fast_timeout_secs: 120,
+            medium_timeout_secs: 300,
+            heavy_timeout_secs: 900,
+            complex_timeout_secs: 1200,
+            fast_workers: None,
+            medium_workers: Some(4),
+            heavy_workers: Some(2),
+            prefer_cloud_for_scanned: true,
+            prefer_cloud_for_encrypted: true,
+            enable_parallel_parsing: false,
+        }
+    }
+}
+
+impl TieredProcessingConfig {
+    /// Get timeout for a given tier
+    pub fn timeout_for_tier(&self, tier: &crate::processing::FileTier) -> std::time::Duration {
+        use crate::processing::FileTier;
+        let secs = match tier {
+            FileTier::Fast => self.fast_timeout_secs,
+            FileTier::Medium => self.medium_timeout_secs,
+            FileTier::Heavy => self.heavy_timeout_secs,
+            FileTier::Complex => self.complex_timeout_secs,
+        };
+        std::time::Duration::from_secs(secs)
+    }
+
+    /// Classify file into tier based on size
+    pub fn tier_for_size(&self, size_bytes: u64) -> crate::processing::FileTier {
+        use crate::processing::FileTier;
+        if size_bytes < self.fast_threshold {
+            FileTier::Fast
+        } else if size_bytes < self.medium_threshold {
+            FileTier::Medium
+        } else {
+            FileTier::Heavy
         }
     }
 }
