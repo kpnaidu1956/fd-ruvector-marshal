@@ -856,22 +856,12 @@ impl ExternalParser {
                 strategies.push("pdftotext");
             }
 
-            // For scanned/encrypted PDFs, prioritize OCR and cloud
-            if characteristics.is_scanned_pdf || characteristics.is_encrypted || characteristics.complexity_score > 0.5 {
-                if Self::has_tesseract() && Self::has_pdftoppm() {
-                    strategies.push("ocr");
-                }
-                if self.config.enabled {
-                    strategies.push("unstructured");
-                }
-            } else {
-                // For simple PDFs, try OCR after pdftotext fails
-                if Self::has_tesseract() && Self::has_pdftoppm() {
-                    strategies.push("ocr");
-                }
-                if self.config.enabled {
-                    strategies.push("unstructured");
-                }
+            // Always add OCR and cloud as fallbacks for any PDF
+            if Self::has_tesseract() && Self::has_pdftoppm() {
+                strategies.push("ocr");
+            }
+            if self.config.enabled {
+                strategies.push("unstructured");
             }
         } else {
             // Non-PDF: try pandoc first for supported formats

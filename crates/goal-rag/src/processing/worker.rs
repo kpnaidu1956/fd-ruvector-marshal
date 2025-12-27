@@ -666,148 +666,77 @@ impl ProcessingWorker {
             config.chunking.chunk_overlap,
         );
 
-        // Parse file to get content hash, with fallback for PDFs
+        // Parse file to get content hash
+        // Note: PDFs are handled earlier by escalation parsing and never reach here
         let parsed = match pipeline.parse_file(&processed_filename, &processed_data) {
             Ok(p) => p,
-            Err(e) if ext == "pdf" => {
-                // PDF parsing failed, try comprehensive fallback (OCR, Unstructured API, Document AI)
-                tracing::warn!(
-                    "[{}] Native PDF parsing failed: {}. Trying fallback methods...",
-                    filename, e
-                );
-
-                // First try local tools (pdftotext, OCR)
-                match timeout(
-                    op_timeout,
-                    external_parser.convert_pdf_comprehensive(data)
-                ).await {
-                    Ok(Ok((text, method))) => {
-                        tracing::info!(
-                            "[{}] Fallback succeeded via {}, extracted {} chars",
-                            filename, method, text.len()
-                        );
-                        // Process as text content
-                        let text_filename = format!("{}.txt", filename.trim_end_matches(".pdf"));
-                        return Self::process_text_content(
-                            state,
-                            job_queue,
-                            job_id,
-                            &original_filename,
-                            Some(&text_filename),
-                            text.as_bytes(),
-                            Some(data),
-                            parallel_embeddings,
-                        ).await;
-                    }
-                    Ok(Err(fallback_err)) => {
-                        // Local methods failed, try Document AI if available (GCP only)
-                        #[cfg(feature = "gcp")]
-                        if let Some(doc_ai) = state.document_ai() {
-                            tracing::info!(
-                                "[{}] Local PDF extraction failed, trying Document AI...",
-                                filename
-                            );
-                            match timeout(
-                                Duration::from_secs(180), // 3 min for Document AI
-                                doc_ai.process_pdf(data, filename)
-                            ).await {
-                                Ok(Ok(result)) => {
-                                    tracing::info!(
-                                        "[{}] Document AI succeeded, extracted {} chars from {} pages",
-                                        filename, result.text.len(), result.total_pages
-                                    );
-                                    let text_filename = format!("{}.txt", filename.trim_end_matches(".pdf"));
-                                    return Self::process_text_content(
-                                        state,
-                                        job_queue,
-                                        job_id,
-                                        &original_filename,
-                                        Some(&text_filename),
-                                        result.text.as_bytes(),
-                                        Some(data),
-                                        parallel_embeddings,
-                                    ).await;
-                                }
-                                Ok(Err(doc_ai_err)) => {
-                                    tracing::error!(
-                                        "[{}] Document AI also failed: {}",
-                                        filename, doc_ai_err
-                                    );
-                                }
-                                Err(_) => {
-                                    tracing::error!(
-                                        "[{}] Document AI timeout after 180s",
-                                        filename
-                                    );
-                                }
-                            }
-                        }
-
-                        tracing::error!(
-                            "[{}] All PDF extraction methods failed. Original: {}, Fallback: {}",
-                            filename, e, fallback_err
-                        );
-                        return Err(Error::file_parse(
-                            filename,
-                            format!("PDF extraction failed. Install poppler-utils and tesseract-ocr for better support. Error: {}", e)
-                        ));
-                    }
-                    Err(_) => {
-                        tracing::error!("[{}] PDF fallback timeout after {}s", filename, op_timeout.as_secs());
-                        return Err(Error::file_parse(
-                            filename,
-                            "PDF extraction timeout. The file may be too large or complex.".to_string()
-                        ));
-                    }
-                }
-            }
             Err(e) => {
                 // Non-PDF parsing failed - try pandoc fallback for supported formats
-                if ExternalParser::has_pandoc() && ExternalParser::can_use_pandoc(filename) {
-                    tracing::warn!(
-                        "[{}] Native parsing failed: {}. Trying pandoc fallback...",
-                        filename, e
-                    );
-                    match external_parser.convert_with_pandoc(filename, data) {
-                        Ok(text) if !text.trim().is_empty() => {
-                            tracing::info!(
-                                "[{}] Pandoc fallback succeeded: {} chars extracted",
-                                filename, text.len()
-                            );
-                            let text_filename = format!("{}.txt", filename.rsplit('.').next().unwrap_or(filename));
-                            return Self::process_text_content(
-                                state,
-                                job_queue,
-                                job_id,
-                                &original_filename,
-                                Some(&text_filename),
-                                text.as_bytes(),
-                                Some(data),
-                                parallel_embeddings,
-                            ).await;
-                        }
-                        Ok(_) => {
-                            tracing::warn!("[{}] Pandoc returned empty output", filename);
-                        }
-                        Err(pandoc_err) => {
-                            tracing::warn!("[{}] Pandoc fallback failed: {}", filename, pandoc_err);
+                // Try with processed file first (e.g., converted DOCX), then original
+                let pandoc_candidates: Vec<(&str, &[u8])> = if processed_filename != original_filename {
+                    vec![
+                        (processed_filename.as_str(), processed_data.as_slice()),
+                        (original_filename.as_str(), data),
+                    ]
+                } else {
+                    vec![(original_filename.as_str(), data)]
+                };
+
+                for (pandoc_file, pandoc_data) in &pandoc_candidates {
+                    if ExternalParser::has_pandoc() && ExternalParser::can_use_pandoc(pandoc_file) {
+                        tracing::warn!(
+                            "[{}] Native parsing failed: {}. Trying pandoc on '{}'...",
+                            original_filename, e, pandoc_file
+                        );
+                        match external_parser.convert_with_pandoc(pandoc_file, pandoc_data) {
+                            Ok(text) if !text.trim().is_empty() => {
+                                tracing::info!(
+                                    "[{}] Pandoc fallback succeeded: {} chars extracted",
+                                    original_filename, text.len()
+                                );
+                                let stem = std::path::Path::new(&original_filename)
+                                    .file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or("document");
+                                let text_filename = format!("{}.txt", stem);
+                                return Self::process_text_content(
+                                    state,
+                                    job_queue,
+                                    job_id,
+                                    &original_filename,
+                                    Some(&text_filename),
+                                    text.as_bytes(),
+                                    Some(data),
+                                    parallel_embeddings,
+                                ).await;
+                            }
+                            Ok(_) => {
+                                tracing::warn!("[{}] Pandoc returned empty output for '{}'", original_filename, pandoc_file);
+                            }
+                            Err(pandoc_err) => {
+                                tracing::warn!("[{}] Pandoc failed on '{}': {}", original_filename, pandoc_file, pandoc_err);
+                            }
                         }
                     }
                 }
 
-                // Try Unstructured API as last resort
+                // Try Unstructured API as last resort (use original file)
                 if external_parser.is_available() {
-                    tracing::info!("[{}] Trying Unstructured API fallback...", filename);
+                    tracing::info!("[{}] Trying Unstructured API fallback...", original_filename);
                     match timeout(
                         op_timeout,
-                        external_parser.parse_with_unstructured(filename, data)
+                        external_parser.parse_with_unstructured(&original_filename, data)
                     ).await {
                         Ok(Ok(parsed_ext)) if !parsed_ext.content.trim().is_empty() => {
                             tracing::info!(
                                 "[{}] Unstructured API succeeded: {} chars, {} pages",
-                                filename, parsed_ext.content.len(), parsed_ext.total_pages
+                                original_filename, parsed_ext.content.len(), parsed_ext.total_pages
                             );
-                            let text_filename = format!("{}.txt", filename.rsplit('.').next().unwrap_or(filename));
+                            let stem = std::path::Path::new(&original_filename)
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("document");
+                            let text_filename = format!("{}.txt", stem);
                             return Self::process_text_content(
                                 state,
                                 job_queue,
@@ -820,13 +749,13 @@ impl ProcessingWorker {
                             ).await;
                         }
                         Ok(Ok(_)) => {
-                            tracing::warn!("[{}] Unstructured API returned empty content", filename);
+                            tracing::warn!("[{}] Unstructured API returned empty content", original_filename);
                         }
                         Ok(Err(api_err)) => {
-                            tracing::warn!("[{}] Unstructured API failed: {}", filename, api_err);
+                            tracing::warn!("[{}] Unstructured API failed: {}", original_filename, api_err);
                         }
                         Err(_) => {
-                            tracing::warn!("[{}] Unstructured API timeout", filename);
+                            tracing::warn!("[{}] Unstructured API timeout", original_filename);
                         }
                     }
                 }
