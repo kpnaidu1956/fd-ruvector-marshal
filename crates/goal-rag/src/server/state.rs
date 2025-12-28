@@ -253,9 +253,18 @@ impl AppState {
             }
         }
 
-        // Load documents from legacy JSON file if database is empty
+        // Load documents from legacy JSON file ONLY if database is empty (one-time migration)
         let documents_path = storage_dir.join("documents.json");
-        let documents = Self::load_documents(&documents_path);
+        let documents = if file_registry.is_empty() {
+            let docs = Self::load_documents(&documents_path);
+            if !docs.is_empty() {
+                tracing::info!("Migrating {} documents from legacy documents.json", docs.len());
+            }
+            docs
+        } else {
+            // Database has records, don't load legacy file
+            DashMap::new()
+        };
         tracing::info!("Loaded {} documents from registry", documents.len());
 
         // Initialize job queue and start workers
