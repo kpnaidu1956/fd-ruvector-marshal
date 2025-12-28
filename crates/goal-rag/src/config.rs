@@ -362,6 +362,10 @@ pub struct GcpConfig {
     /// Enable Document AI as fallback for failed PDF parsing (default: true if processor is set)
     #[serde(default = "default_use_document_ai")]
     pub use_document_ai_fallback: bool,
+    /// Use local Ollama for embeddings instead of Vertex AI (avoids rate limits)
+    /// When true: Ollama for embeddings, Vertex AI for vector search, Gemini for LLM
+    #[serde(default)]
+    pub use_local_embeddings: bool,
 }
 
 fn default_embedding_model() -> String {

@@ -138,18 +138,26 @@ impl AppState {
                         Error::Config("GCP backend selected but gcp config is missing".to_string())
                     })?;
 
-                    tracing::info!("Using GCP backend (Vertex AI + Gemini)");
-
                     let auth = Arc::new(GcpAuth::from_service_account(
                         &gcp_config.service_account_key_path,
                         gcp_config.project_id.clone(),
                     )?);
 
-                    let embedder = Arc::new(VertexAiEmbedder::new(
-                        Arc::clone(&auth),
-                        gcp_config.location.clone(),
-                        Some(gcp_config.embedding_model.clone()),
-                    ));
+                    // Choose embedding provider based on config
+                    let embedder: Arc<dyn EmbeddingProvider> = if gcp_config.use_local_embeddings {
+                        tracing::info!("Using HYBRID backend: Ollama embeddings + Vertex AI vector search + Gemini LLM");
+                        Arc::new(OllamaEmbedder::new(
+                            &config.llm,
+                            config.embeddings.dimensions,
+                        ))
+                    } else {
+                        tracing::info!("Using GCP backend (Vertex AI + Gemini)");
+                        Arc::new(VertexAiEmbedder::new(
+                            Arc::clone(&auth),
+                            gcp_config.location.clone(),
+                            Some(gcp_config.embedding_model.clone()),
+                        ))
+                    };
 
                     let llm = Arc::new(GeminiClient::new(
                         Arc::clone(&auth),
@@ -193,9 +201,14 @@ impl AppState {
                         }
                     }
 
+                    let embedding_source = if gcp_config.use_local_embeddings {
+                        format!("ollama/{}", config.llm.embed_model)
+                    } else {
+                        gcp_config.embedding_model.clone()
+                    };
                     tracing::info!(
                         "GCP providers initialized (embedding: {}, llm: {}, gcs: {}, document_ai: {})",
-                        gcp_config.embedding_model,
+                        embedding_source,
                         gcp_config.generation_model,
                         gcp_config.gcs_bucket,
                         if document_ai_client.is_some() { "enabled" } else { "disabled" }
