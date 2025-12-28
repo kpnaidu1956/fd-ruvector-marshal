@@ -34,7 +34,7 @@ max_retries = 2
 context_size = 4096
 
 [vector_db]
-storage_path = "/tmp/ruvector-rag/vectors.db"
+storage_path = "/var/lib/ruvector-rag/vectors.db"
 hnsw_m = 32
 hnsw_ef_construction = 200
 hnsw_ef_search = 100
@@ -44,19 +44,19 @@ enabled = true
 unstructured_url = "https://api.unstructured.io/general/v0/general"
 use_libreoffice_fallback = true
 prefer_local_tools = true
-# unstructured_api_key = "your-api-key"  # Optional
+unstructured_api_key = "eOzuk6fAo9rduwOG3NbOhWzFAfqHpe"
 
 [processing]
 file_timeout_secs = 300
-# parallel_files = 4      # Auto-detect if not set
-# parallel_embeddings = 8
+parallel_files = 2
+parallel_embeddings = 2
 
 # ============================================================
 # GCP Configuration (required when backend = "gcp")
 # ============================================================
 [gcp]
 # Path to your service account JSON key file
-service_account_key_path = "https://storage.cloud.google.com/goalign-ncfpd-rag/goalign-alpha-rag-key.json"
+service_account_key_path = "/home/kpnaidu/rag-key.json"
 
 # Your GCP project ID
 project_id = "goalign-alpha"
@@ -74,6 +74,8 @@ gcs_plaintext_prefix = "plaintext/"
 # Vertex AI Vector Search endpoint (full resource name)
 # Create at: https://console.cloud.google.com/vertex-ai/matching-engine
 vector_search_endpoint = "projects/1040167267396/locations/us-central1/indexEndpoints/321991980194201600"
+vector_search_index = "projects/1040167267396/locations/us-central1/indexes/6426682847746064384"
+vector_search_public_domain = "399775135.us-central1-1040167267396.vdb.vertexai.goog"
 
 # Deployed index ID within the endpoint
 deployed_index_id = "rag_deployed_index_1766611672753"
@@ -81,3 +83,7 @@ deployed_index_id = "rag_deployed_index_1766611672753"
 # Models (defaults shown)
 embedding_model = "text-embedding-005"
 generation_model = "gemini-2.5-pro"
+
+# Use local Ollama for embeddings instead of Vertex AI (avoids rate limits)
+# When true: Ollama for embeddings, Vertex AI for vector search, Gemini for LLM
+use_local_embeddings = true
