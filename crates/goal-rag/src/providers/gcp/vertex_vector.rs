@@ -400,15 +400,25 @@ impl VectorStoreProvider for VertexVectorSearch {
             // Create highlighted snippet
             let highlighted = self.highlight_matches(&r.content, query);
 
-            // Create preview
+            // Create preview (using char-safe slicing to handle UTF-8)
             let preview = if let Some(&first_pos) = positions.first() {
-                let start = first_pos.saturating_sub(50);
-                let end = (first_pos + query.len() + 50).min(r.content.len());
-                let mut preview = r.content[start..end].to_string();
-                if start > 0 {
+                // Find character boundaries safely
+                let chars: Vec<char> = r.content.chars().collect();
+                let char_count = chars.len();
+
+                // Convert byte position to approximate char position
+                let approx_char_pos = r.content[..first_pos.min(r.content.len())]
+                    .chars()
+                    .count();
+
+                let start_char = approx_char_pos.saturating_sub(50);
+                let end_char = (approx_char_pos + 50).min(char_count);
+
+                let mut preview: String = chars[start_char..end_char].iter().collect();
+                if start_char > 0 {
                     preview = format!("...{}", preview);
                 }
-                if end < r.content.len() {
+                if end_char < char_count {
                     preview = format!("{}...", preview);
                 }
                 preview
@@ -487,18 +497,33 @@ impl VertexVectorSearch {
         let mut result = String::with_capacity(text.len() + query.len() * 20);
         let mut last_end = 0;
 
-        for (idx, _) in text_lower.match_indices(&query_lower) {
+        for (idx, matched) in text_lower.match_indices(&query_lower) {
+            // Validate byte boundaries before slicing
+            if !text.is_char_boundary(idx) || !text.is_char_boundary(idx + matched.len()) {
+                continue; // Skip matches that cross character boundaries
+            }
+            if !text.is_char_boundary(last_end) {
+                last_end = text.ceil_char_boundary(last_end);
+            }
+
             // Add text before the match
-            result.push_str(&text[last_end..idx]);
+            if last_end <= idx {
+                result.push_str(&text[last_end..idx]);
+            }
             // Add highlighted match (preserving original case)
             result.push_str("<mark>");
-            result.push_str(&text[idx..idx + query.len()]);
+            result.push_str(&text[idx..idx + matched.len()]);
             result.push_str("</mark>");
-            last_end = idx + query.len();
+            last_end = idx + matched.len();
         }
 
         // Add remaining text
-        result.push_str(&text[last_end..]);
+        if last_end < text.len() {
+            if !text.is_char_boundary(last_end) {
+                last_end = text.ceil_char_boundary(last_end);
+            }
+            result.push_str(&text[last_end..]);
+        }
         result
     }
 }
