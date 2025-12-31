@@ -1052,6 +1052,67 @@ impl FileRegistryDb {
 
         Ok(count as usize)
     }
+
+    // ==================== Chunk Content Operations ====================
+
+    /// Get a chunk by ID from the chunks_content table
+    /// This provides full chunk content for Vertex AI results (which have truncated metadata)
+    pub fn get_chunk_by_id(&self, id: &Uuid) -> Result<Option<crate::types::Chunk>> {
+        let conn = self.conn.lock();
+
+        let mut stmt = conn.prepare(
+            r#"SELECT id, document_id, chunk_index, content, filename, file_type,
+                      page_number, section_title, char_start, char_end
+               FROM chunks_content WHERE id = ?1"#
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let record = stmt.query_row(params![id.to_string()], |row| {
+            let id_str: String = row.get(0)?;
+            let doc_id_str: String = row.get(1)?;
+            let chunk_index: i64 = row.get(2)?;
+            let content: String = row.get(3)?;
+            let filename: String = row.get(4)?;
+            let file_type_str: String = row.get(5)?;
+            let page_number: Option<i64> = row.get(6)?;
+            let section_title: Option<String> = row.get(7)?;
+            let char_start: i64 = row.get(8)?;
+            let char_end: i64 = row.get(9)?;
+
+            let chunk_id = Uuid::parse_str(&id_str).unwrap_or_default();
+            let document_id = Uuid::parse_str(&doc_id_str).unwrap_or_default();
+            let file_type = extension_to_file_type(&file_type_str);
+
+            let source = crate::types::ChunkSource {
+                filename: filename.clone(),
+                internal_filename: None,
+                file_type: file_type.clone(),
+                page_number: page_number.map(|p| p as u32),
+                page_count: None,
+                section_title,
+                heading_hierarchy: Vec::new(),
+                sheet_name: None,
+                row_range: None,
+                line_start: None,
+                line_end: None,
+                code_context: None,
+            };
+
+            Ok(crate::types::Chunk {
+                id: chunk_id,
+                document_id,
+                content,
+                embedding: Vec::new(), // Embedding not stored in SQLite, not needed for queries
+                source,
+                char_start: char_start as usize,
+                char_end: char_end as usize,
+                chunk_index: chunk_index as u32,
+                metadata: std::collections::HashMap::new(),
+            })
+        }).optional()
+        .map_err(|e| Error::Internal(format!("Failed to get chunk: {}", e)))?;
+
+        Ok(record)
+    }
 }
 
 /// Record for inserting chunk content

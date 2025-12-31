@@ -631,9 +631,31 @@ impl AppState {
         }
     }
 
-    /// Get a chunk by ID from the local store
+    /// Get a chunk by ID from the local store, with SQLite fallback
+    /// This is critical for Vertex AI queries which return truncated metadata (500 chars)
     pub fn get_chunk(&self, id: &Uuid) -> Option<Chunk> {
-        self.inner.chunks.get(id).map(|c| c.clone())
+        // First check in-memory cache
+        if let Some(chunk) = self.inner.chunks.get(id) {
+            return Some(chunk.clone());
+        }
+
+        // Fallback to SQLite chunks_content table (contains full content)
+        match self.inner.database.get_chunk_by_id(id) {
+            Ok(Some(chunk)) => {
+                // Cache it for future lookups
+                self.inner.chunks.insert(*id, chunk.clone());
+                tracing::debug!("Chunk {} loaded from SQLite and cached", id);
+                Some(chunk)
+            }
+            Ok(None) => {
+                tracing::warn!("Chunk {} not found in cache or SQLite", id);
+                None
+            }
+            Err(e) => {
+                tracing::error!("Failed to load chunk {} from SQLite: {}", id, e);
+                None
+            }
+        }
     }
 
     /// Check if file should be processed (returns action to take)
