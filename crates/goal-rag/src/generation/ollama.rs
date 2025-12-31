@@ -32,6 +32,8 @@ struct GenerateRequest {
 #[derive(Serialize)]
 struct GenerateOptions {
     temperature: f32,
+    /// Maximum number of tokens to generate (prevents truncated responses)
+    num_predict: u32,
 }
 
 #[derive(Deserialize)]
@@ -160,9 +162,10 @@ impl OllamaClient {
         let prompt = PromptBuilder::build_rag_prompt(question, context, citations);
         let model = self.config.generate_model.clone();
         let temperature = self.config.temperature;
+        let context_size = self.config.context_size as u32;
         let client = self.client.clone();
 
-        tracing::info!("Generating answer with model: {}", model);
+        tracing::info!("Generating answer with model: {} (max tokens: {})", model, context_size);
 
         self.retry_request(|| {
             let url = url.clone();
@@ -177,6 +180,7 @@ impl OllamaClient {
                     stream: false,
                     options: GenerateOptions {
                         temperature,
+                        num_predict: context_size,
                     },
                 };
 
@@ -218,9 +222,10 @@ impl OllamaClient {
         let prompt = PromptBuilder::build_rag_prompt_with_learning(question, context, citations, past_qa);
         let model = self.config.generate_model.clone();
         let temperature = self.config.temperature;
+        let context_size = self.config.context_size as u32;
         let client = self.client.clone();
 
-        tracing::info!("Generating answer with {} past Q&A examples", past_qa.len());
+        tracing::info!("Generating answer with {} past Q&A examples (max tokens: {})", past_qa.len(), context_size);
 
         self.retry_request(|| {
             let url = url.clone();
@@ -235,6 +240,7 @@ impl OllamaClient {
                     stream: false,
                     options: GenerateOptions {
                         temperature,
+                        num_predict: context_size,
                     },
                 };
 
