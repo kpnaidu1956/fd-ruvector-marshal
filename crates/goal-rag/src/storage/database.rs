@@ -939,6 +939,119 @@ impl FileRegistryDb {
 
         Ok(count as usize)
     }
+
+    // ==================== Document Operations ====================
+
+    /// Insert or update a document record
+    pub fn upsert_document(&self, doc: &crate::types::Document) -> Result<()> {
+        let conn = self.conn.lock();
+
+        let metadata_json = serde_json::to_string(&doc.metadata).unwrap_or_default();
+
+        conn.execute(
+            r#"
+            INSERT INTO documents (
+                id, filename, internal_filename, file_type, content_hash,
+                file_size, total_chunks, total_pages, ingested_at, metadata
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            ON CONFLICT(id) DO UPDATE SET
+                filename = excluded.filename,
+                internal_filename = excluded.internal_filename,
+                file_type = excluded.file_type,
+                content_hash = excluded.content_hash,
+                file_size = excluded.file_size,
+                total_chunks = excluded.total_chunks,
+                total_pages = excluded.total_pages,
+                metadata = excluded.metadata
+            "#,
+            params![
+                doc.id.to_string(),
+                doc.filename,
+                doc.internal_filename,
+                file_type_to_extension(&doc.file_type),
+                doc.content_hash,
+                doc.file_size as i64,
+                doc.total_chunks as i64,
+                doc.total_pages.map(|p| p as i64),
+                doc.ingested_at.to_rfc3339(),
+                metadata_json,
+            ],
+        ).map_err(|e| Error::Internal(format!("Failed to upsert document: {}", e)))?;
+
+        Ok(())
+    }
+
+    /// Get a document by ID
+    pub fn get_document(&self, id: &Uuid) -> Result<Option<crate::types::Document>> {
+        let conn = self.conn.lock();
+
+        let mut stmt = conn.prepare(
+            "SELECT * FROM documents WHERE id = ?1"
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let record = stmt.query_row(params![id.to_string()], |row| {
+            row_to_document(row)
+        }).optional()
+        .map_err(|e| Error::Internal(format!("Failed to get document: {}", e)))?;
+
+        Ok(record)
+    }
+
+    /// Get a document by filename
+    pub fn get_document_by_filename(&self, filename: &str) -> Result<Option<crate::types::Document>> {
+        let conn = self.conn.lock();
+
+        let mut stmt = conn.prepare(
+            "SELECT * FROM documents WHERE filename = ?1"
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let record = stmt.query_row(params![filename], |row| {
+            row_to_document(row)
+        }).optional()
+        .map_err(|e| Error::Internal(format!("Failed to get document: {}", e)))?;
+
+        Ok(record)
+    }
+
+    /// List all documents
+    pub fn list_documents(&self) -> Result<Vec<crate::types::Document>> {
+        let conn = self.conn.lock();
+
+        let mut stmt = conn.prepare("SELECT * FROM documents ORDER BY ingested_at DESC")
+            .map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let records = stmt.query_map([], row_to_document)
+            .map_err(|e| Error::Internal(format!("Failed to list documents: {}", e)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(records)
+    }
+
+    /// Delete a document by ID
+    pub fn delete_document(&self, id: &Uuid) -> Result<bool> {
+        let conn = self.conn.lock();
+
+        let count = conn.execute(
+            "DELETE FROM documents WHERE id = ?1",
+            params![id.to_string()],
+        ).map_err(|e| Error::Internal(format!("Failed to delete document: {}", e)))?;
+
+        Ok(count > 0)
+    }
+
+    /// Get document count
+    pub fn get_document_count(&self) -> Result<usize> {
+        let conn = self.conn.lock();
+
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM documents",
+            [],
+            |row| row.get(0),
+        ).map_err(|e| Error::Internal(format!("Failed to count documents: {}", e)))?;
+
+        Ok(count as usize)
+    }
 }
 
 /// Record for inserting chunk content
@@ -1369,6 +1482,36 @@ fn row_to_file_record(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
         upload_count: upload_count as u32,
         original_url,
         plaintext_url,
+    })
+}
+
+fn row_to_document(row: &rusqlite::Row) -> rusqlite::Result<crate::types::Document> {
+    let id_str: String = row.get(0)?;
+    let filename: String = row.get(1)?;
+    let internal_filename: Option<String> = row.get(2)?;
+    let file_type_str: String = row.get(3)?;
+    let content_hash: String = row.get(4)?;
+    let file_size: i64 = row.get(5)?;
+    let total_chunks: Option<i64> = row.get(6)?;
+    let total_pages: Option<i64> = row.get(7)?;
+    let ingested_at_str: String = row.get(8)?;
+    let metadata_json: Option<String> = row.get(9)?;
+
+    Ok(crate::types::Document {
+        id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
+        filename,
+        internal_filename,
+        file_type: extension_to_file_type(&file_type_str),
+        content_hash,
+        total_pages: total_pages.map(|p| p as u32),
+        total_chunks: total_chunks.unwrap_or(0) as u32,
+        file_size: file_size as u64,
+        ingested_at: DateTime::parse_from_rfc3339(&ingested_at_str)
+            .map(|d| d.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now()),
+        metadata: metadata_json
+            .and_then(|j| serde_json::from_str(&j).ok())
+            .unwrap_or_default(),
     })
 }
 

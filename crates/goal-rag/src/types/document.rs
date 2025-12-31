@@ -49,6 +49,112 @@ pub enum FileType {
 }
 
 impl FileType {
+    /// Detect file type from magic bytes (file signature)
+    /// Used as fallback when extension is missing or unreliable
+    pub fn from_magic_bytes(data: &[u8]) -> Self {
+        if data.len() < 8 {
+            return Self::Unknown;
+        }
+
+        // PDF: %PDF
+        if data.starts_with(b"%PDF") {
+            return Self::Pdf;
+        }
+
+        // ZIP-based formats (DOCX, XLSX, PPTX, ODT, EPUB)
+        if data.starts_with(&[0x50, 0x4B, 0x03, 0x04]) || data.starts_with(&[0x50, 0x4B, 0x05, 0x06]) {
+            // Need to check internal structure for specific format
+            if let Ok(content) = std::str::from_utf8(&data[..std::cmp::min(data.len(), 2000)]) {
+                if content.contains("word/") || content.contains("word\\") {
+                    return Self::Docx;
+                }
+                if content.contains("xl/") || content.contains("xl\\") {
+                    return Self::Xlsx;
+                }
+                if content.contains("ppt/") || content.contains("ppt\\") {
+                    return Self::Pptx;
+                }
+                if content.contains("mimetype") && content.contains("opendocument") {
+                    return Self::Odt;
+                }
+                if content.contains("EPUB") || content.contains("epub") {
+                    return Self::Epub;
+                }
+            }
+            // Generic Office Open XML - assume docx
+            return Self::Docx;
+        }
+
+        // Microsoft Compound File Binary (DOC, XLS, PPT)
+        if data.starts_with(&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]) {
+            // Could be DOC, XLS, or PPT - assume DOC for text content
+            return Self::Doc;
+        }
+
+        // RTF: {\rtf
+        if data.starts_with(b"{\\rtf") {
+            return Self::Rtf;
+        }
+
+        // HTML: <!DOCTYPE or <html
+        if data.starts_with(b"<!DOCTYPE") || data.starts_with(b"<!doctype") ||
+           data.starts_with(b"<html") || data.starts_with(b"<HTML") {
+            return Self::Html;
+        }
+
+        // XML (could be various formats)
+        if data.starts_with(b"<?xml") {
+            return Self::Html; // Treat as HTML for now
+        }
+
+        // PNG
+        if data.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+            return Self::Image;
+        }
+
+        // JPEG
+        if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+            return Self::Image;
+        }
+
+        // GIF
+        if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+            return Self::Image;
+        }
+
+        // Check if it looks like plain text (UTF-8 or ASCII)
+        if Self::is_likely_text(data) {
+            // Check for markdown indicators
+            if let Ok(text) = std::str::from_utf8(&data[..std::cmp::min(data.len(), 1000)]) {
+                if text.contains("# ") || text.contains("## ") || text.contains("```") ||
+                   text.contains("**") || text.contains("- [") {
+                    return Self::Markdown;
+                }
+                // Check for CSV (has commas and newlines in structured way)
+                let lines: Vec<&str> = text.lines().take(5).collect();
+                if lines.len() > 1 {
+                    let comma_counts: Vec<usize> = lines.iter().map(|l| l.matches(',').count()).collect();
+                    if comma_counts.iter().all(|&c| c > 0) && comma_counts.windows(2).all(|w| w[0] == w[1]) {
+                        return Self::Csv;
+                    }
+                }
+            }
+            return Self::Txt;
+        }
+
+        Self::Unknown
+    }
+
+    /// Check if data looks like plain text
+    fn is_likely_text(data: &[u8]) -> bool {
+        let sample = &data[..std::cmp::min(data.len(), 512)];
+        let printable = sample.iter().filter(|&&b| {
+            b == 0x09 || b == 0x0A || b == 0x0D || (0x20..=0x7E).contains(&b) || b >= 0x80
+        }).count();
+        // If >90% of bytes are printable/text-like, it's probably text
+        printable > sample.len() * 9 / 10
+    }
+
     /// Detect file type from extension
     pub fn from_extension(ext: &str) -> Self {
         match ext.to_lowercase().as_str() {

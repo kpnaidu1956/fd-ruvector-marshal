@@ -59,8 +59,6 @@ struct AppStateInner {
     file_registry: DashMap<String, FileRecord>,
     /// SQLite database for persistent storage
     database: Arc<FileRegistryDb>,
-    /// Path for documents JSON (legacy, for backwards compatibility)
-    documents_path: PathBuf,
     /// Ready state
     ready: RwLock<bool>,
     /// GCS document store (only for GCP backend)
@@ -253,18 +251,9 @@ impl AppState {
             }
         }
 
-        // Load documents from legacy JSON file ONLY if database is empty (one-time migration)
+        // Load documents from SQLite (with migration from JSON if needed)
         let documents_path = storage_dir.join("documents.json");
-        let documents = if file_registry.is_empty() {
-            let docs = Self::load_documents(&documents_path);
-            if !docs.is_empty() {
-                tracing::info!("Migrating {} documents from legacy documents.json", docs.len());
-            }
-            docs
-        } else {
-            // Database has records, don't load legacy file
-            DashMap::new()
-        };
+        let documents = Self::load_documents(&database, &documents_path);
         tracing::info!("Loaded {} documents from registry", documents.len());
 
         // Initialize job queue and start workers
@@ -299,7 +288,6 @@ impl AppState {
                 chunks: DashMap::new(),
                 file_registry,
                 database,
-                documents_path,
                 ready: RwLock::new(true),
                 #[cfg(feature = "gcp")]
                 document_store: gcs_document_store,
@@ -345,17 +333,46 @@ impl AppState {
         Ok(state)
     }
 
-    /// Load documents from disk
-    fn load_documents(path: &PathBuf) -> DashMap<Uuid, Document> {
+    /// Load documents from SQLite, with migration from JSON if needed
+    fn load_documents(database: &Arc<FileRegistryDb>, json_path: &PathBuf) -> DashMap<Uuid, Document> {
         let documents = DashMap::new();
 
-        if path.exists() {
-            match fs::read_to_string(path) {
+        // First, try to load from SQLite
+        match database.list_documents() {
+            Ok(docs) if !docs.is_empty() => {
+                tracing::info!("Loaded {} documents from SQLite database", docs.len());
+                for doc in docs {
+                    documents.insert(doc.id, doc);
+                }
+                return documents;
+            }
+            Ok(_) => {
+                tracing::debug!("No documents in SQLite, checking JSON for migration");
+            }
+            Err(e) => {
+                tracing::warn!("Failed to load documents from SQLite: {}", e);
+            }
+        }
+
+        // If SQLite is empty, try to migrate from JSON
+        if json_path.exists() {
+            match fs::read_to_string(json_path) {
                 Ok(content) => {
                     match serde_json::from_str::<Vec<Document>>(&content) {
                         Ok(docs) => {
-                            for doc in docs {
-                                documents.insert(doc.id, doc);
+                            if !docs.is_empty() {
+                                tracing::info!("Migrating {} documents from JSON to SQLite", docs.len());
+                                let mut migrated = 0;
+                                for doc in docs {
+                                    // Insert into SQLite
+                                    if let Err(e) = database.upsert_document(&doc) {
+                                        tracing::warn!("Failed to migrate document {}: {}", doc.filename, e);
+                                    } else {
+                                        migrated += 1;
+                                    }
+                                    documents.insert(doc.id, doc);
+                                }
+                                tracing::info!("Successfully migrated {} documents to SQLite", migrated);
                             }
                         }
                         Err(e) => {
@@ -372,22 +389,17 @@ impl AppState {
         documents
     }
 
-    /// Save documents to disk
-    fn save_documents(&self) {
-        let docs: Vec<Document> = self.inner.documents
-            .iter()
-            .map(|entry| entry.value().clone())
-            .collect();
+    /// Save a single document to SQLite (and in-memory cache)
+    fn save_document(&self, doc: &Document) {
+        if let Err(e) = self.inner.database.upsert_document(doc) {
+            tracing::error!("Failed to save document {} to SQLite: {}", doc.filename, e);
+        }
+    }
 
-        match serde_json::to_string_pretty(&docs) {
-            Ok(content) => {
-                if let Err(e) = fs::write(&self.inner.documents_path, content) {
-                    tracing::error!("Failed to save documents.json: {}", e);
-                }
-            }
-            Err(e) => {
-                tracing::error!("Failed to serialize documents: {}", e);
-            }
+    /// Delete a document from SQLite
+    fn delete_document_from_db(&self, id: &Uuid) {
+        if let Err(e) = self.inner.database.delete_document(id) {
+            tracing::error!("Failed to delete document {} from SQLite: {}", id, e);
         }
     }
 
@@ -565,10 +577,10 @@ impl AppState {
         *self.inner.ready.write() = ready;
     }
 
-    /// Add a document to the registry (persisted to disk)
+    /// Add a document to the registry (persisted to SQLite)
     pub fn add_document(&self, doc: Document) {
+        self.save_document(&doc);
         self.inner.documents.insert(doc.id, doc);
-        self.save_documents();
     }
 
     /// Get a document by ID
@@ -576,11 +588,11 @@ impl AppState {
         self.inner.documents.get(id).map(|d| d.clone())
     }
 
-    /// Remove a document (persisted to disk)
+    /// Remove a document (persisted to SQLite)
     pub fn remove_document(&self, id: &Uuid) -> Option<Document> {
         let removed = self.inner.documents.remove(id).map(|(_, d)| d);
         if removed.is_some() {
-            self.save_documents();
+            self.delete_document_from_db(id);
         }
         removed
     }

@@ -179,7 +179,7 @@ impl FileParser {
         }
     }
 
-    /// Parse a file based on its extension
+    /// Parse a file based on its extension, with magic bytes fallback
     pub fn parse(filename: &str, data: &[u8]) -> Result<ParsedDocument> {
         let extension = filename
             .rsplit('.')
@@ -187,12 +187,23 @@ impl FileParser {
             .unwrap_or("")
             .to_lowercase();
 
-        let file_type = FileType::from_extension(&extension);
+        // First try extension-based detection
+        let mut file_type = FileType::from_extension(&extension);
+
+        // If extension detection fails or returns Unknown, try magic bytes
+        if !file_type.is_supported() {
+            tracing::debug!("Extension '{}' not recognized, trying magic bytes detection for '{}'", extension, filename);
+            file_type = FileType::from_magic_bytes(data);
+
+            if file_type.is_supported() {
+                tracing::info!("Detected file type {:?} from magic bytes for '{}'", file_type, filename);
+            }
+        }
 
         if !file_type.is_supported() {
             let reason = file_type.unsupported_reason()
                 .unwrap_or("File type not supported");
-            return Err(Error::UnsupportedFileType(format!("{} - {}", extension, reason)));
+            return Err(Error::UnsupportedFileType(format!("{} - {}", filename, reason)));
         }
 
         match file_type {
