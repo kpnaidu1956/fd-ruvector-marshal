@@ -927,6 +927,130 @@ impl FileRegistryDb {
         Ok(count as usize)
     }
 
+    /// Get all chunks for a document (for re-vectorization)
+    pub fn get_chunks_for_document(&self, document_id: &Uuid) -> Result<Vec<crate::types::Chunk>> {
+        let conn = self.conn.lock();
+
+        let mut stmt = conn.prepare(
+            r#"SELECT id, document_id, chunk_index, content, filename, file_type,
+                      page_number, section_title, char_start, char_end
+               FROM chunks_content WHERE document_id = ?1
+               ORDER BY chunk_index"#
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let chunks = stmt.query_map(params![document_id.to_string()], |row| {
+            let id_str: String = row.get(0)?;
+            let doc_id_str: String = row.get(1)?;
+            let chunk_index: i64 = row.get(2)?;
+            let content: String = row.get(3)?;
+            let filename: String = row.get(4)?;
+            let file_type_str: String = row.get(5)?;
+            let page_number: Option<i64> = row.get(6)?;
+            let section_title: Option<String> = row.get(7)?;
+            let char_start: i64 = row.get(8)?;
+            let char_end: i64 = row.get(9)?;
+
+            Ok(crate::types::Chunk {
+                id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
+                document_id: Uuid::parse_str(&doc_id_str).unwrap_or_else(|_| Uuid::new_v4()),
+                content,
+                embedding: Vec::new(),  // Embedding will be generated during re-vectorization
+                source: crate::types::ChunkSource {
+                    filename,
+                    internal_filename: None,
+                    file_type: FileType::from_extension(&file_type_str),
+                    page_number: page_number.map(|p| p as u32),
+                    page_count: None,
+                    section_title,
+                    heading_hierarchy: Vec::new(),
+                    sheet_name: None,
+                    row_range: None,
+                    line_start: None,
+                    line_end: None,
+                    code_context: None,
+                },
+                char_start: char_start as usize,
+                char_end: char_end as usize,
+                chunk_index: chunk_index as u32,
+                metadata: std::collections::HashMap::new(),
+            })
+        })
+        .map_err(|e| Error::Internal(format!("Failed to query chunks: {}", e)))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(chunks)
+    }
+
+    /// Get all chunks from all documents (for bulk re-vectorization)
+    pub fn get_all_chunks(&self, limit: Option<usize>, offset: Option<usize>) -> Result<Vec<crate::types::Chunk>> {
+        let conn = self.conn.lock();
+
+        let query = match (limit, offset) {
+            (Some(l), Some(o)) => format!(
+                r#"SELECT id, document_id, chunk_index, content, filename, file_type,
+                          page_number, section_title, char_start, char_end
+                   FROM chunks_content ORDER BY document_id, chunk_index
+                   LIMIT {} OFFSET {}"#, l, o
+            ),
+            (Some(l), None) => format!(
+                r#"SELECT id, document_id, chunk_index, content, filename, file_type,
+                          page_number, section_title, char_start, char_end
+                   FROM chunks_content ORDER BY document_id, chunk_index
+                   LIMIT {}"#, l
+            ),
+            _ => r#"SELECT id, document_id, chunk_index, content, filename, file_type,
+                          page_number, section_title, char_start, char_end
+                   FROM chunks_content ORDER BY document_id, chunk_index"#.to_string(),
+        };
+
+        let mut stmt = conn.prepare(&query)
+            .map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let chunks = stmt.query_map([], |row| {
+            let id_str: String = row.get(0)?;
+            let doc_id_str: String = row.get(1)?;
+            let chunk_index: i64 = row.get(2)?;
+            let content: String = row.get(3)?;
+            let filename: String = row.get(4)?;
+            let file_type_str: String = row.get(5)?;
+            let page_number: Option<i64> = row.get(6)?;
+            let section_title: Option<String> = row.get(7)?;
+            let char_start: i64 = row.get(8)?;
+            let char_end: i64 = row.get(9)?;
+
+            Ok(crate::types::Chunk {
+                id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
+                document_id: Uuid::parse_str(&doc_id_str).unwrap_or_else(|_| Uuid::new_v4()),
+                content,
+                embedding: Vec::new(),
+                source: crate::types::ChunkSource {
+                    filename,
+                    internal_filename: None,
+                    file_type: FileType::from_extension(&file_type_str),
+                    page_number: page_number.map(|p| p as u32),
+                    page_count: None,
+                    section_title,
+                    heading_hierarchy: Vec::new(),
+                    sheet_name: None,
+                    row_range: None,
+                    line_start: None,
+                    line_end: None,
+                    code_context: None,
+                },
+                char_start: char_start as usize,
+                char_end: char_end as usize,
+                chunk_index: chunk_index as u32,
+                metadata: std::collections::HashMap::new(),
+            })
+        })
+        .map_err(|e| Error::Internal(format!("Failed to query chunks: {}", e)))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(chunks)
+    }
+
     /// Get total chunk count
     pub fn get_total_chunks_count(&self) -> Result<usize> {
         let conn = self.conn.lock();

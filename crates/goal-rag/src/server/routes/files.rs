@@ -535,3 +535,122 @@ pub struct GcsCountsResponse {
     /// Estimated number of failed files (originals without plaintext)
     pub failed_estimate: usize,
 }
+
+// ============================================================================
+// Re-vectorization Endpoints
+// ============================================================================
+
+/// Request for re-vectorizing chunks to Vertex AI
+#[derive(Debug, Deserialize)]
+pub struct RevectorizeRequest {
+    /// Specific document ID to re-vectorize (if None, re-vectorizes all)
+    #[serde(default)]
+    pub document_id: Option<uuid::Uuid>,
+    /// Batch size for processing (default 100)
+    #[serde(default = "default_batch_size")]
+    pub batch_size: usize,
+}
+
+fn default_batch_size() -> usize {
+    100
+}
+
+/// Response for re-vectorization
+#[derive(Debug, Serialize)]
+pub struct RevectorizeResponse {
+    pub success: bool,
+    pub message: String,
+    pub chunks_processed: usize,
+    pub chunks_failed: usize,
+    pub batches_sent: usize,
+}
+
+/// POST /api/files/revectorize - Re-vectorize existing chunks to Vertex AI
+///
+/// This endpoint reads chunks from SQLite, generates embeddings, and upserts them
+/// to Vertex AI Vector Search. Use this to fix documents that were imported but
+/// not properly vectorized.
+#[cfg(feature = "gcp")]
+pub async fn revectorize_chunks(
+    State(state): State<AppState>,
+    Json(request): Json<RevectorizeRequest>,
+) -> Result<Json<RevectorizeResponse>> {
+    tracing::info!("Starting re-vectorization (document_id: {:?}, batch_size: {})",
+        request.document_id, request.batch_size);
+
+    // Get chunks from database
+    let chunks = if let Some(doc_id) = request.document_id {
+        state.database().get_chunks_for_document(&doc_id)?
+    } else {
+        // Get all chunks - this could be large, so we process in batches
+        state.database().get_all_chunks(None, None)?
+    };
+
+    let total_chunks = chunks.len();
+    tracing::info!("Found {} chunks to re-vectorize", total_chunks);
+
+    if total_chunks == 0 {
+        return Ok(Json(RevectorizeResponse {
+            success: true,
+            message: "No chunks found to re-vectorize".to_string(),
+            chunks_processed: 0,
+            chunks_failed: 0,
+            batches_sent: 0,
+        }));
+    }
+
+    let mut chunks_processed = 0;
+    let mut chunks_failed = 0;
+    let mut batches_sent = 0;
+
+    // Process in batches
+    for batch in chunks.chunks(request.batch_size) {
+        let mut embedded_chunks = Vec::with_capacity(batch.len());
+
+        for chunk in batch {
+            // Generate embedding for the chunk
+            match state.embedding_provider().embed(&chunk.content).await {
+                Ok(embedding) => {
+                    let mut embedded_chunk = chunk.clone();
+                    embedded_chunk.embedding = embedding;
+                    embedded_chunks.push(embedded_chunk);
+                    chunks_processed += 1;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to embed chunk {}: {}", chunk.id, e);
+                    chunks_failed += 1;
+                }
+            }
+        }
+
+        // Insert batch into Vertex AI
+        if !embedded_chunks.is_empty() {
+            match state.vector_store_provider().insert_chunks(&embedded_chunks).await {
+                Ok(_) => {
+                    batches_sent += 1;
+                    tracing::info!("Batch {} sent: {} chunks to Vertex AI",
+                        batches_sent, embedded_chunks.len());
+                }
+                Err(e) => {
+                    tracing::error!("Failed to insert batch to Vertex AI: {}", e);
+                    chunks_failed += embedded_chunks.len();
+                    chunks_processed -= embedded_chunks.len();
+                }
+            }
+        }
+    }
+
+    let message = format!(
+        "Re-vectorization complete: {} chunks processed, {} failed, {} batches sent to Vertex AI",
+        chunks_processed, chunks_failed, batches_sent
+    );
+    tracing::info!("{}", message);
+
+    Ok(Json(RevectorizeResponse {
+        success: chunks_failed == 0,
+        message,
+        chunks_processed,
+        chunks_failed,
+        batches_sent,
+    }))
+}
