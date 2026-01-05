@@ -156,7 +156,7 @@ impl LlmProvider for GeminiClient {
             }],
             generation_config: GenerationConfig {
                 temperature: 0.1, // Very low for grounded, factual responses
-                max_output_tokens: 2048,
+                max_output_tokens: 8192, // Increased for longer, complete answers
                 top_p: 0.85, // Tighter for more deterministic output
             },
         };
@@ -227,7 +227,7 @@ impl LlmProvider for GeminiClient {
             contents,
             generation_config: GenerationConfig {
                 temperature: 0.1, // Very low for grounded, factual responses
-                max_output_tokens: 2048,
+                max_output_tokens: 8192, // Increased for longer, complete answers
                 top_p: 0.85, // Tighter for more deterministic output
             },
         };
