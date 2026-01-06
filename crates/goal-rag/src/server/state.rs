@@ -130,6 +130,7 @@ impl AppState {
             BackendProvider::Gcp => {
                 #[cfg(feature = "gcp")]
                 {
+                    use crate::config::HybridMode;
                     use crate::providers::gcp::{GcpAuth, GeminiClient, VertexAiEmbedder, VertexVectorSearch};
 
                     let gcp_config = config.gcp.as_ref().ok_or_else(|| {
@@ -141,41 +142,72 @@ impl AppState {
                         gcp_config.project_id.clone(),
                     )?);
 
-                    // Choose embedding provider based on config
-                    let embedder: Arc<dyn EmbeddingProvider> = if gcp_config.use_local_embeddings {
-                        tracing::info!("Using HYBRID backend: Ollama embeddings + Vertex AI vector search + Gemini LLM");
-                        Arc::new(OllamaEmbedder::new(
-                            &config.llm,
-                            config.embeddings.dimensions,
-                        ))
-                    } else {
-                        tracing::info!("Using GCP backend (Vertex AI + Gemini)");
-                        Arc::new(VertexAiEmbedder::new(
-                            Arc::clone(&auth),
-                            gcp_config.location.clone(),
-                            Some(gcp_config.embedding_model.clone()),
-                        ))
+                    // Get the effective hybrid mode
+                    let hybrid_mode = gcp_config.effective_hybrid_mode();
+
+                    // Choose embedding provider based on hybrid mode
+                    let embedder: Arc<dyn EmbeddingProvider> = match hybrid_mode {
+                        HybridMode::FullGcp => {
+                            tracing::info!("Using FULL GCP backend: Vertex AI embeddings + Vertex AI vectors + Gemini LLM");
+                            Arc::new(VertexAiEmbedder::new(
+                                Arc::clone(&auth),
+                                gcp_config.location.clone(),
+                                Some(gcp_config.embedding_model.clone()),
+                            ))
+                        }
+                        HybridMode::HybridVertex => {
+                            tracing::info!("Using HYBRID VERTEX mode: Ollama embeddings + Vertex AI vectors + Gemini LLM");
+                            Arc::new(OllamaEmbedder::new(
+                                &config.llm,
+                                config.embeddings.dimensions,
+                            ))
+                        }
+                        HybridMode::HybridLocal => {
+                            tracing::info!("Using HYBRID LOCAL mode: Ollama embeddings + Local HNSW + GCS storage + Gemini LLM");
+                            Arc::new(OllamaEmbedder::new(
+                                &config.llm,
+                                config.embeddings.dimensions,
+                            ))
+                        }
                     };
 
+                    // Gemini LLM for all GCP modes
                     let llm = Arc::new(GeminiClient::new(
                         Arc::clone(&auth),
                         gcp_config.location.clone(),
                         Some(gcp_config.generation_model.clone()),
                     ));
 
-                    let vector_provider = Arc::new(VertexVectorSearch::new(
-                        Arc::clone(&auth),
-                        gcp_config.location.clone(),
-                        gcp_config.vector_search_index.clone(),
-                        gcp_config.vector_search_endpoint.clone(),
-                        gcp_config.vector_search_public_domain.clone(),
-                        gcp_config.deployed_index_id.clone(),
-                        Arc::clone(&database),  // Pass database for FTS and chunk tracking
-                    ));
+                    // Choose vector store based on hybrid mode
+                    let vector_provider: Arc<dyn VectorStoreProvider> = match hybrid_mode {
+                        HybridMode::FullGcp | HybridMode::HybridVertex => {
+                            // Use Vertex AI Vector Search
+                            let provider = Arc::new(VertexVectorSearch::new(
+                                Arc::clone(&auth),
+                                gcp_config.location.clone(),
+                                gcp_config.vector_search_index.clone(),
+                                gcp_config.vector_search_endpoint.clone(),
+                                gcp_config.vector_search_public_domain.clone(),
+                                gcp_config.deployed_index_id.clone(),
+                                Arc::clone(&database),
+                            ));
+                            tracing::info!("Vector store: Vertex AI Vector Search");
+                            provider
+                        }
+                        HybridMode::HybridLocal => {
+                            // Use local HNSW vector store (no Vertex AI rate limits!)
+                            let vector_store = Arc::new(VectorStore::new(&config)?);
+                            local_vector_store = Some(Arc::clone(&vector_store));
+                            let provider = Arc::new(LocalVectorStore::new(
+                                vector_store,
+                                Arc::clone(&database),
+                            ));
+                            tracing::info!("Vector store: Local HNSW (no Vertex AI rate limits)");
+                            provider
+                        }
+                    };
 
-                    tracing::info!("GCP backend: using Vertex AI Vector Search (no local HNSW)");
-
-                    // Initialize GCS document store
+                    // Initialize GCS document store (used in all GCP modes for document backup)
                     let document_store = GcsDocumentStore::new(
                         Arc::clone(&auth),
                         gcp_config.gcs_bucket.clone(),
@@ -199,14 +231,21 @@ impl AppState {
                         }
                     }
 
-                    let embedding_source = if gcp_config.use_local_embeddings {
-                        format!("ollama/{}", config.llm.embed_model)
-                    } else {
-                        gcp_config.embedding_model.clone()
+                    let embedding_source = match hybrid_mode {
+                        HybridMode::FullGcp => gcp_config.embedding_model.clone(),
+                        HybridMode::HybridVertex | HybridMode::HybridLocal => {
+                            format!("ollama/{}", config.llm.embed_model)
+                        }
+                    };
+                    let vector_source = match hybrid_mode {
+                        HybridMode::FullGcp | HybridMode::HybridVertex => "vertex_ai".to_string(),
+                        HybridMode::HybridLocal => "local_hnsw".to_string(),
                     };
                     tracing::info!(
-                        "GCP providers initialized (embedding: {}, llm: {}, gcs: {}, document_ai: {})",
+                        "GCP providers initialized (mode: {:?}, embedding: {}, vectors: {}, llm: {}, gcs: {}, document_ai: {})",
+                        hybrid_mode,
                         embedding_source,
+                        vector_source,
                         gcp_config.generation_model,
                         gcp_config.gcs_bucket,
                         if document_ai_client.is_some() { "enabled" } else { "disabled" }

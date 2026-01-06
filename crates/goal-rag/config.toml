@@ -84,6 +84,22 @@ deployed_index_id = "rag_deployed_index_1766611672753"
 embedding_model = "text-embedding-005"
 generation_model = "gemini-2.5-pro"
 
-# Use local Ollama for embeddings instead of Vertex AI (avoids rate limits)
-# When true: Ollama for embeddings, Vertex AI for vector search, Gemini for LLM
-use_local_embeddings = true
+# HYBRID MODE SELECTION
+# Choose how to balance local vs cloud services:
+#
+# "full_gcp"      - Vertex AI embeddings + Vertex AI vectors + Gemini LLM
+#                   Best quality, but most expensive and rate-limited
+#
+# "hybrid_vertex" - Ollama embeddings + Vertex AI vectors + Gemini LLM
+#                   Saves embedding costs, still uses Vertex for vector storage
+#                   (Can still hit Vertex rate limits during bulk ingestion)
+#
+# "hybrid_local"  - Ollama embeddings + Local HNSW + GCS storage + Gemini LLM
+#                   NO RATE LIMITS during ingestion! Only Gemini calls for answers.
+#                   Best for bulk ingestion without API throttling.
+#                   Documents still backed up to GCS.
+#
+hybrid_mode = "hybrid_local"
+
+# DEPRECATED: use hybrid_mode instead (kept for backward compatibility)
+# use_local_embeddings = true  # equivalent to hybrid_mode = "hybrid_vertex"

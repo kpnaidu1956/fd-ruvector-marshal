@@ -320,6 +320,23 @@ pub enum BackendProvider {
     Gcp,
 }
 
+/// Hybrid mode configuration for GCP backend
+/// Controls which components use local vs cloud services
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum HybridMode {
+    /// Full GCP: Vertex AI embeddings + Vertex AI vectors + Gemini LLM
+    #[default]
+    FullGcp,
+    /// Hybrid Vertex: Ollama embeddings + Vertex AI vectors + Gemini LLM
+    /// Saves on embedding API costs but still uses Vertex for vector storage
+    HybridVertex,
+    /// Hybrid Local: Ollama embeddings + Local HNSW vectors + GCS storage + Gemini LLM
+    /// No rate limits during ingestion, only Gemini calls for answers
+    /// Best for avoiding Vertex AI rate limits while keeping cloud LLM quality
+    HybridLocal,
+}
+
 /// Google Cloud Platform configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GcpConfig {
@@ -363,9 +380,33 @@ pub struct GcpConfig {
     #[serde(default = "default_use_document_ai")]
     pub use_document_ai_fallback: bool,
     /// Use local Ollama for embeddings instead of Vertex AI (avoids rate limits)
-    /// When true: Ollama for embeddings, Vertex AI for vector search, Gemini for LLM
+    /// DEPRECATED: Use hybrid_mode instead. Kept for backward compatibility.
+    /// When true: equivalent to hybrid_mode = "hybrid_vertex"
     #[serde(default)]
     pub use_local_embeddings: bool,
+
+    /// Hybrid mode selection (overrides use_local_embeddings if set)
+    /// - full_gcp: Vertex AI embeddings + Vertex AI vectors + Gemini LLM
+    /// - hybrid_vertex: Ollama embeddings + Vertex AI vectors + Gemini LLM
+    /// - hybrid_local: Ollama embeddings + Local HNSW + GCS storage + Gemini LLM
+    #[serde(default)]
+    pub hybrid_mode: Option<HybridMode>,
+}
+
+impl GcpConfig {
+    /// Get the effective hybrid mode, considering both new and legacy config options
+    pub fn effective_hybrid_mode(&self) -> HybridMode {
+        // New hybrid_mode takes precedence
+        if let Some(mode) = self.hybrid_mode {
+            return mode;
+        }
+        // Fall back to legacy use_local_embeddings
+        if self.use_local_embeddings {
+            HybridMode::HybridVertex
+        } else {
+            HybridMode::FullGcp
+        }
+    }
 }
 
 fn default_embedding_model() -> String {
