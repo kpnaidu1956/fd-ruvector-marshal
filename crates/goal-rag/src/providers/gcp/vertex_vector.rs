@@ -265,26 +265,55 @@ impl VectorStoreProvider for VertexVectorSearch {
         // TODO: Pass organization_id through insert_chunks when available
         let datapoints: Vec<DataPoint> = chunks.iter().map(|c| Self::chunk_to_datapoint(c, None)).collect();
 
-        // Batch upserts (max 100 per request)
-        for batch in datapoints.chunks(100) {
+        // Batch upserts with rate limiting and retry logic
+        // Use smaller batches (50) and add delays to avoid quota exhaustion
+        let batch_size = 50;
+        let base_delay_ms = 200; // Delay between batches
+        let max_retries = 5;
+
+        for (batch_idx, batch) in datapoints.chunks(batch_size).enumerate() {
             let request = UpsertRequest {
                 datapoints: batch.to_vec(),
             };
 
-            let response = client
-                .post(&endpoint)
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| Error::VectorDb(format!("Vertex upsert failed: {}", e)))?;
+            // Retry loop with exponential backoff for rate limiting
+            let mut retry_count = 0;
+            loop {
+                let response = client
+                    .post(&endpoint)
+                    .json(&request)
+                    .send()
+                    .await
+                    .map_err(|e| Error::VectorDb(format!("Vertex upsert failed: {}", e)))?;
 
-            if !response.status().is_success() {
+                if response.status().is_success() {
+                    break; // Success, move to next batch
+                }
+
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
+
+                // Handle rate limiting (429) with exponential backoff
+                if status.as_u16() == 429 && retry_count < max_retries {
+                    retry_count += 1;
+                    let backoff_ms = base_delay_ms * (2_u64.pow(retry_count as u32));
+                    tracing::warn!(
+                        "Vertex AI rate limited (429), retry {}/{} after {}ms",
+                        retry_count, max_retries, backoff_ms
+                    );
+                    tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
+                    continue;
+                }
+
                 return Err(Error::VectorDb(format!(
                     "Vertex upsert failed ({}): {}",
                     status, body
                 )));
+            }
+
+            // Add delay between batches to avoid quota exhaustion
+            if batch_idx < datapoints.chunks(batch_size).len() - 1 {
+                tokio::time::sleep(tokio::time::Duration::from_millis(base_delay_ms)).await;
             }
         }
 
