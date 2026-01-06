@@ -63,7 +63,8 @@ pub fn api_routes(max_upload_size: usize) -> Router<AppState> {
     let router = router
         .route("/files/sync", post(files::sync_from_gcs))
         .route("/files/gcs-counts", get(files::get_gcs_counts))
-        .route("/files/revectorize", post(files::revectorize_chunks));
+        .route("/files/revectorize", post(files::revectorize_chunks))
+        .route("/files/migrate-gcs", post(files::migrate_gcs_files));
 
     router
 }
@@ -100,6 +101,7 @@ async fn info() -> axum::Json<serde_json::Value> {
             "GET /api/files/sync/status": "Get last GCS sync status",
             "GET /api/files/gcs-counts": "Get file counts from GCS bucket (GCP only)",
             "POST /api/files/revectorize": "Re-vectorize chunks to Vertex AI (GCP only)",
+            "POST /api/files/migrate-gcs": "Migrate GCS files to organization-specific folders (GCP only)",
             "GET /api/capabilities": "Check document extraction capabilities"
         },
         "features": {

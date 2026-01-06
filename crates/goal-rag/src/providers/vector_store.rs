@@ -15,6 +15,31 @@ pub struct VectorSearchResult {
     pub similarity: f32,
 }
 
+/// Search filter options for multi-tenancy
+#[derive(Debug, Clone, Default)]
+pub struct SearchFilter {
+    /// Filter by organization ID (multi-tenancy)
+    pub organization_id: Option<String>,
+    /// Filter by specific document IDs
+    pub document_ids: Option<Vec<Uuid>>,
+}
+
+impl SearchFilter {
+    /// Create a new filter with organization ID
+    pub fn with_organization(organization_id: Option<String>) -> Self {
+        Self {
+            organization_id,
+            document_ids: None,
+        }
+    }
+
+    /// Add document filter
+    pub fn with_documents(mut self, document_ids: Option<Vec<Uuid>>) -> Self {
+        self.document_ids = document_ids;
+        self
+    }
+}
+
 /// Trait for vector storage and similarity search
 ///
 /// Implementations:
@@ -38,7 +63,7 @@ pub trait VectorStoreProvider: Send + Sync {
         &self,
         query_embedding: &[f32],
         top_k: usize,
-        document_filter: Option<&[Uuid]>,
+        filter: Option<&SearchFilter>,
     ) -> Result<Vec<VectorSearchResult>>;
 
     /// Perform literal string search across all chunks
@@ -46,6 +71,7 @@ pub trait VectorStoreProvider: Send + Sync {
         &self,
         query: &str,
         limit: usize,
+        organization_id: Option<&str>,
     ) -> Result<Vec<StringSearchResult>>;
 
     /// Delete all chunks for a document

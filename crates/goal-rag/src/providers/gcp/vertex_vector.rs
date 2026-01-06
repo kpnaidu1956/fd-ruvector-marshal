@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use super::auth::GcpAuth;
 use crate::error::{Error, Result};
-use crate::providers::vector_store::{VectorSearchResult, VectorStoreProvider};
+use crate::providers::vector_store::{SearchFilter, VectorSearchResult, VectorStoreProvider};
 use crate::storage::{ChunkContentRecord, FileRegistryDb};
 use crate::types::Chunk;
 use crate::types::response::StringSearchResult;
@@ -105,19 +105,29 @@ impl VertexVectorSearch {
         }
     }
 
-    /// Convert chunk to vector search datapoint
-    fn chunk_to_datapoint(chunk: &Chunk) -> DataPoint {
-        // Add document_id as a restrict for filtering
-        let restricts = vec![Restrict {
+    /// Convert chunk to vector search datapoint with optional organization_id
+    fn chunk_to_datapoint(chunk: &Chunk, organization_id: Option<&str>) -> DataPoint {
+        // Add document_id and organization_id as restricts for filtering
+        let mut restricts = vec![Restrict {
             namespace: "document_id".to_string(),
             allow: vec![chunk.document_id.to_string()],
             deny: vec![],
         }];
 
+        // Add organization_id restrict if provided
+        if let Some(org_id) = organization_id {
+            restricts.push(Restrict {
+                namespace: "organization_id".to_string(),
+                allow: vec![org_id.to_string()],
+                deny: vec![],
+            });
+        }
+
         // Store chunk metadata in crowding tag (up to 1KB)
         let metadata = serde_json::json!({
             "chunk_id": chunk.id.to_string(),
             "document_id": chunk.document_id.to_string(),
+            "organization_id": organization_id,
             "filename": chunk.source.filename,
             "content": chunk.content.chars().take(500).collect::<String>(),
             "chunk_index": chunk.chunk_index,
@@ -251,8 +261,9 @@ impl VectorStoreProvider for VertexVectorSearch {
             )
         });
 
-        // Convert chunks to datapoints
-        let datapoints: Vec<DataPoint> = chunks.iter().map(Self::chunk_to_datapoint).collect();
+        // Convert chunks to datapoints (organization_id will be added during ingestion)
+        // TODO: Pass organization_id through insert_chunks when available
+        let datapoints: Vec<DataPoint> = chunks.iter().map(|c| Self::chunk_to_datapoint(c, None)).collect();
 
         // Batch upserts (max 100 per request)
         for batch in datapoints.chunks(100) {
@@ -284,18 +295,36 @@ impl VectorStoreProvider for VertexVectorSearch {
         &self,
         query_embedding: &[f32],
         top_k: usize,
-        document_filter: Option<&[Uuid]>,
+        filter: Option<&SearchFilter>,
     ) -> Result<Vec<VectorSearchResult>> {
         let client = self.auth.authorized_client().await?;
 
-        let mut restricts = None;
-        if let Some(doc_ids) = document_filter {
-            restricts = Some(vec![Restrict {
-                namespace: "document_id".to_string(),
-                allow: doc_ids.iter().map(|id| id.to_string()).collect(),
-                deny: vec![],
-            }]);
-        }
+        // Build restricts from filter
+        let restricts = filter.map(|f| {
+            let mut r = Vec::new();
+
+            // Add organization_id restrict if provided
+            if let Some(ref org_id) = f.organization_id {
+                r.push(Restrict {
+                    namespace: "organization_id".to_string(),
+                    allow: vec![org_id.clone()],
+                    deny: vec![],
+                });
+            }
+
+            // Add document_ids restrict if provided
+            if let Some(ref doc_ids) = f.document_ids {
+                if !doc_ids.is_empty() {
+                    r.push(Restrict {
+                        namespace: "document_id".to_string(),
+                        allow: doc_ids.iter().map(|id| id.to_string()).collect(),
+                        deny: vec![],
+                    });
+                }
+            }
+
+            if r.is_empty() { None } else { Some(r) }
+        }).flatten();
 
         let request = FindNeighborsRequest {
             deployed_index_id: self.deployed_index_id.clone(),
@@ -378,9 +407,10 @@ impl VectorStoreProvider for VertexVectorSearch {
         &self,
         query: &str,
         limit: usize,
+        organization_id: Option<&str>,
     ) -> Result<Vec<StringSearchResult>> {
-        // Use SQLite FTS for string search
-        let results = self.database.string_search_chunks(query, limit)?;
+        // Use SQLite FTS for string search with optional organization filter
+        let results = self.database.string_search_chunks_filtered(query, limit, organization_id)?;
 
         // Convert to StringSearchResult format
         let search_results: Vec<StringSearchResult> = results.into_iter().map(|r| {

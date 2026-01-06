@@ -1080,12 +1080,14 @@ impl ProcessingWorker {
         // Store original file and plain text in GCS (GCP backend only)
         #[cfg(feature = "gcp")]
         if let Some(document_store) = state.document_store() {
-            // Store original file if provided
+            let org_id = doc.organization_id.as_deref();
+
+            // Store original file if provided (in organization-specific folder)
             if let Some(orig_data) = original_data {
-                match document_store.store_document(&doc.id, original_filename, orig_data).await {
+                match document_store.store_document(&doc.id, original_filename, orig_data, org_id).await {
                     Ok(original_uri) => {
                         doc.metadata.insert("original_uri".to_string(), serde_json::Value::String(original_uri));
-                        tracing::debug!("[{}] Stored original in GCS", original_filename);
+                        tracing::debug!("[{}] Stored original in GCS (org: {:?})", original_filename, org_id);
                     }
                     Err(e) => {
                         tracing::warn!("[{}] Failed to store original in GCS: {}", original_filename, e);
@@ -1093,11 +1095,11 @@ impl ProcessingWorker {
                 }
             }
 
-            // Store plain text
-            match document_store.store_plain_text(&doc.id, original_filename, &content).await {
+            // Store plain text (in organization-specific folder)
+            match document_store.store_plain_text(&doc.id, original_filename, &content, org_id).await {
                 Ok(plaintext_uri) => {
                     doc.metadata.insert("plaintext_uri".to_string(), serde_json::Value::String(plaintext_uri));
-                    tracing::debug!("[{}] Stored plain text in GCS", original_filename);
+                    tracing::debug!("[{}] Stored plain text in GCS (org: {:?})", original_filename, org_id);
                 }
                 Err(e) => {
                     tracing::warn!("[{}] Failed to store plain text in GCS: {}", original_filename, e);
@@ -1296,8 +1298,10 @@ impl ProcessingWorker {
         // Store original file and plain text in GCS (GCP backend only)
         #[cfg(feature = "gcp")]
         if let Some(document_store) = state.document_store() {
+            let org_id = doc.organization_id.as_deref();
+
             if let Some(orig_data) = original_data {
-                match document_store.store_document(&doc.id, original_filename, orig_data).await {
+                match document_store.store_document(&doc.id, original_filename, orig_data, org_id).await {
                     Ok(original_uri) => {
                         doc.metadata.insert("original_uri".to_string(), serde_json::Value::String(original_uri));
                     }
@@ -1307,7 +1311,7 @@ impl ProcessingWorker {
                 }
             }
 
-            match document_store.store_plain_text(&doc.id, original_filename, &content).await {
+            match document_store.store_plain_text(&doc.id, original_filename, &content, org_id).await {
                 Ok(plaintext_uri) => {
                     doc.metadata.insert("plaintext_uri".to_string(), serde_json::Value::String(plaintext_uri));
                 }
@@ -1450,22 +1454,24 @@ impl ProcessingWorker {
         // Store original file and plain text in GCS (GCP backend only)
         #[cfg(feature = "gcp")]
         if let Some(document_store) = state.document_store() {
-            // Store original file
-            match document_store.store_document(&doc.id, original_filename, data).await {
+            let org_id = doc.organization_id.as_deref();
+
+            // Store original file (in organization-specific folder)
+            match document_store.store_document(&doc.id, original_filename, data, org_id).await {
                 Ok(original_uri) => {
                     doc.metadata.insert("original_uri".to_string(), serde_json::Value::String(original_uri));
-                    tracing::debug!("[{}] Stored original in GCS", original_filename);
+                    tracing::debug!("[{}] Stored original in GCS (org: {:?})", original_filename, org_id);
                 }
                 Err(e) => {
                     tracing::warn!("[{}] Failed to store original in GCS: {}", original_filename, e);
                 }
             }
 
-            // Store extracted plain text
-            match document_store.store_plain_text(&doc.id, original_filename, &parsed.content).await {
+            // Store extracted plain text (in organization-specific folder)
+            match document_store.store_plain_text(&doc.id, original_filename, &parsed.content, org_id).await {
                 Ok(plaintext_uri) => {
                     doc.metadata.insert("plaintext_uri".to_string(), serde_json::Value::String(plaintext_uri));
-                    tracing::debug!("[{}] Stored plain text in GCS", original_filename);
+                    tracing::debug!("[{}] Stored plain text in GCS (org: {:?})", original_filename, org_id);
                 }
                 Err(e) => {
                     tracing::warn!("[{}] Failed to store plain text in GCS: {}", original_filename, e);

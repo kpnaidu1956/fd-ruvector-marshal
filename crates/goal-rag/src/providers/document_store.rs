@@ -15,6 +15,8 @@ pub struct StoredDocumentInfo {
     pub uri: String,
     /// Size in bytes
     pub size: u64,
+    /// Organization ID (for multi-tenancy)
+    pub organization_id: Option<String>,
 }
 
 /// Trait for document storage
@@ -24,7 +26,7 @@ pub struct StoredDocumentInfo {
 /// - `GcsDocumentStore`: Google Cloud Storage
 #[async_trait]
 pub trait DocumentStoreProvider: Send + Sync {
-    /// Store a document
+    /// Store a document with optional organization isolation
     ///
     /// Returns the storage URI
     async fn store_document(
@@ -32,22 +34,23 @@ pub trait DocumentStoreProvider: Send + Sync {
         doc_id: &Uuid,
         filename: &str,
         data: &[u8],
+        organization_id: Option<&str>,
     ) -> Result<String>;
 
     /// Retrieve document data
-    async fn get_document(&self, doc_id: &Uuid) -> Result<Vec<u8>>;
+    async fn get_document(&self, doc_id: &Uuid, organization_id: Option<&str>) -> Result<Vec<u8>>;
 
     /// Check if document exists
-    async fn exists(&self, doc_id: &Uuid) -> Result<bool>;
+    async fn exists(&self, doc_id: &Uuid, organization_id: Option<&str>) -> Result<bool>;
 
     /// Delete a document
-    async fn delete_document(&self, doc_id: &Uuid) -> Result<()>;
+    async fn delete_document(&self, doc_id: &Uuid, organization_id: Option<&str>) -> Result<()>;
 
-    /// List all stored document IDs
-    async fn list_documents(&self) -> Result<Vec<StoredDocumentInfo>>;
+    /// List all stored document IDs (optionally filtered by organization)
+    async fn list_documents(&self, organization_id: Option<&str>) -> Result<Vec<StoredDocumentInfo>>;
 
     /// Get storage URI for a document
-    async fn get_uri(&self, doc_id: &Uuid) -> Result<Option<String>>;
+    async fn get_uri(&self, doc_id: &Uuid, organization_id: Option<&str>) -> Result<Option<String>>;
 
     /// Check if the provider is healthy
     async fn health_check(&self) -> Result<bool>;

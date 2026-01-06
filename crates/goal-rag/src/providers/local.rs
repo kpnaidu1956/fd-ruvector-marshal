@@ -16,7 +16,7 @@ use crate::types::Chunk;
 use crate::types::response::StringSearchResult;
 
 use super::document_store::{DocumentStoreProvider, StoredDocumentInfo};
-use super::vector_store::{VectorSearchResult, VectorStoreProvider};
+use super::vector_store::{SearchFilter, VectorSearchResult, VectorStoreProvider};
 
 /// Local vector store wrapping ruvector-core HNSW index
 /// Uses HNSW for vector similarity search, SQLite FTS5 for text search
@@ -227,14 +227,15 @@ impl VectorStoreProvider for LocalVectorStore {
         &self,
         query_embedding: &[f32],
         top_k: usize,
-        document_filter: Option<&[Uuid]>,
+        filter: Option<&SearchFilter>,
     ) -> Result<Vec<VectorSearchResult>> {
         let store = self.store.clone();
         let query = query_embedding.to_vec();
-        let filter = document_filter.map(|f| f.to_vec());
+        // Extract document IDs from filter (local store doesn't support org filtering in HNSW)
+        let doc_filter = filter.and_then(|f| f.document_ids.clone());
 
         tokio::task::spawn_blocking(move || {
-            let results = store.search(&query, top_k, filter.as_deref())?;
+            let results = store.search(&query, top_k, doc_filter.as_deref())?;
             Ok(results
                 .into_iter()
                 .map(|r| VectorSearchResult {
@@ -251,9 +252,10 @@ impl VectorStoreProvider for LocalVectorStore {
         &self,
         query: &str,
         limit: usize,
+        organization_id: Option<&str>,
     ) -> Result<Vec<StringSearchResult>> {
-        // Use SQLite FTS5 for efficient text search (not HNSW linear scan)
-        let fts_results = self.database.string_search_chunks(query, limit)?;
+        // Use SQLite FTS5 for efficient text search with optional organization filter
+        let fts_results = self.database.string_search_chunks_filtered(query, limit, organization_id)?;
 
         // Convert FTS results to StringSearchResult
         let query_lower = query.to_lowercase();
@@ -438,6 +440,7 @@ impl DocumentStoreProvider for LocalDocumentStore {
         doc_id: &Uuid,
         filename: &str,
         data: &[u8],
+        _organization_id: Option<&str>,
     ) -> Result<String> {
         let doc_path = self.doc_path(doc_id);
         let meta_path = self.meta_path(doc_id);
@@ -457,19 +460,19 @@ impl DocumentStoreProvider for LocalDocumentStore {
         Ok(doc_path.to_string_lossy().to_string())
     }
 
-    async fn get_document(&self, doc_id: &Uuid) -> Result<Vec<u8>> {
+    async fn get_document(&self, doc_id: &Uuid, _organization_id: Option<&str>) -> Result<Vec<u8>> {
         let doc_path = self.doc_path(doc_id);
         tokio::fs::read(&doc_path)
             .await
             .map_err(|e| Error::Internal(format!("Failed to read document {}: {}", doc_id, e)))
     }
 
-    async fn exists(&self, doc_id: &Uuid) -> Result<bool> {
+    async fn exists(&self, doc_id: &Uuid, _organization_id: Option<&str>) -> Result<bool> {
         let doc_path = self.doc_path(doc_id);
         Ok(doc_path.exists())
     }
 
-    async fn delete_document(&self, doc_id: &Uuid) -> Result<()> {
+    async fn delete_document(&self, doc_id: &Uuid, _organization_id: Option<&str>) -> Result<()> {
         let doc_path = self.doc_path(doc_id);
         let meta_path = self.meta_path(doc_id);
 
@@ -483,7 +486,7 @@ impl DocumentStoreProvider for LocalDocumentStore {
         Ok(())
     }
 
-    async fn list_documents(&self) -> Result<Vec<StoredDocumentInfo>> {
+    async fn list_documents(&self, _organization_id: Option<&str>) -> Result<Vec<StoredDocumentInfo>> {
         let mut docs = Vec::new();
         let mut entries = tokio::fs::read_dir(&self.storage_dir).await?;
 
@@ -498,6 +501,7 @@ impl DocumentStoreProvider for LocalDocumentStore {
                             filename: meta.filename,
                             uri: doc_path.to_string_lossy().to_string(),
                             size: meta.size,
+                            organization_id: None,  // Local store doesn't track org
                         });
                     }
                 }
@@ -507,7 +511,7 @@ impl DocumentStoreProvider for LocalDocumentStore {
         Ok(docs)
     }
 
-    async fn get_uri(&self, doc_id: &Uuid) -> Result<Option<String>> {
+    async fn get_uri(&self, doc_id: &Uuid, _organization_id: Option<&str>) -> Result<Option<String>> {
         let doc_path = self.doc_path(doc_id);
         if doc_path.exists() {
             Ok(Some(doc_path.to_string_lossy().to_string()))

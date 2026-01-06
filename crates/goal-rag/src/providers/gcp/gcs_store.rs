@@ -60,24 +60,29 @@ impl GcsDocumentStore {
         })
     }
 
+    /// Get organization folder name (uses "_default" for no org)
+    fn org_folder(organization_id: Option<&str>) -> &str {
+        organization_id.unwrap_or("_default")
+    }
+
     /// Get the full object path for an original document
-    fn object_path(&self, doc_id: &Uuid, extension: &str) -> String {
-        format!("{}{}.{}", self.originals_prefix, doc_id, extension)
+    fn object_path(&self, doc_id: &Uuid, extension: &str, organization_id: Option<&str>) -> String {
+        format!("{}{}/{}.{}", self.originals_prefix, Self::org_folder(organization_id), doc_id, extension)
     }
 
     /// Get the full object path for plain text
-    fn plaintext_object_path(&self, doc_id: &Uuid) -> String {
-        format!("{}{}.txt", self.plaintext_prefix, doc_id)
+    fn plaintext_object_path(&self, doc_id: &Uuid, organization_id: Option<&str>) -> String {
+        format!("{}{}/{}.txt", self.plaintext_prefix, Self::org_folder(organization_id), doc_id)
     }
 
     /// Get GCS URI for an original document
-    fn gcs_uri(&self, doc_id: &Uuid, extension: &str) -> String {
-        format!("gs://{}/{}", self.bucket, self.object_path(doc_id, extension))
+    fn gcs_uri(&self, doc_id: &Uuid, extension: &str, organization_id: Option<&str>) -> String {
+        format!("gs://{}/{}", self.bucket, self.object_path(doc_id, extension, organization_id))
     }
 
     /// Get GCS URI for plain text
-    fn plaintext_gcs_uri(&self, doc_id: &Uuid) -> String {
-        format!("gs://{}/{}", self.bucket, self.plaintext_object_path(doc_id))
+    fn plaintext_gcs_uri(&self, doc_id: &Uuid, organization_id: Option<&str>) -> String {
+        format!("gs://{}/{}", self.bucket, self.plaintext_object_path(doc_id, organization_id))
     }
 
     /// Store extracted plain text for a document
@@ -86,13 +91,15 @@ impl GcsDocumentStore {
     /// * `doc_id` - Document UUID
     /// * `filename` - Original filename (for metadata)
     /// * `text` - Extracted plain text content
+    /// * `organization_id` - Organization ID for multi-tenancy (stored in org subfolder)
     pub async fn store_plain_text(
         &self,
         doc_id: &Uuid,
         filename: &str,
         text: &str,
+        organization_id: Option<&str>,
     ) -> Result<String> {
-        let object_path = self.plaintext_object_path(doc_id);
+        let object_path = self.plaintext_object_path(doc_id, organization_id);
         let upload_type = UploadType::Simple(Media::new(object_path.clone()));
 
         self.client
@@ -108,21 +115,23 @@ impl GcsDocumentStore {
             .map_err(|e| Error::Internal(format!("Failed to upload plain text to GCS: {}", e)))?;
 
         tracing::debug!(
-            "Stored plain text for {} ({}) at {}",
+            "Stored plain text for {} ({}) in org {:?} at {}",
             filename,
             doc_id,
+            organization_id,
             object_path
         );
 
-        Ok(self.plaintext_gcs_uri(doc_id))
+        Ok(self.plaintext_gcs_uri(doc_id, organization_id))
     }
 
     /// Get extracted plain text for a document
     ///
     /// # Arguments
     /// * `doc_id` - Document UUID
-    pub async fn get_plain_text(&self, doc_id: &Uuid) -> Result<Option<String>> {
-        let object_path = self.plaintext_object_path(doc_id);
+    /// * `organization_id` - Organization ID for multi-tenancy
+    pub async fn get_plain_text(&self, doc_id: &Uuid, organization_id: Option<&str>) -> Result<Option<String>> {
+        let object_path = self.plaintext_object_path(doc_id, organization_id);
 
         match self
             .client
@@ -150,8 +159,9 @@ impl GcsDocumentStore {
     ///
     /// # Arguments
     /// * `doc_id` - Document UUID
-    pub async fn get_document_with_info(&self, doc_id: &Uuid) -> Result<Option<DocumentWithInfo>> {
-        let meta_path = self.object_path(doc_id, "meta.json");
+    /// * `organization_id` - Organization ID for multi-tenancy
+    pub async fn get_document_with_info(&self, doc_id: &Uuid, organization_id: Option<&str>) -> Result<Option<DocumentWithInfo>> {
+        let meta_path = self.object_path(doc_id, "meta.json", organization_id);
 
         match self
             .client
@@ -175,8 +185,8 @@ impl GcsDocumentStore {
                         .to_string();
 
                     // Check if plain text exists
-                    let plaintext_uri = if self.plaintext_exists(doc_id).await {
-                        Some(self.plaintext_gcs_uri(doc_id))
+                    let plaintext_uri = if self.plaintext_exists(doc_id, organization_id).await {
+                        Some(self.plaintext_gcs_uri(doc_id, organization_id))
                     } else {
                         None
                     };
@@ -186,7 +196,7 @@ impl GcsDocumentStore {
                         filename,
                         size: metadata.size,
                         content_type: metadata.content_type,
-                        original_uri: self.gcs_uri(doc_id, &extension),
+                        original_uri: self.gcs_uri(doc_id, &extension, organization_id),
                         plaintext_uri,
                     }))
                 } else {
@@ -198,8 +208,8 @@ impl GcsDocumentStore {
     }
 
     /// Check if plain text exists for a document
-    async fn plaintext_exists(&self, doc_id: &Uuid) -> bool {
-        let object_path = self.plaintext_object_path(doc_id);
+    async fn plaintext_exists(&self, doc_id: &Uuid, organization_id: Option<&str>) -> bool {
+        let object_path = self.plaintext_object_path(doc_id, organization_id);
 
         self.client
             .get_object(&GetObjectRequest {
@@ -212,8 +222,8 @@ impl GcsDocumentStore {
     }
 
     /// Delete plain text for a document
-    pub async fn delete_plain_text(&self, doc_id: &Uuid) -> Result<()> {
-        let object_path = self.plaintext_object_path(doc_id);
+    pub async fn delete_plain_text(&self, doc_id: &Uuid, organization_id: Option<&str>) -> Result<()> {
+        let object_path = self.plaintext_object_path(doc_id, organization_id);
 
         let _ = self
             .client
@@ -245,6 +255,8 @@ struct DocumentMetadata {
     filename: String,
     size: u64,
     content_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    organization_id: Option<String>,
 }
 
 #[async_trait]
@@ -254,6 +266,7 @@ impl DocumentStoreProvider for GcsDocumentStore {
         doc_id: &Uuid,
         filename: &str,
         data: &[u8],
+        organization_id: Option<&str>,
     ) -> Result<String> {
         // Determine content type from filename
         let content_type = mime_guess::from_path(filename)
@@ -266,7 +279,7 @@ impl DocumentStoreProvider for GcsDocumentStore {
             .and_then(|e| e.to_str())
             .unwrap_or("bin");
 
-        let object_path = self.object_path(doc_id, extension);
+        let object_path = self.object_path(doc_id, extension, organization_id);
 
         let upload_type = UploadType::Simple(Media::new(object_path.clone()));
 
@@ -282,15 +295,16 @@ impl DocumentStoreProvider for GcsDocumentStore {
             .await
             .map_err(|e| Error::Internal(format!("Failed to upload to GCS: {}", e)))?;
 
-        // Upload metadata
+        // Upload metadata (includes organization_id for retrieval)
         let metadata = DocumentMetadata {
             id: *doc_id,
             filename: filename.to_string(),
             size: data.len() as u64,
             content_type,
+            organization_id: organization_id.map(|s| s.to_string()),
         };
         let meta_json = serde_json::to_vec(&metadata)?;
-        let meta_path = self.object_path(doc_id, "meta.json");
+        let meta_path = self.object_path(doc_id, "meta.json", organization_id);
 
         let meta_upload_type = UploadType::Simple(Media::new(meta_path));
 
@@ -306,12 +320,20 @@ impl DocumentStoreProvider for GcsDocumentStore {
             .await
             .map_err(|e| Error::Internal(format!("Failed to upload metadata to GCS: {}", e)))?;
 
-        Ok(self.gcs_uri(doc_id, extension))
+        tracing::debug!(
+            "Stored document {} ({}) in org {:?} at {}",
+            filename,
+            doc_id,
+            organization_id,
+            object_path
+        );
+
+        Ok(self.gcs_uri(doc_id, extension, organization_id))
     }
 
-    async fn get_document(&self, doc_id: &Uuid) -> Result<Vec<u8>> {
+    async fn get_document(&self, doc_id: &Uuid, organization_id: Option<&str>) -> Result<Vec<u8>> {
         // First, get metadata to find the extension
-        let meta_path = self.object_path(doc_id, "meta.json");
+        let meta_path = self.object_path(doc_id, "meta.json", organization_id);
 
         let meta_data = self
             .client
@@ -339,7 +361,7 @@ impl DocumentStoreProvider for GcsDocumentStore {
             .and_then(|e| e.to_str())
             .unwrap_or("bin");
 
-        let object_path = self.object_path(doc_id, extension);
+        let object_path = self.object_path(doc_id, extension, organization_id);
 
         self.client
             .download_object(
@@ -354,8 +376,8 @@ impl DocumentStoreProvider for GcsDocumentStore {
             .map_err(|e| Error::Internal(format!("Failed to download from GCS: {}", e)))
     }
 
-    async fn exists(&self, doc_id: &Uuid) -> Result<bool> {
-        let meta_path = self.object_path(doc_id, "meta.json");
+    async fn exists(&self, doc_id: &Uuid, organization_id: Option<&str>) -> Result<bool> {
+        let meta_path = self.object_path(doc_id, "meta.json", organization_id);
 
         match self
             .client
@@ -371,9 +393,9 @@ impl DocumentStoreProvider for GcsDocumentStore {
         }
     }
 
-    async fn delete_document(&self, doc_id: &Uuid) -> Result<()> {
+    async fn delete_document(&self, doc_id: &Uuid, organization_id: Option<&str>) -> Result<()> {
         // Get metadata first to find the extension
-        let meta_path = self.object_path(doc_id, "meta.json");
+        let meta_path = self.object_path(doc_id, "meta.json", organization_id);
 
         if let Ok(meta_data) = self
             .client
@@ -393,7 +415,7 @@ impl DocumentStoreProvider for GcsDocumentStore {
                     .and_then(|e| e.to_str())
                     .unwrap_or("bin");
 
-                let object_path = self.object_path(doc_id, extension);
+                let object_path = self.object_path(doc_id, extension, organization_id);
 
                 // Delete original document
                 let _ = self
@@ -408,7 +430,7 @@ impl DocumentStoreProvider for GcsDocumentStore {
         }
 
         // Delete plain text
-        let plaintext_path = self.plaintext_object_path(doc_id);
+        let plaintext_path = self.plaintext_object_path(doc_id, organization_id);
         let _ = self
             .client
             .delete_object(&DeleteObjectRequest {
@@ -431,12 +453,15 @@ impl DocumentStoreProvider for GcsDocumentStore {
         Ok(())
     }
 
-    async fn list_documents(&self) -> Result<Vec<StoredDocumentInfo>> {
+    async fn list_documents(&self, organization_id: Option<&str>) -> Result<Vec<StoredDocumentInfo>> {
         let mut docs = Vec::new();
+
+        // Build prefix for the specific organization (or _default)
+        let org_prefix = format!("{}{}/", self.originals_prefix, Self::org_folder(organization_id));
 
         let list_request = ListObjectsRequest {
             bucket: self.bucket.clone(),
-            prefix: Some(self.originals_prefix.clone()),
+            prefix: Some(org_prefix),
             ..Default::default()
         };
 
@@ -472,8 +497,9 @@ impl DocumentStoreProvider for GcsDocumentStore {
                         docs.push(StoredDocumentInfo {
                             id: metadata.id,
                             filename,
-                            uri: self.gcs_uri(&metadata.id, &extension),
+                            uri: self.gcs_uri(&metadata.id, &extension, organization_id),
                             size: metadata.size,
+                            organization_id: metadata.organization_id,
                         });
                     }
                 }
@@ -483,8 +509,8 @@ impl DocumentStoreProvider for GcsDocumentStore {
         Ok(docs)
     }
 
-    async fn get_uri(&self, doc_id: &Uuid) -> Result<Option<String>> {
-        let meta_path = self.object_path(doc_id, "meta.json");
+    async fn get_uri(&self, doc_id: &Uuid, organization_id: Option<&str>) -> Result<Option<String>> {
+        let meta_path = self.object_path(doc_id, "meta.json", organization_id);
 
         match self
             .client
@@ -504,7 +530,7 @@ impl DocumentStoreProvider for GcsDocumentStore {
                         .extension()
                         .and_then(|e| e.to_str())
                         .unwrap_or("bin");
-                    Ok(Some(self.gcs_uri(doc_id, extension)))
+                    Ok(Some(self.gcs_uri(doc_id, extension, organization_id)))
                 } else {
                     Ok(None)
                 }
@@ -701,4 +727,154 @@ impl GcsDocumentStore {
 
         Ok((orig_count, plain_count))
     }
+
+    /// Migrate a document from old flat structure to organization-specific folder
+    ///
+    /// Old structure: originals/{doc_id}.{ext}, plaintext/{doc_id}.txt
+    /// New structure: originals/{org_id}/{doc_id}.{ext}, plaintext/{org_id}/{doc_id}.txt
+    ///
+    /// Returns (original_moved, plaintext_moved, new_original_uri, new_plaintext_uri)
+    pub async fn migrate_document_to_org(
+        &self,
+        doc_id: &Uuid,
+        filename: &str,
+        organization_id: &str,
+    ) -> Result<GcsMigrationResult> {
+        let extension = std::path::Path::new(filename)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("bin");
+
+        // Old paths (flat structure)
+        let old_original_path = format!("{}{}.{}", self.originals_prefix, doc_id, extension);
+        let old_meta_path = format!("{}{}.meta.json", self.originals_prefix, doc_id);
+        let old_plaintext_path = format!("{}{}.txt", self.plaintext_prefix, doc_id);
+
+        // New paths (org-specific structure)
+        let new_original_path = self.object_path(doc_id, extension, Some(organization_id));
+        let new_meta_path = self.object_path(doc_id, "meta.json", Some(organization_id));
+        let new_plaintext_path = self.plaintext_object_path(doc_id, Some(organization_id));
+
+        let mut result = GcsMigrationResult {
+            doc_id: *doc_id,
+            original_moved: false,
+            plaintext_moved: false,
+            metadata_moved: false,
+            new_original_uri: None,
+            new_plaintext_uri: None,
+            error: None,
+        };
+
+        // Move original file
+        match self.copy_and_delete(&old_original_path, &new_original_path).await {
+            Ok(true) => {
+                result.original_moved = true;
+                result.new_original_uri = Some(self.gcs_uri(doc_id, extension, Some(organization_id)));
+                tracing::debug!("Moved original: {} -> {}", old_original_path, new_original_path);
+            }
+            Ok(false) => {
+                // File doesn't exist at old path, check if already at new path
+                if self.object_exists(&new_original_path).await {
+                    result.new_original_uri = Some(self.gcs_uri(doc_id, extension, Some(organization_id)));
+                }
+            }
+            Err(e) => {
+                result.error = Some(format!("Failed to move original: {}", e));
+                return Ok(result);
+            }
+        }
+
+        // Move metadata file
+        match self.copy_and_delete(&old_meta_path, &new_meta_path).await {
+            Ok(true) => {
+                result.metadata_moved = true;
+                tracing::debug!("Moved metadata: {} -> {}", old_meta_path, new_meta_path);
+            }
+            Ok(false) => {}
+            Err(e) => {
+                tracing::warn!("Failed to move metadata for {}: {}", doc_id, e);
+            }
+        }
+
+        // Move plaintext file
+        match self.copy_and_delete(&old_plaintext_path, &new_plaintext_path).await {
+            Ok(true) => {
+                result.plaintext_moved = true;
+                result.new_plaintext_uri = Some(self.plaintext_gcs_uri(doc_id, Some(organization_id)));
+                tracing::debug!("Moved plaintext: {} -> {}", old_plaintext_path, new_plaintext_path);
+            }
+            Ok(false) => {
+                // File doesn't exist at old path, check if already at new path
+                if self.object_exists(&new_plaintext_path).await {
+                    result.new_plaintext_uri = Some(self.plaintext_gcs_uri(doc_id, Some(organization_id)));
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to move plaintext for {}: {}", doc_id, e);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Copy an object and delete the original (move operation)
+    /// Returns Ok(true) if moved, Ok(false) if source doesn't exist
+    async fn copy_and_delete(&self, from_path: &str, to_path: &str) -> Result<bool> {
+        use google_cloud_storage::http::objects::copy::CopyObjectRequest;
+
+        // Check if source exists
+        if !self.object_exists(from_path).await {
+            return Ok(false);
+        }
+
+        // Copy to new location
+        let copy_request = CopyObjectRequest {
+            source_bucket: self.bucket.clone(),
+            source_object: from_path.to_string(),
+            destination_bucket: self.bucket.clone(),
+            destination_object: to_path.to_string(),
+            ..Default::default()
+        };
+
+        self.client
+            .copy_object(&copy_request)
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to copy {} to {}: {}", from_path, to_path, e)))?;
+
+        // Delete original
+        let _ = self
+            .client
+            .delete_object(&DeleteObjectRequest {
+                bucket: self.bucket.clone(),
+                object: from_path.to_string(),
+                ..Default::default()
+            })
+            .await;
+
+        Ok(true)
+    }
+
+    /// Check if an object exists
+    async fn object_exists(&self, path: &str) -> bool {
+        self.client
+            .get_object(&GetObjectRequest {
+                bucket: self.bucket.clone(),
+                object: path.to_string(),
+                ..Default::default()
+            })
+            .await
+            .is_ok()
+    }
+}
+
+/// Result of migrating a document to organization-specific folder
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GcsMigrationResult {
+    pub doc_id: Uuid,
+    pub original_moved: bool,
+    pub plaintext_moved: bool,
+    pub metadata_moved: bool,
+    pub new_original_uri: Option<String>,
+    pub new_plaintext_uri: Option<String>,
+    pub error: Option<String>,
 }

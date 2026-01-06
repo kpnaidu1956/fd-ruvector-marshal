@@ -1,21 +1,41 @@
 //! Document management endpoints
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json,
 };
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::server::state::AppState;
 use crate::types::response::{DocumentListResponse, DocumentSummary};
 
-/// GET /api/documents - List all documents
+/// Query parameters for listing documents
+#[derive(Debug, Deserialize)]
+pub struct ListDocumentsQuery {
+    /// Filter by organization ID (multi-tenancy)
+    pub organization_id: Option<String>,
+}
+
+/// GET /api/documents - List all documents with optional organization filter
 pub async fn list_documents(
     State(state): State<AppState>,
+    Query(query): Query<ListDocumentsQuery>,
 ) -> Result<Json<DocumentListResponse>> {
-    let documents: Vec<DocumentSummary> = state
-        .list_documents()
+    let all_documents = state.list_documents();
+
+    // Filter by organization_id if provided
+    let filtered_documents: Vec<_> = if let Some(ref org_id) = query.organization_id {
+        all_documents
+            .into_iter()
+            .filter(|doc| doc.organization_id.as_ref() == Some(org_id))
+            .collect()
+    } else {
+        all_documents
+    };
+
+    let documents: Vec<DocumentSummary> = filtered_documents
         .iter()
         .map(DocumentSummary::from)
         .collect();

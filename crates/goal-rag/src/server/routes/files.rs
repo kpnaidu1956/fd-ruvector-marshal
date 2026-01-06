@@ -654,3 +654,158 @@ pub async fn revectorize_chunks(
         batches_sent,
     }))
 }
+
+/// Request for migrating GCS files to organization folders
+#[cfg(feature = "gcp")]
+#[derive(Debug, Deserialize)]
+pub struct MigrateGcsRequest {
+    /// Organization ID to migrate files to (if not specified, uses each document's organization_id)
+    pub organization_id: Option<String>,
+    /// Limit number of documents to migrate (for testing)
+    pub limit: Option<usize>,
+    /// Dry run - don't actually move files, just report what would be moved
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+/// Response for GCS migration
+#[cfg(feature = "gcp")]
+#[derive(Debug, Serialize)]
+pub struct MigrateGcsResponse {
+    pub success: bool,
+    pub message: String,
+    pub documents_processed: usize,
+    pub originals_moved: usize,
+    pub plaintext_moved: usize,
+    pub metadata_moved: usize,
+    pub already_migrated: usize,
+    pub errors: Vec<String>,
+    pub dry_run: bool,
+}
+
+/// POST /api/files/migrate-gcs - Migrate GCS files to organization-specific folders
+///
+/// Moves files from old flat structure:
+///   originals/{doc_id}.{ext} -> originals/{org_id}/{doc_id}.{ext}
+///   plaintext/{doc_id}.txt -> plaintext/{org_id}/{doc_id}.txt
+///
+/// This is needed for existing documents after enabling multi-tenancy.
+#[cfg(feature = "gcp")]
+pub async fn migrate_gcs_files(
+    State(state): State<AppState>,
+    Json(request): Json<MigrateGcsRequest>,
+) -> Result<Json<MigrateGcsResponse>> {
+    let dry_run = request.dry_run;
+    tracing::info!(
+        "Starting GCS migration (org_id: {:?}, limit: {:?}, dry_run: {})",
+        request.organization_id, request.limit, dry_run
+    );
+
+    // Get document store
+    let document_store = state.document_store()
+        .ok_or_else(|| Error::Internal("GCS document store not configured".to_string()))?;
+
+    // Get all documents from database
+    let documents = state.list_documents();
+    let total_docs = documents.len();
+    tracing::info!("Found {} documents in database", total_docs);
+
+    let mut documents_processed = 0;
+    let mut originals_moved = 0;
+    let mut plaintext_moved = 0;
+    let mut metadata_moved = 0;
+    let mut already_migrated = 0;
+    let mut errors: Vec<String> = Vec::new();
+
+    // Apply limit if specified
+    let docs_to_process: Vec<_> = if let Some(limit) = request.limit {
+        documents.into_iter().take(limit).collect()
+    } else {
+        documents
+    };
+
+    for doc in docs_to_process {
+        // Determine organization ID
+        let org_id = request.organization_id.as_ref()
+            .or(doc.organization_id.as_ref())
+            .cloned()
+            .unwrap_or_else(|| "north-county-fire-protection-district".to_string());
+
+        if dry_run {
+            // Just log what would happen
+            tracing::info!(
+                "[DRY RUN] Would migrate document {} ({}) to org '{}'",
+                doc.id, doc.filename, org_id
+            );
+            documents_processed += 1;
+            continue;
+        }
+
+        // Perform migration
+        match document_store.migrate_document_to_org(&doc.id, &doc.filename, &org_id).await {
+            Ok(result) => {
+                documents_processed += 1;
+
+                if result.original_moved {
+                    originals_moved += 1;
+                }
+                if result.plaintext_moved {
+                    plaintext_moved += 1;
+                }
+                if result.metadata_moved {
+                    metadata_moved += 1;
+                }
+
+                // If nothing was moved but no error, files are already in place
+                if !result.original_moved && !result.plaintext_moved && !result.metadata_moved {
+                    already_migrated += 1;
+                }
+
+                if let Some(err) = result.error {
+                    errors.push(format!("{}: {}", doc.filename, err));
+                }
+
+                // Update document metadata with new URIs if moved
+                if result.original_moved || result.plaintext_moved {
+                    // Note: The document metadata (original_uri, plaintext_uri) in the database
+                    // will be updated on next access or can be manually updated
+                    tracing::info!(
+                        "Migrated {} to org '{}' (orig: {}, txt: {}, meta: {})",
+                        doc.filename, org_id,
+                        result.original_moved, result.plaintext_moved, result.metadata_moved
+                    );
+                }
+            }
+            Err(e) => {
+                errors.push(format!("{}: {}", doc.filename, e));
+                tracing::error!("Failed to migrate {}: {}", doc.filename, e);
+            }
+        }
+    }
+
+    let message = if dry_run {
+        format!(
+            "[DRY RUN] Would migrate {} documents to organization folders",
+            documents_processed
+        )
+    } else {
+        format!(
+            "Migration complete: {} documents processed, {} originals moved, {} plaintext moved, {} metadata moved, {} already migrated, {} errors",
+            documents_processed, originals_moved, plaintext_moved, metadata_moved, already_migrated, errors.len()
+        )
+    };
+
+    tracing::info!("{}", message);
+
+    Ok(Json(MigrateGcsResponse {
+        success: errors.is_empty(),
+        message,
+        documents_processed,
+        originals_moved,
+        plaintext_moved,
+        metadata_moved,
+        already_migrated,
+        errors,
+        dry_run,
+    }))
+}

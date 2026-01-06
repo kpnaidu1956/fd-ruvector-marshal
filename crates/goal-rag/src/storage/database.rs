@@ -207,7 +207,72 @@ impl FileRegistryDb {
         "#)
         .map_err(|e| Error::Internal(format!("Failed to run migrations: {}", e)))?;
 
+        // Add organization_id column for multi-tenancy (idempotent migrations)
+        self.add_column_if_not_exists(&conn, "documents", "organization_id", "TEXT")?;
+        self.add_column_if_not_exists(&conn, "chunks_content", "organization_id", "TEXT")?;
+
+        // Create indexes for organization_id filtering
+        conn.execute_batch(r#"
+            CREATE INDEX IF NOT EXISTS idx_documents_organization_id ON documents(organization_id);
+            CREATE INDEX IF NOT EXISTS idx_chunks_content_organization_id ON chunks_content(organization_id);
+        "#).map_err(|e| Error::Internal(format!("Failed to create organization_id indexes: {}", e)))?;
+
+        // Migrate existing documents to default organization (one-time migration)
+        // This is idempotent - only updates documents with NULL organization_id
+        const DEFAULT_ORG_ID: &str = "north-county-fire-protection-district";
+
+        let updated_docs = conn.execute(
+            "UPDATE documents SET organization_id = ?1 WHERE organization_id IS NULL",
+            params![DEFAULT_ORG_ID],
+        ).map_err(|e| Error::Internal(format!("Failed to migrate documents to default org: {}", e)))?;
+
+        let updated_chunks = conn.execute(
+            "UPDATE chunks_content SET organization_id = ?1 WHERE organization_id IS NULL",
+            params![DEFAULT_ORG_ID],
+        ).map_err(|e| Error::Internal(format!("Failed to migrate chunks to default org: {}", e)))?;
+
+        // Also update any documents with old org ID (NCFPD) to new format
+        let migrated_docs = conn.execute(
+            "UPDATE documents SET organization_id = ?1 WHERE organization_id = 'NCFPD'",
+            params![DEFAULT_ORG_ID],
+        ).map_err(|e| Error::Internal(format!("Failed to migrate NCFPD documents: {}", e)))?;
+
+        let migrated_chunks = conn.execute(
+            "UPDATE chunks_content SET organization_id = ?1 WHERE organization_id = 'NCFPD'",
+            params![DEFAULT_ORG_ID],
+        ).map_err(|e| Error::Internal(format!("Failed to migrate NCFPD chunks: {}", e)))?;
+
+        let total_docs = updated_docs + migrated_docs;
+        let total_chunks = updated_chunks + migrated_chunks;
+
+        if total_docs > 0 || total_chunks > 0 {
+            tracing::info!(
+                "Migrated {} documents and {} chunks to '{}' organization",
+                total_docs, total_chunks, DEFAULT_ORG_ID
+            );
+        }
+
         tracing::info!("Database migrations complete");
+        Ok(())
+    }
+
+    /// Add a column to a table if it doesn't exist (idempotent)
+    fn add_column_if_not_exists(&self, conn: &Connection, table: &str, column: &str, col_type: &str) -> Result<()> {
+        // Check if column exists by querying table_info
+        let column_exists: bool = conn.query_row(
+            &format!("SELECT COUNT(*) FROM pragma_table_info('{}') WHERE name = ?1", table),
+            params![column],
+            |row| row.get::<_, i64>(0).map(|c| c > 0),
+        ).unwrap_or(false);
+
+        if !column_exists {
+            conn.execute(
+                &format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, col_type),
+                [],
+            ).map_err(|e| Error::Internal(format!("Failed to add column {}.{}: {}", table, column, e)))?;
+            tracing::info!("Added column {}.{}", table, column);
+        }
+
         Ok(())
     }
 
@@ -902,6 +967,97 @@ impl FileRegistryDb {
         Ok(search_results)
     }
 
+    /// Search chunks content with FTS5 filtered by organization_id (for multi-tenancy)
+    /// Note: Joins with documents table to get organization_id since chunks may not have it populated
+    pub fn string_search_chunks_filtered(&self, query: &str, limit: usize, organization_id: Option<&str>) -> Result<Vec<ChunkSearchResult>> {
+        let conn = self.conn.lock();
+
+        // Use FTS5 match syntax for the query
+        let fts_query = format!("\"{}\"", query.replace('"', "\"\""));
+
+        // Build query with optional organization filter (join with documents for organization_id)
+        let (sql, params_vec): (String, Vec<Box<dyn rusqlite::ToSql>>) = if let Some(org_id) = organization_id {
+            (
+                r#"
+                SELECT
+                    c.id, c.document_id, c.chunk_index, c.content, c.filename, c.file_type,
+                    c.page_number, c.section_title, c.char_start, c.char_end,
+                    bm25(chunks_fts) as score
+                FROM chunks_fts f
+                JOIN chunks_content c ON c.rowid = f.rowid
+                JOIN documents d ON d.id = c.document_id
+                WHERE chunks_fts MATCH ?1 AND d.organization_id = ?2
+                ORDER BY score
+                LIMIT ?3
+                "#.to_string(),
+                vec![
+                    Box::new(fts_query) as Box<dyn rusqlite::ToSql>,
+                    Box::new(org_id.to_string()),
+                    Box::new(limit as i64),
+                ]
+            )
+        } else {
+            (
+                r#"
+                SELECT
+                    c.id, c.document_id, c.chunk_index, c.content, c.filename, c.file_type,
+                    c.page_number, c.section_title, c.char_start, c.char_end,
+                    bm25(chunks_fts) as score
+                FROM chunks_fts f
+                JOIN chunks_content c ON c.rowid = f.rowid
+                WHERE chunks_fts MATCH ?1
+                ORDER BY score
+                LIMIT ?2
+                "#.to_string(),
+                vec![
+                    Box::new(fts_query) as Box<dyn rusqlite::ToSql>,
+                    Box::new(limit as i64),
+                ]
+            )
+        };
+
+        let mut stmt = conn.prepare(&sql)
+            .map_err(|e| Error::Internal(format!("Failed to prepare FTS query: {}", e)))?;
+
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let results = stmt.query_map(params_refs.as_slice(), |row| {
+            let id: String = row.get(0)?;
+            let document_id: String = row.get(1)?;
+            let chunk_index: i64 = row.get(2)?;
+            let content: String = row.get(3)?;
+            let filename: String = row.get(4)?;
+            let file_type: String = row.get(5)?;
+            let page_number: Option<i64> = row.get(6)?;
+            let _section_title: Option<String> = row.get(7)?;
+            let char_start: i64 = row.get(8)?;
+            let char_end: i64 = row.get(9)?;
+            let score: f64 = row.get(10)?;
+
+            Ok(ChunkSearchResult {
+                chunk_id: Uuid::parse_str(&id).unwrap_or_else(|_| Uuid::new_v4()),
+                document_id: Uuid::parse_str(&document_id).unwrap_or_else(|_| Uuid::new_v4()),
+                chunk_index: chunk_index as u32,
+                content,
+                filename,
+                file_type: extension_to_file_type(&file_type),
+                page_number: page_number.map(|p| p as u32),
+                char_start: char_start as usize,
+                char_end: char_end as usize,
+                score: -score, // BM25 returns negative scores, lower is better
+            })
+        }).map_err(|e| Error::Internal(format!("Failed to execute FTS query: {}", e)))?;
+
+        let mut search_results = Vec::new();
+        for result in results {
+            match result {
+                Ok(r) => search_results.push(r),
+                Err(e) => tracing::warn!("Error reading search result: {}", e),
+            }
+        }
+
+        Ok(search_results)
+    }
+
     /// Delete all chunks for a document
     pub fn delete_chunks_by_document(&self, document_id: &Uuid) -> Result<usize> {
         let conn = self.conn.lock();
@@ -1076,8 +1232,8 @@ impl FileRegistryDb {
             r#"
             INSERT INTO documents (
                 id, filename, internal_filename, file_type, content_hash,
-                file_size, total_chunks, total_pages, ingested_at, metadata
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                file_size, total_chunks, total_pages, ingested_at, metadata, organization_id
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
             ON CONFLICT(id) DO UPDATE SET
                 filename = excluded.filename,
                 internal_filename = excluded.internal_filename,
@@ -1086,7 +1242,8 @@ impl FileRegistryDb {
                 file_size = excluded.file_size,
                 total_chunks = excluded.total_chunks,
                 total_pages = excluded.total_pages,
-                metadata = excluded.metadata
+                metadata = excluded.metadata,
+                organization_id = excluded.organization_id
             "#,
             params![
                 doc.id.to_string(),
@@ -1099,6 +1256,7 @@ impl FileRegistryDb {
                 doc.total_pages.map(|p| p as i64),
                 doc.ingested_at.to_rfc3339(),
                 metadata_json,
+                doc.organization_id,
             ],
         ).map_err(|e| Error::Internal(format!("Failed to upsert document: {}", e)))?;
 
@@ -1681,9 +1839,12 @@ fn row_to_document(row: &rusqlite::Row) -> rusqlite::Result<crate::types::Docume
     let total_pages: Option<i64> = row.get(7)?;
     let ingested_at_str: String = row.get(8)?;
     let metadata_json: Option<String> = row.get(9)?;
+    // organization_id is at index 10 (added by migration)
+    let organization_id: Option<String> = row.get(10).ok();
 
     Ok(crate::types::Document {
         id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
+        organization_id,
         filename,
         internal_filename,
         file_type: extension_to_file_type(&file_type_str),

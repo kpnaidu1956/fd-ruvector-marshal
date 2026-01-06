@@ -295,15 +295,18 @@ async fn process_file_internal(
     );
     doc.total_pages = parsed.total_pages;
     doc.metadata = options.metadata.clone();
+    doc.organization_id = options.organization_id.clone();
 
     // Store original file and plain text in GCS (GCP backend only)
     #[cfg(feature = "gcp")]
     if let Some(document_store) = state.document_store() {
-        // Store original file
-        match document_store.store_document(&doc.id, filename, data).await {
+        let org_id = doc.organization_id.as_deref();
+
+        // Store original file (in organization-specific folder)
+        match document_store.store_document(&doc.id, filename, data, org_id).await {
             Ok(original_uri) => {
                 doc.metadata.insert("original_uri".to_string(), serde_json::Value::String(original_uri));
-                tracing::debug!("Stored original file in GCS: {}", filename);
+                tracing::debug!("Stored original file in GCS (org: {:?}): {}", org_id, filename);
             }
             Err(e) => {
                 tracing::warn!("Failed to store original file in GCS: {}", e);
@@ -311,11 +314,11 @@ async fn process_file_internal(
             }
         }
 
-        // Store extracted plain text
-        match document_store.store_plain_text(&doc.id, filename, &parsed.content).await {
+        // Store extracted plain text (in organization-specific folder)
+        match document_store.store_plain_text(&doc.id, filename, &parsed.content, org_id).await {
             Ok(plaintext_uri) => {
                 doc.metadata.insert("plaintext_uri".to_string(), serde_json::Value::String(plaintext_uri));
-                tracing::debug!("Stored plain text in GCS: {}", filename);
+                tracing::debug!("Stored plain text in GCS (org: {:?}): {}", org_id, filename);
             }
             Err(e) => {
                 tracing::warn!("Failed to store plain text in GCS: {}", e);

@@ -265,6 +265,9 @@ impl FileType {
 pub struct Document {
     /// Unique document ID
     pub id: Uuid,
+    /// Organization ID for multi-tenancy (optional for backwards compatibility)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organization_id: Option<String>,
     /// Original filename as uploaded by user
     pub filename: String,
     /// Internal filename (may differ if file was converted)
@@ -291,6 +294,30 @@ impl Document {
     pub fn new(original_filename: String, file_type: FileType, content_hash: String, file_size: u64) -> Self {
         Self {
             id: Uuid::new_v4(),
+            organization_id: None,
+            filename: original_filename,
+            internal_filename: None,
+            file_type,
+            content_hash,
+            total_pages: None,
+            total_chunks: 0,
+            file_size,
+            ingested_at: chrono::Utc::now(),
+            metadata: HashMap::new(),
+        }
+    }
+
+    /// Create a new document with organization for multi-tenancy
+    pub fn new_with_organization(
+        original_filename: String,
+        file_type: FileType,
+        content_hash: String,
+        file_size: u64,
+        organization_id: Option<String>,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            organization_id,
             filename: original_filename,
             internal_filename: None,
             file_type,
@@ -313,6 +340,7 @@ impl Document {
     ) -> Self {
         Self {
             id: Uuid::new_v4(),
+            organization_id: None,
             filename: original_filename,
             internal_filename: Some(internal_filename),
             file_type,

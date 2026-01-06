@@ -59,6 +59,10 @@ pub struct QueryRequest {
     /// The question to answer
     pub question: String,
 
+    /// Organization ID for multi-tenancy filtering (optional)
+    #[serde(default)]
+    pub organization_id: Option<String>,
+
     /// Number of chunks to retrieve (default: 5)
     #[serde(default = "default_top_k")]
     pub top_k: usize,
@@ -100,6 +104,7 @@ impl Default for QueryRequest {
     fn default() -> Self {
         Self {
             question: String::new(),
+            organization_id: None,
             top_k: 15,  // More chunks for comprehensive answers (GPU handles larger context)
             similarity_threshold: 0.20,  // Lower threshold to include more content
             rerank: true,
@@ -148,6 +153,10 @@ impl QueryRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[derive(Default)]
 pub struct IngestOptions {
+    /// Organization ID for multi-tenancy (tags documents with this ID)
+    #[serde(default)]
+    pub organization_id: Option<String>,
+
     /// Custom chunk size (overrides config)
     pub chunk_size: Option<usize>,
 
