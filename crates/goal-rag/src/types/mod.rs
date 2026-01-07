@@ -11,4 +11,6 @@ pub use file_record::{
     FileRecord, FileRecordStatus, FileRecordSummary, FileUploadAdvice, SkipReason,
 };
 pub use query::QueryRequest;
-pub use response::{Citation, QueryResponse};
+pub use response::{
+    BatchUploadResponse, Citation, FileUploadInfo, FileUploadResponse, QueryResponse, UploadAction,
+};

@@ -169,6 +169,111 @@ impl QueryResponse {
     }
 }
 
+// ============ File Upload Response Types ============
+
+/// Action taken when uploading a file
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum UploadAction {
+    /// New file created
+    Created,
+    /// Existing file replaced (same content hash)
+    Replaced,
+    /// New version created (different content, same base filename)
+    Versioned {
+        /// The new versioned filename (e.g., "document_v2.pdf")
+        new_filename: String,
+    },
+}
+
+/// Information about an uploaded file
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileUploadInfo {
+    /// Original or versioned filename
+    pub filename: String,
+    /// Organization ID
+    pub organization_id: String,
+    /// GCS path where file is stored
+    pub gcs_path: String,
+    /// Content hash (SHA-256)
+    pub content_hash: String,
+    /// File size in bytes
+    pub file_size: u64,
+    /// Action taken (created, replaced, versioned)
+    pub action: UploadAction,
+}
+
+/// Response from file upload (Phase 1 - immediate after GCS upload)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileUploadResponse {
+    /// Whether upload was successful
+    pub success: bool,
+    /// Whether file was uploaded to GCS
+    pub gcs_uploaded: bool,
+    /// Information about the uploaded file
+    pub file: FileUploadInfo,
+    /// Job ID for tracking processing progress (Phase 2)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<Uuid>,
+    /// URL to poll for processing status
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub processing_status_url: Option<String>,
+    /// Error message if upload failed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl FileUploadResponse {
+    /// Create a successful upload response
+    pub fn success(file: FileUploadInfo, job_id: Uuid) -> Self {
+        let status_url = format!("/api/jobs/{}", job_id);
+        Self {
+            success: true,
+            gcs_uploaded: true,
+            file,
+            job_id: Some(job_id),
+            processing_status_url: Some(status_url),
+            error: None,
+        }
+    }
+
+    /// Create a failed upload response
+    pub fn error(filename: String, organization_id: String, error: String) -> Self {
+        Self {
+            success: false,
+            gcs_uploaded: false,
+            file: FileUploadInfo {
+                filename,
+                organization_id,
+                gcs_path: String::new(),
+                content_hash: String::new(),
+                file_size: 0,
+                action: UploadAction::Created,
+            },
+            job_id: None,
+            processing_status_url: None,
+            error: Some(error),
+        }
+    }
+}
+
+/// Response from batch file upload
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchUploadResponse {
+    /// Whether all uploads were successful
+    pub success: bool,
+    /// Number of files uploaded successfully
+    pub files_uploaded: usize,
+    /// Number of files that failed
+    pub files_failed: usize,
+    /// Individual file responses
+    pub files: Vec<FileUploadResponse>,
+    /// Total upload time in milliseconds
+    pub upload_time_ms: u64,
+}
+
+// ============ End File Upload Response Types ============
+
 /// Response from document ingestion
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IngestResponse {

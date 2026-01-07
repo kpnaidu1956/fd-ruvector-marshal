@@ -192,6 +192,82 @@ impl Default for Job {
     }
 }
 
+// ============================================================================
+// GCS-Based Job Types (New Architecture - files already in GCS)
+// ============================================================================
+
+/// File reference for GCS-based processing (file already uploaded to GCS)
+#[derive(Debug, Clone)]
+pub struct GcsFileRef {
+    /// Original filename
+    pub filename: String,
+    /// Organization ID
+    pub organization_id: String,
+    /// GCS path to the file
+    pub gcs_path: String,
+    /// Content hash (SHA-256)
+    pub content_hash: String,
+    /// File size in bytes
+    pub file_size: u64,
+}
+
+/// GCS-based processing options
+#[derive(Debug, Clone, Default)]
+pub struct GcsProcessingOptions {
+    /// Custom chunk size (overrides config)
+    pub chunk_size: Option<usize>,
+    /// Custom chunk overlap (overrides config)
+    pub chunk_overlap: Option<usize>,
+    /// Number of parallel embedding workers
+    pub parallel_embeddings: usize,
+}
+
+/// A GCS-based processing job (file already in GCS, no raw bytes needed)
+#[derive(Debug, Clone)]
+pub struct GcsJob {
+    pub id: Uuid,
+    pub file: GcsFileRef,
+    pub options: GcsProcessingOptions,
+}
+
+impl GcsJob {
+    /// Create a new GCS job
+    pub fn new(file: GcsFileRef, options: GcsProcessingOptions) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            file,
+            options,
+        }
+    }
+}
+
+/// Enum to represent either a regular job or a GCS job
+#[derive(Debug, Clone)]
+pub enum ProcessingJob {
+    /// Traditional job with raw bytes
+    Regular(Job),
+    /// GCS-based job (file already in GCS)
+    Gcs(GcsJob),
+}
+
+impl ProcessingJob {
+    /// Get the job ID
+    pub fn id(&self) -> Uuid {
+        match self {
+            ProcessingJob::Regular(job) => job.id,
+            ProcessingJob::Gcs(job) => job.id,
+        }
+    }
+
+    /// Get total file count
+    pub fn file_count(&self) -> usize {
+        match self {
+            ProcessingJob::Regular(job) => job.files.len(),
+            ProcessingJob::Gcs(_) => 1, // GCS jobs are single-file
+        }
+    }
+}
+
 /// Job queue for managing background processing with persistence
 pub struct JobQueue {
     /// Active jobs with progress
@@ -263,6 +339,78 @@ impl JobQueue {
             tracing::error!("Failed to submit job: {}", e);
             self.update_status(job_id, JobStatus::Failed, Some(e.to_string()));
         }
+
+        job_id
+    }
+
+    /// Submit a GCS-based job for processing
+    ///
+    /// This creates a job entry for tracking but doesn't persist raw bytes.
+    /// The worker will download the file from GCS for processing.
+    ///
+    /// Returns the job ID for status polling.
+    pub async fn submit_gcs_job(&self, gcs_job: GcsJob) -> Uuid {
+        let job_id = gcs_job.id;
+
+        // Create progress entry
+        let mut progress = JobProgress::new(job_id, 1); // Single file per GCS job
+        progress.file_progress.push(FileProgressRecord {
+            filename: gcs_job.file.filename.clone(),
+            size_bytes: gcs_job.file.file_size,
+            tier: FileTier::Medium, // Will be re-evaluated by worker
+            status: FileProcessingStatus::Queued,
+            parser_method: None,
+            parser_attempts: Vec::new(),
+            started_at: chrono::Utc::now(),
+            completed_at: None,
+            duration_ms: None,
+            error: None,
+        });
+        self.jobs.insert(job_id, progress);
+        self.queue_size.fetch_add(1, Ordering::SeqCst);
+
+        // Persist job to database (without file data - it's in GCS)
+        let job_record = JobRecord::new(
+            job_id,
+            1,
+            Some(JobOptions {
+                chunk_size: gcs_job.options.chunk_size,
+                chunk_overlap: gcs_job.options.chunk_overlap,
+                parallel_embeddings: gcs_job.options.parallel_embeddings,
+            }),
+        );
+        if let Err(e) = self.database.create_job(&job_record) {
+            tracing::error!("Failed to persist GCS job to database: {}", e);
+        }
+
+        // Create a file record (without data blob - it's in GCS)
+        let file_record = JobFileRecord {
+            filename: gcs_job.file.filename.clone(),
+            file_size: gcs_job.file.file_size,
+            content_hash: Some(gcs_job.file.content_hash.clone()),
+            status: JobFileStatus::Pending,
+            tier: None,
+            parser_method: None,
+            error: None,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
+            file_data: None, // No raw bytes - file is in GCS
+        };
+        if let Err(e) = self.database.add_job_file(job_id, &file_record) {
+            tracing::error!("Failed to persist GCS job file record: {}", e);
+        }
+
+        // Note: For GCS jobs, the endpoint spawns its own processing task
+        // since we need access to the GCS client to download the file.
+        // The job queue only provides progress tracking.
+
+        tracing::info!(
+            "Created GCS job {} for file {} (org: {})",
+            job_id,
+            gcs_job.file.filename,
+            gcs_job.file.organization_id
+        );
 
         job_id
     }

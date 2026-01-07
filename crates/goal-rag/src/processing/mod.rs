@@ -10,5 +10,7 @@ pub use file_tier::{
 pub use job_queue::{
     FileData, FileError, FileProcessingStatus, FileProgressRecord, Job, JobQueue, JobProgress,
     JobStatus, ParserAttemptRecord, ProcessingOptions, ProcessingStage, QueueStats,
+    // GCS-based job types (new architecture)
+    GcsFileRef, GcsProcessingOptions, GcsJob, ProcessingJob,
 };
 pub use worker::ProcessingWorker;

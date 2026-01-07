@@ -17,6 +17,6 @@ mod vertex_vector;
 pub use auth::GcpAuth;
 pub use document_ai::{DocumentAiClient, DocumentAiPage, DocumentAiResult};
 pub use gemini_client::GeminiClient;
-pub use gcs_store::{DocumentWithInfo, GcsDocumentStore, GcsFileInfo, GcsMigrationResult};
+pub use gcs_store::{DocumentWithInfo, FileMetadataByName, GcsDocumentStore, GcsFileInfo, GcsMigrationResult};
 pub use vertex_embedder::VertexAiEmbedder;
 pub use vertex_vector::VertexVectorSearch;

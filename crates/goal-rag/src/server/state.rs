@@ -601,6 +601,102 @@ impl AppState {
         self.inner.document_ai.as_ref()
     }
 
+    /// Extract text content from file bytes using the external parser
+    ///
+    /// This method uses the escalation parsing strategy for PDFs and
+    /// appropriate parsers for other file types.
+    #[cfg(feature = "gcp")]
+    pub async fn extract_text_from_bytes(&self, filename: &str, data: &[u8]) -> Result<String> {
+        let external_parser = &self.inner.external_parser;
+        let characteristics = external_parser.analyze_file(filename, data);
+
+        let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+
+        // For PDFs, use escalation parsing
+        if ext == "pdf" {
+            match external_parser.parse_with_full_escalation(filename, data, &characteristics).await {
+                Ok(result) => {
+                    tracing::info!(
+                        "[{}] Escalation succeeded with '{}': {} chars",
+                        filename, result.method, result.content.len()
+                    );
+                    return Ok(result.content);
+                }
+                Err(e) => {
+                    tracing::error!("[{}] Escalation parsing failed: {}", filename, e);
+                    // Try Document AI as last resort if available
+                    if let Some(doc_ai) = self.document_ai() {
+                        tracing::info!("[{}] Trying Document AI as final fallback...", filename);
+                        match doc_ai.process_pdf(data, filename).await {
+                            Ok(result) => {
+                                tracing::info!(
+                                    "[{}] Document AI succeeded: {} chars",
+                                    filename, result.text.len()
+                                );
+                                return Ok(result.text);
+                            }
+                            Err(doc_ai_err) => {
+                                tracing::error!("[{}] Document AI failed: {}", filename, doc_ai_err);
+                            }
+                        }
+                    }
+                    return Err(e);
+                }
+            }
+        }
+
+        // For legacy formats, convert first
+        if ExternalParser::needs_conversion(filename) {
+            match external_parser.convert_with_libreoffice(filename, data).await {
+                Ok(converted) => {
+                    // Parse the converted content directly (avoid recursive call)
+                    let stem = std::path::Path::new(filename)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("document");
+                    let new_ext = match ext.as_str() {
+                        "doc" => "docx",
+                        "ppt" => "pptx",
+                        "xls" => "xlsx",
+                        _ => "docx",
+                    };
+                    let new_filename = format!("{}.{}", stem, new_ext);
+                    // Parse the converted file directly
+                    match crate::ingestion::FileParser::parse(&new_filename, &converted) {
+                        Ok(parsed) => return Ok(parsed.content),
+                        Err(e) => {
+                            tracing::warn!("[{}] Parsing converted file failed: {}", filename, e);
+                            // Fall through to try other methods
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("[{}] LibreOffice conversion failed: {}", filename, e);
+                    // Fall through to try native parsing
+                }
+            }
+        }
+
+        // For other formats, try native parsing
+        match crate::ingestion::FileParser::parse(filename, data) {
+            Ok(parsed) => Ok(parsed.content),
+            Err(e) => {
+                tracing::warn!("[{}] Native parsing failed: {}", filename, e);
+                // Try unstructured as fallback for office docs
+                match external_parser.parse_with_unstructured(filename, data).await {
+                    Ok(parsed) => Ok(parsed.content),
+                    Err(unstructured_err) => {
+                        tracing::error!("[{}] All parsing methods failed", filename);
+                        Err(Error::Internal(format!(
+                            "Failed to extract text from {}: native: {}, unstructured: {}",
+                            filename, e, unstructured_err
+                        )))
+                    }
+                }
+            }
+        }
+    }
+
     /// Get documents map
     pub fn documents(&self) -> &DashMap<Uuid, Document> {
         &self.inner.documents

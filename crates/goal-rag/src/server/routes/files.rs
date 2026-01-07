@@ -1,10 +1,11 @@
 //! File status and tracking API endpoints
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Multipart, Path, Query, State},
     Json,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Sha256, Digest};
 
 use crate::error::{Error, Result};
 use crate::server::state::{AppState, FileRegistryStats};
@@ -12,7 +13,10 @@ use crate::storage::SyncStatus;
 use crate::types::{
     FileCheckItem, FileCheckRequest, FileCheckResponse, FileCheckResult, FileCheckSummary,
     FileRecord, FileRecordStatus, FileRecordSummary, FileUploadAdvice,
+    FileUploadResponse, FileUploadInfo, UploadAction,
 };
+#[cfg(feature = "gcp")]
+use crate::processing::{GcsFileRef, GcsProcessingOptions, GcsJob};
 
 /// Query parameters for listing files
 #[derive(Debug, Deserialize)]
@@ -808,4 +812,301 @@ pub async fn migrate_gcs_files(
         errors,
         dry_run,
     }))
+}
+
+// ============================================================================
+// New Filename-Based Upload Endpoint
+// ============================================================================
+
+/// POST /api/files/upload - Upload a file with original filename to GCS
+///
+/// Two-phase response:
+/// 1. Immediate: Returns when file is uploaded to GCS
+/// 2. Async: Processing status available via /api/jobs/{job_id}
+///
+/// Duplicate handling:
+/// - Same content (hash match): Overwrites existing file
+/// - Different content: Creates versioned file (file_v2.pdf, file_v3.pdf)
+#[cfg(feature = "gcp")]
+pub async fn upload_file(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> Result<Json<FileUploadResponse>> {
+    let mut file_data: Option<Vec<u8>> = None;
+    let mut filename: Option<String> = None;
+    let mut organization_id: Option<String> = None;
+
+    // Parse multipart form
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        Error::Internal(format!("Failed to read multipart field: {}", e))
+    })? {
+        let field_name = field.name().unwrap_or("").to_string();
+
+        match field_name.as_str() {
+            "file" => {
+                // Get filename from content disposition if not provided separately
+                if filename.is_none() {
+                    filename = field.file_name().map(|s| s.to_string());
+                }
+                file_data = Some(field.bytes().await.map_err(|e| {
+                    Error::Internal(format!("Failed to read file data: {}", e))
+                })?.to_vec());
+            }
+            "filename" => {
+                let value = field.text().await.map_err(|e| {
+                    Error::Internal(format!("Failed to read filename: {}", e))
+                })?;
+                if !value.is_empty() {
+                    filename = Some(value);
+                }
+            }
+            "organization_id" => {
+                organization_id = Some(field.text().await.map_err(|e| {
+                    Error::Internal(format!("Failed to read organization_id: {}", e))
+                })?);
+            }
+            _ => {
+                // Ignore unknown fields
+            }
+        }
+    }
+
+    // Validate required fields
+    let file_data = file_data.ok_or_else(|| {
+        Error::Internal("Missing 'file' in multipart form".to_string())
+    })?;
+    let filename = filename.ok_or_else(|| {
+        Error::Internal("Missing 'filename' - provide via form field or content-disposition".to_string())
+    })?;
+    let organization_id = organization_id.ok_or_else(|| {
+        Error::Internal("Missing 'organization_id' in multipart form".to_string())
+    })?;
+
+    let file_size = file_data.len() as u64;
+
+    // Calculate content hash (SHA-256)
+    let mut hasher = Sha256::new();
+    hasher.update(&file_data);
+    let content_hash = format!("sha256:{:x}", hasher.finalize());
+
+    tracing::info!(
+        "Processing file upload: {} for org '{}' ({} bytes, hash: {})",
+        filename, organization_id, file_size, content_hash
+    );
+
+    // Get GCS document store
+    let document_store = state.document_store()
+        .ok_or_else(|| Error::Internal("GCS document store not available".to_string()))?;
+
+    // Check for existing file and determine action
+    let (final_filename, action) = match document_store.get_file_metadata_by_name(&filename, &organization_id).await {
+        Ok(Some(existing_meta)) => {
+            if existing_meta.content_hash == content_hash {
+                // Same content - will replace/overwrite
+                tracing::info!("File {} exists with same hash, will replace", filename);
+                (filename.clone(), UploadAction::Replaced)
+            } else {
+                // Different content - create versioned filename
+                let versioned_name = document_store.find_next_version(&filename, &organization_id).await?;
+                tracing::info!("File {} exists with different hash, creating version: {}", filename, versioned_name);
+                (versioned_name.clone(), UploadAction::Versioned { new_filename: versioned_name })
+            }
+        }
+        Ok(None) => {
+            // New file
+            tracing::info!("File {} is new, creating", filename);
+            (filename.clone(), UploadAction::Created)
+        }
+        Err(e) => {
+            tracing::warn!("Error checking existing file {}: {}, treating as new", filename, e);
+            (filename.clone(), UploadAction::Created)
+        }
+    };
+
+    // Upload to GCS
+    let gcs_path = document_store.store_document_by_name(
+        &final_filename,
+        &organization_id,
+        &file_data,
+        &content_hash,
+    ).await?;
+
+    tracing::info!("File uploaded to GCS: {}", gcs_path);
+
+    // Create GCS job for async processing
+    let gcs_file_ref = GcsFileRef {
+        filename: final_filename.clone(),
+        organization_id: organization_id.clone(),
+        gcs_path: gcs_path.clone(),
+        content_hash: content_hash.clone(),
+        file_size,
+    };
+
+    let gcs_job = GcsJob::new(gcs_file_ref, GcsProcessingOptions::default());
+    let job_id = gcs_job.id;
+
+    // Submit job for tracking (the actual processing is spawned below)
+    state.job_queue().submit_gcs_job(gcs_job.clone()).await;
+
+    // Spawn async processing task
+    let process_state = state.clone();
+    let process_filename = final_filename.clone();
+    let process_org_id = organization_id.clone();
+    let process_job_id = job_id;
+
+    tokio::spawn(async move {
+        if let Err(e) = process_gcs_file(
+            process_state,
+            process_job_id,
+            &process_filename,
+            &process_org_id,
+        ).await {
+            tracing::error!("Failed to process file {}: {}", process_filename, e);
+        }
+    });
+
+    // Return immediate response
+    Ok(Json(FileUploadResponse {
+        success: true,
+        gcs_uploaded: true,
+        file: FileUploadInfo {
+            filename: final_filename,
+            organization_id,
+            gcs_path,
+            content_hash,
+            file_size,
+            action,
+        },
+        job_id: Some(job_id),
+        processing_status_url: Some(format!("/api/jobs/{}", job_id)),
+        error: None,
+    }))
+}
+
+/// Process a file that has already been uploaded to GCS
+#[cfg(feature = "gcp")]
+async fn process_gcs_file(
+    state: AppState,
+    job_id: uuid::Uuid,
+    filename: &str,
+    organization_id: &str,
+) -> Result<()> {
+    use crate::processing::JobStatus;
+    use crate::ingestion::{TextChunker, ParsedDocument, PageContent};
+    use crate::types::FileType;
+
+    tracing::info!("Starting GCS file processing for {} (job {})", filename, job_id);
+
+    // Update job status to processing
+    state.job_queue().update_status(job_id, JobStatus::Processing, None);
+
+    // Get document store
+    let document_store = state.document_store()
+        .ok_or_else(|| Error::Internal("GCS document store not available".to_string()))?;
+
+    // Download file from GCS
+    let file_data = document_store.get_document_by_name(filename, organization_id).await?;
+    tracing::info!("Downloaded {} bytes from GCS for {}", file_data.len(), filename);
+
+    // Determine file type
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+    let file_type = FileType::from_extension(&ext);
+    tracing::info!("File type for {}: {:?}", filename, file_type);
+
+    // Extract text content
+    let text_content = state.extract_text_from_bytes(filename, &file_data).await?;
+
+    if text_content.trim().is_empty() {
+        let err = "No text content extracted from file";
+        state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.to_string()));
+        return Err(Error::Internal(err.to_string()));
+    }
+
+    tracing::info!("Extracted {} characters from {}", text_content.len(), filename);
+
+    // Store plaintext in GCS
+    document_store.store_plain_text_by_name(filename, organization_id, &text_content).await?;
+
+    // Create document record
+    let doc_id = uuid::Uuid::new_v4();
+
+    // Calculate content hash
+    let mut hasher = Sha256::new();
+    hasher.update(&file_data);
+    let content_hash = format!("sha256:{:x}", hasher.finalize());
+
+    let document = crate::types::Document {
+        id: doc_id,
+        organization_id: Some(organization_id.to_string()),
+        filename: filename.to_string(),
+        internal_filename: None,
+        file_type: file_type.clone(),
+        content_hash: content_hash.clone(),
+        total_pages: None,
+        total_chunks: 0, // Will update after chunking
+        file_size: file_data.len() as u64,
+        ingested_at: chrono::Utc::now(),
+        metadata: std::collections::HashMap::new(),
+    };
+
+    // Chunk the text using TextChunker
+    let config = state.config();
+    let chunk_size = config.chunking.chunk_size;
+    let chunk_overlap = config.chunking.chunk_overlap;
+
+    let chunker = TextChunker::new(chunk_size, chunk_overlap);
+
+    // Create a ParsedDocument for chunking
+    let parsed = ParsedDocument {
+        file_type: file_type.clone(),
+        content: text_content.clone(),
+        content_hash: content_hash.clone(),
+        total_pages: Some(1),
+        pages: vec![PageContent {
+            page_number: 1,
+            content: text_content,
+            char_offset: 0,
+        }],
+        metadata: std::collections::HashMap::new(),
+    };
+
+    let chunks = chunker.chunk_document(&document, &parsed);
+    tracing::info!("Created {} chunks for {}", chunks.len(), filename);
+
+    // Embed chunks
+    let mut embedded_chunks = Vec::with_capacity(chunks.len());
+    for chunk in chunks {
+        match state.embedding_provider().embed(&chunk.content).await {
+            Ok(embedding) => {
+                let mut embedded = chunk;
+                embedded.embedding = embedding;
+                embedded_chunks.push(embedded);
+            }
+            Err(e) => {
+                tracing::warn!("Failed to embed chunk: {}", e);
+            }
+        }
+    }
+
+    if embedded_chunks.is_empty() {
+        let err = "Failed to embed any chunks";
+        state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.to_string()));
+        return Err(Error::Internal(err.to_string()));
+    }
+
+    // Store in vector database
+    state.vector_store_provider().insert_chunks(&embedded_chunks).await?;
+    tracing::info!("Inserted {} chunks into vector store for {}", embedded_chunks.len(), filename);
+
+    // Update document with chunk count and save
+    let mut doc = document;
+    doc.total_chunks = embedded_chunks.len() as u32;
+    state.add_document(doc);
+
+    // Update job status to complete
+    state.job_queue().update_status(job_id, JobStatus::Complete, None);
+    state.job_queue().increment_files_processed(job_id);
+
+    tracing::info!("Successfully processed {} (job {})", filename, job_id);
+    Ok(())
 }

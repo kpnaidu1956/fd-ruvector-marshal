@@ -210,11 +210,15 @@ impl FileRegistryDb {
         // Add organization_id column for multi-tenancy (idempotent migrations)
         self.add_column_if_not_exists(&conn, "documents", "organization_id", "TEXT")?;
         self.add_column_if_not_exists(&conn, "chunks_content", "organization_id", "TEXT")?;
+        self.add_column_if_not_exists(&conn, "file_registry", "organization_id", "TEXT")?;
 
         // Create indexes for organization_id filtering
         conn.execute_batch(r#"
             CREATE INDEX IF NOT EXISTS idx_documents_organization_id ON documents(organization_id);
             CREATE INDEX IF NOT EXISTS idx_chunks_content_organization_id ON chunks_content(organization_id);
+            CREATE INDEX IF NOT EXISTS idx_file_registry_organization_id ON file_registry(organization_id);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_org_filename ON documents(organization_id, filename);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_file_registry_org_filename ON file_registry(organization_id, filename);
         "#).map_err(|e| Error::Internal(format!("Failed to create organization_id indexes: {}", e)))?;
 
         // Migrate existing documents to default organization (one-time migration)
@@ -1293,6 +1297,63 @@ impl FileRegistryDb {
         .map_err(|e| Error::Internal(format!("Failed to get document: {}", e)))?;
 
         Ok(record)
+    }
+
+    /// Get a document by organization_id + filename (new architecture)
+    pub fn get_document_by_org_filename(&self, organization_id: &str, filename: &str) -> Result<Option<crate::types::Document>> {
+        let conn = self.conn.lock();
+
+        let mut stmt = conn.prepare(
+            "SELECT * FROM documents WHERE organization_id = ?1 AND filename = ?2"
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let record = stmt.query_row(params![organization_id, filename], |row| {
+            row_to_document(row)
+        }).optional()
+        .map_err(|e| Error::Internal(format!("Failed to get document: {}", e)))?;
+
+        Ok(record)
+    }
+
+    /// List all documents for an organization
+    pub fn list_documents_by_org(&self, organization_id: &str) -> Result<Vec<crate::types::Document>> {
+        let conn = self.conn.lock();
+
+        let mut stmt = conn.prepare(
+            "SELECT * FROM documents WHERE organization_id = ?1 ORDER BY ingested_at DESC"
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let records = stmt.query_map(params![organization_id], row_to_document)
+            .map_err(|e| Error::Internal(format!("Failed to list documents: {}", e)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(records)
+    }
+
+    /// Delete a document by organization_id + filename
+    pub fn delete_document_by_org_filename(&self, organization_id: &str, filename: &str) -> Result<bool> {
+        let conn = self.conn.lock();
+
+        let count = conn.execute(
+            "DELETE FROM documents WHERE organization_id = ?1 AND filename = ?2",
+            params![organization_id, filename],
+        ).map_err(|e| Error::Internal(format!("Failed to delete document: {}", e)))?;
+
+        Ok(count > 0)
+    }
+
+    /// Check if a document exists by organization_id + filename
+    pub fn document_exists_by_org_filename(&self, organization_id: &str, filename: &str) -> Result<bool> {
+        let conn = self.conn.lock();
+
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM documents WHERE organization_id = ?1 AND filename = ?2",
+            params![organization_id, filename],
+            |row| row.get(0),
+        ).map_err(|e| Error::Internal(format!("Failed to check document: {}", e)))?;
+
+        Ok(count > 0)
     }
 
     /// List all documents

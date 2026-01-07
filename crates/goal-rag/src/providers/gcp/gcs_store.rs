@@ -878,3 +878,375 @@ pub struct GcsMigrationResult {
     pub new_plaintext_uri: Option<String>,
     pub error: Option<String>,
 }
+
+// ============================================================================
+// Filename-Based Storage Methods (New Architecture)
+// ============================================================================
+
+/// Metadata stored alongside files using filename-based storage
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FileMetadataByName {
+    /// Original filename
+    pub filename: String,
+    /// Organization ID
+    pub organization_id: String,
+    /// Content hash (SHA-256)
+    pub content_hash: String,
+    /// File size in bytes
+    pub file_size: u64,
+    /// Content type
+    pub content_type: String,
+    /// Upload timestamp
+    pub uploaded_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl GcsDocumentStore {
+    // ===== Filename-based path helpers =====
+
+    /// Get the full object path for a file using original filename
+    /// Format: originals/{org_id}/{filename}
+    pub fn object_path_by_name(&self, filename: &str, organization_id: &str) -> String {
+        format!("{}{}/{}", self.originals_prefix, organization_id, filename)
+    }
+
+    /// Get the full object path for plain text using original filename
+    /// Format: plaintext/{org_id}/{filename}.txt
+    pub fn plaintext_path_by_name(&self, filename: &str, organization_id: &str) -> String {
+        // Remove extension and add .txt
+        let base_name = std::path::Path::new(filename)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or(filename);
+        format!("{}{}/{}.txt", self.plaintext_prefix, organization_id, base_name)
+    }
+
+    /// Get the metadata path for a file
+    /// Format: originals/{org_id}/{filename}.meta.json
+    fn metadata_path_by_name(&self, filename: &str, organization_id: &str) -> String {
+        format!("{}{}/{}.meta.json", self.originals_prefix, organization_id, filename)
+    }
+
+    /// Get GCS URI for a file by name
+    pub fn gcs_uri_by_name(&self, filename: &str, organization_id: &str) -> String {
+        format!("gs://{}/{}", self.bucket, self.object_path_by_name(filename, organization_id))
+    }
+
+    /// Get GCS URI for plain text by name
+    pub fn plaintext_gcs_uri_by_name(&self, filename: &str, organization_id: &str) -> String {
+        format!("gs://{}/{}", self.bucket, self.plaintext_path_by_name(filename, organization_id))
+    }
+
+    // ===== Filename-based operations =====
+
+    /// Check if a file exists in GCS by org + filename
+    pub async fn file_exists_by_name(&self, filename: &str, organization_id: &str) -> bool {
+        let object_path = self.object_path_by_name(filename, organization_id);
+        self.object_exists(&object_path).await
+    }
+
+    /// Get metadata for a file by org + filename
+    pub async fn get_file_metadata_by_name(
+        &self,
+        filename: &str,
+        organization_id: &str,
+    ) -> Result<Option<FileMetadataByName>> {
+        let meta_path = self.metadata_path_by_name(filename, organization_id);
+
+        match self
+            .client
+            .download_object(
+                &GetObjectRequest {
+                    bucket: self.bucket.clone(),
+                    object: meta_path,
+                    ..Default::default()
+                },
+                &Range::default(),
+            )
+            .await
+        {
+            Ok(data) => {
+                let metadata: FileMetadataByName = serde_json::from_slice(&data)
+                    .map_err(|e| Error::Internal(format!("Failed to parse metadata: {}", e)))?;
+                Ok(Some(metadata))
+            }
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// Store a document using original filename (new architecture)
+    ///
+    /// # Arguments
+    /// * `filename` - Original filename (used as identifier)
+    /// * `organization_id` - Organization ID (required)
+    /// * `data` - File content
+    /// * `content_hash` - Pre-calculated content hash (SHA-256)
+    ///
+    /// # Returns
+    /// GCS URI for the stored file
+    pub async fn store_document_by_name(
+        &self,
+        filename: &str,
+        organization_id: &str,
+        data: &[u8],
+        content_hash: &str,
+    ) -> Result<String> {
+        let content_type = mime_guess::from_path(filename)
+            .first_or_octet_stream()
+            .to_string();
+
+        let object_path = self.object_path_by_name(filename, organization_id);
+        let upload_type = UploadType::Simple(Media::new(object_path.clone()));
+
+        // Upload file
+        self.client
+            .upload_object(
+                &UploadObjectRequest {
+                    bucket: self.bucket.clone(),
+                    ..Default::default()
+                },
+                data.to_vec(),
+                &upload_type,
+            )
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to upload to GCS: {}", e)))?;
+
+        // Upload metadata
+        let metadata = FileMetadataByName {
+            filename: filename.to_string(),
+            organization_id: organization_id.to_string(),
+            content_hash: content_hash.to_string(),
+            file_size: data.len() as u64,
+            content_type,
+            uploaded_at: chrono::Utc::now(),
+        };
+        let meta_json = serde_json::to_vec(&metadata)?;
+        let meta_path = self.metadata_path_by_name(filename, organization_id);
+        let meta_upload_type = UploadType::Simple(Media::new(meta_path));
+
+        self.client
+            .upload_object(
+                &UploadObjectRequest {
+                    bucket: self.bucket.clone(),
+                    ..Default::default()
+                },
+                meta_json,
+                &meta_upload_type,
+            )
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to upload metadata to GCS: {}", e)))?;
+
+        tracing::info!(
+            "Stored document by name: {}/{} (hash: {})",
+            organization_id,
+            filename,
+            &content_hash[..8]
+        );
+
+        Ok(self.gcs_uri_by_name(filename, organization_id))
+    }
+
+    /// Store extracted plain text for a file by name
+    pub async fn store_plain_text_by_name(
+        &self,
+        filename: &str,
+        organization_id: &str,
+        text: &str,
+    ) -> Result<String> {
+        let object_path = self.plaintext_path_by_name(filename, organization_id);
+        let upload_type = UploadType::Simple(Media::new(object_path.clone()));
+
+        self.client
+            .upload_object(
+                &UploadObjectRequest {
+                    bucket: self.bucket.clone(),
+                    ..Default::default()
+                },
+                text.as_bytes().to_vec(),
+                &upload_type,
+            )
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to upload plain text to GCS: {}", e)))?;
+
+        tracing::debug!(
+            "Stored plain text for {}/{} at {}",
+            organization_id,
+            filename,
+            object_path
+        );
+
+        Ok(self.plaintext_gcs_uri_by_name(filename, organization_id))
+    }
+
+    /// Get document content by org + filename
+    pub async fn get_document_by_name(
+        &self,
+        filename: &str,
+        organization_id: &str,
+    ) -> Result<Vec<u8>> {
+        let object_path = self.object_path_by_name(filename, organization_id);
+
+        self.client
+            .download_object(
+                &GetObjectRequest {
+                    bucket: self.bucket.clone(),
+                    object: object_path,
+                    ..Default::default()
+                },
+                &Range::default(),
+            )
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to download from GCS: {}", e)))
+    }
+
+    /// Get plain text content by org + filename
+    pub async fn get_plain_text_by_name(
+        &self,
+        filename: &str,
+        organization_id: &str,
+    ) -> Result<Option<String>> {
+        let object_path = self.plaintext_path_by_name(filename, organization_id);
+
+        match self
+            .client
+            .download_object(
+                &GetObjectRequest {
+                    bucket: self.bucket.clone(),
+                    object: object_path,
+                    ..Default::default()
+                },
+                &Range::default(),
+            )
+            .await
+        {
+            Ok(data) => {
+                let text = String::from_utf8(data)
+                    .map_err(|e| Error::Internal(format!("Plain text is not valid UTF-8: {}", e)))?;
+                Ok(Some(text))
+            }
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// Delete a file by org + filename (deletes original, plaintext, and metadata)
+    pub async fn delete_document_by_name(
+        &self,
+        filename: &str,
+        organization_id: &str,
+    ) -> Result<()> {
+        // Delete original file
+        let object_path = self.object_path_by_name(filename, organization_id);
+        let _ = self
+            .client
+            .delete_object(&DeleteObjectRequest {
+                bucket: self.bucket.clone(),
+                object: object_path,
+                ..Default::default()
+            })
+            .await;
+
+        // Delete metadata
+        let meta_path = self.metadata_path_by_name(filename, organization_id);
+        let _ = self
+            .client
+            .delete_object(&DeleteObjectRequest {
+                bucket: self.bucket.clone(),
+                object: meta_path,
+                ..Default::default()
+            })
+            .await;
+
+        // Delete plain text
+        let plaintext_path = self.plaintext_path_by_name(filename, organization_id);
+        let _ = self
+            .client
+            .delete_object(&DeleteObjectRequest {
+                bucket: self.bucket.clone(),
+                object: plaintext_path,
+                ..Default::default()
+            })
+            .await;
+
+        tracing::info!("Deleted document by name: {}/{}", organization_id, filename);
+
+        Ok(())
+    }
+
+    /// Find the next available version for a filename
+    /// e.g., if "document.pdf" exists, returns "document_v2.pdf"
+    /// if "document_v2.pdf" exists, returns "document_v3.pdf"
+    pub async fn find_next_version(
+        &self,
+        filename: &str,
+        organization_id: &str,
+    ) -> Result<String> {
+        let path = std::path::Path::new(filename);
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(filename);
+        let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+        // Check existing versions
+        let mut version = 2;
+        loop {
+            let versioned_name = if extension.is_empty() {
+                format!("{}_v{}", stem, version)
+            } else {
+                format!("{}_v{}.{}", stem, version, extension)
+            };
+
+            if !self.file_exists_by_name(&versioned_name, organization_id).await {
+                return Ok(versioned_name);
+            }
+
+            version += 1;
+
+            // Safety limit to prevent infinite loop
+            if version > 1000 {
+                return Err(Error::Internal(format!(
+                    "Too many versions for file: {}",
+                    filename
+                )));
+            }
+        }
+    }
+
+    /// List all files in an organization folder
+    pub async fn list_files_by_org(&self, organization_id: &str) -> Result<Vec<FileMetadataByName>> {
+        let mut files = Vec::new();
+
+        let prefix = format!("{}{}/", self.originals_prefix, organization_id);
+        let list_request = ListObjectsRequest {
+            bucket: self.bucket.clone(),
+            prefix: Some(prefix),
+            ..Default::default()
+        };
+
+        let objects = self
+            .client
+            .list_objects(&list_request)
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to list GCS objects: {}", e)))?;
+
+        for item in objects.items.unwrap_or_default() {
+            // Only process metadata files
+            if item.name.ends_with(".meta.json") {
+                if let Ok(meta_data) = self
+                    .client
+                    .download_object(
+                        &GetObjectRequest {
+                            bucket: self.bucket.clone(),
+                            object: item.name.clone(),
+                            ..Default::default()
+                        },
+                        &Range::default(),
+                    )
+                    .await
+                {
+                    if let Ok(metadata) = serde_json::from_slice::<FileMetadataByName>(&meta_data) {
+                        files.push(metadata);
+                    }
+                }
+            }
+        }
+
+        Ok(files)
+    }
+}
