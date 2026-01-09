@@ -2,7 +2,6 @@
 
 pub mod documents;
 pub mod files;
-pub mod ingest;
 pub mod jobs;
 pub mod query;
 
@@ -21,16 +20,6 @@ pub fn api_routes(max_upload_size: usize) -> Router<AppState> {
         .route("/documents", get(documents::list_documents))
         .route("/documents/:id", get(documents::get_document))
         .route("/documents/:id", delete(documents::delete_document))
-        // Ingestion - with larger body limit for file uploads
-        .route(
-            "/ingest",
-            post(ingest::ingest_files).layer(DefaultBodyLimit::max(max_upload_size)),
-        )
-        // Async ingestion with progress tracking
-        .route(
-            "/ingest/async",
-            post(jobs::ingest_async).layer(DefaultBodyLimit::max(max_upload_size)),
-        )
         // Job management
         .route("/jobs", get(jobs::list_jobs))
         .route("/jobs/incomplete", get(jobs::list_incomplete_jobs))
@@ -81,8 +70,7 @@ async fn info() -> axum::Json<serde_json::Value> {
         "version": env!("CARGO_PKG_VERSION"),
         "description": "RAG system with document ingestion and citation-aware answers",
         "endpoints": {
-            "POST /api/ingest": "Upload and process documents (sync)",
-            "POST /api/ingest/async": "Upload documents for async processing",
+            "POST /api/files/upload": "Upload file with original filename (two-phase response)",
             "GET /api/jobs": "List all jobs and queue stats",
             "GET /api/jobs/incomplete": "List incomplete jobs that can be resumed",
             "GET /api/jobs/:id": "Get job progress",
@@ -107,7 +95,6 @@ async fn info() -> axum::Json<serde_json::Value> {
             "GET /api/files/gcs-counts": "Get file counts from GCS bucket (GCP only)",
             "POST /api/files/revectorize": "Re-vectorize chunks to Vertex AI (GCP only)",
             "POST /api/files/migrate-gcs": "Migrate GCS files to organization-specific folders (GCP only)",
-            "POST /api/files/upload": "Upload file with original filename (GCP only, two-phase response)",
             "GET /api/capabilities": "Check document extraction capabilities"
         },
         "features": {

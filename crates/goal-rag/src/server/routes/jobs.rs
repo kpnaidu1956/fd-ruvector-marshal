@@ -1,92 +1,14 @@
 //! Job management and progress endpoints
 
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Path, State},
     Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::processing::{FileData, Job, ProcessingOptions};
 use crate::server::state::AppState;
-
-/// Response from async ingest
-#[derive(Debug, Serialize)]
-pub struct AsyncIngestResponse {
-    pub job_id: Uuid,
-    pub files_queued: usize,
-    pub message: String,
-}
-
-/// POST /api/ingest/async - Upload files for async processing
-pub async fn ingest_async(
-    State(state): State<AppState>,
-    mut multipart: Multipart,
-) -> Result<Json<AsyncIngestResponse>> {
-    let mut files = Vec::new();
-    let mut options = ProcessingOptions {
-        parallel_embeddings: num_cpus::get().min(8),
-        ..Default::default()
-    };
-
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        Error::Internal(format!("Failed to read multipart field: {}", e))
-    })? {
-        let name = field.name().unwrap_or("").to_string();
-
-        // Check if this is the options field
-        if name == "options" {
-            let data = field.bytes().await.map_err(|e| {
-                Error::Internal(format!("Failed to read options: {}", e))
-            })?;
-            if let Ok(opts) = serde_json::from_slice::<IngestOptions>(&data) {
-                options.chunk_size = opts.chunk_size;
-                options.chunk_overlap = opts.chunk_overlap;
-            }
-            continue;
-        }
-
-        // Get filename
-        let filename = field
-            .file_name()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("file_{}.bin", Uuid::new_v4()));
-
-        // Read file content
-        let data = match field.bytes().await {
-            Ok(d) => d.to_vec(),
-            Err(e) => {
-                tracing::warn!("Failed to read file {}: {}", filename, e);
-                continue;
-            }
-        };
-
-        tracing::info!("Queued file: {} ({} bytes)", filename, data.len());
-        files.push(FileData { filename, data });
-    }
-
-    if files.is_empty() {
-        return Err(Error::Internal("No files provided".to_string()));
-    }
-
-    let files_count = files.len();
-
-    // Create and submit job
-    let job = Job {
-        id: Uuid::new_v4(),
-        files,
-        options,
-    };
-
-    let job_id = state.job_queue().submit(job).await;
-
-    Ok(Json(AsyncIngestResponse {
-        job_id,
-        files_queued: files_count,
-        message: format!("Job queued successfully. Use /api/jobs/{} to check progress.", job_id),
-    }))
-}
 
 /// GET /api/jobs/:id - Get job progress
 pub async fn get_job_progress(
@@ -303,12 +225,6 @@ pub struct FileErrorWithJob {
     pub filename: String,
     pub error: String,
     pub stage: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct IngestOptions {
-    chunk_size: Option<usize>,
-    chunk_overlap: Option<usize>,
 }
 
 /// GET /api/jobs/:id/files - Get per-file progress with tier and parser details
