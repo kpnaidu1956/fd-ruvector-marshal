@@ -47,9 +47,17 @@ prefer_local_tools = true
 unstructured_api_key = "eOzuk6fAo9rduwOG3NbOhWzFAfqHpe"
 
 [processing]
-file_timeout_secs = 300
+file_timeout_secs = 600
 parallel_files = 2
 parallel_embeddings = 2
+
+[processing.tiered]
+enabled = true
+# Timeouts per tier (in seconds)
+fast_timeout_secs = 300      # 5 minutes for <10MB files
+medium_timeout_secs = 600    # 10 minutes for 10-100MB files
+heavy_timeout_secs = 1200    # 20 minutes for 100MB-1GB files
+complex_timeout_secs = 1800  # 30 minutes for scanned/encrypted PDFs
 
 # ============================================================
 # GCP Configuration (required when backend = "gcp")
