@@ -29,14 +29,14 @@ pub async fn query_rag(
 
     // For string search queries, use literal text matching
     if matches!(query_type, QueryType::StringSearch) {
-        return string_search_query(&state, &request.question, request.organization_id.as_deref(), start).await;
+        return string_search_query(&state, &request.question, &request.organization_id, start).await;
     }
 
     // Generate query embedding (using provider abstraction - Ollama or Vertex AI)
     let query_embedding = state.embedding_provider().embed(&request.question).await?;
 
     // Build search filter with organization and document filters
-    let filter = SearchFilter::with_organization(request.organization_id.clone())
+    let filter = SearchFilter::with_organization(Some(request.organization_id.clone()))
         .with_documents(request.document_filter.clone());
 
     // Search for relevant chunks (uses Vertex AI for GCP backend)
@@ -151,13 +151,13 @@ pub async fn query_rag(
 async fn string_search_query(
     state: &AppState,
     query: &str,
-    organization_id: Option<&str>,
+    organization_id: &str,
     start: Instant,
 ) -> Result<Json<QueryResponse>> {
-    tracing::info!("String search: \"{}\" (org: {:?})", query, organization_id);
+    tracing::info!("String search: \"{}\" (org: {})", query, organization_id);
 
     // Perform literal string search (uses SQLite FTS for GCP, HNSW for local)
-    let results = state.vector_store_provider().string_search(query, 10, organization_id).await?;
+    let results = state.vector_store_provider().string_search(query, 10, Some(organization_id)).await?;
 
     let processing_time_ms = start.elapsed().as_millis() as u64;
 
@@ -219,7 +219,7 @@ pub async fn string_search(
     let results = state.vector_store_provider().string_search(
         &request.query,
         request.limit.unwrap_or(10),
-        request.organization_id.as_deref(),
+        Some(&request.organization_id),
     ).await?;
     let processing_time_ms = start.elapsed().as_millis() as u64;
 
@@ -232,9 +232,8 @@ pub struct StringSearchRequest {
     pub query: String,
     #[serde(default)]
     pub limit: Option<usize>,
-    /// Organization ID for multi-tenancy filtering
-    #[serde(default)]
-    pub organization_id: Option<String>,
+    /// Organization ID for multi-tenancy (REQUIRED for tenant isolation)
+    pub organization_id: String,
 }
 
 /// POST /api/v2/query - V2 Query endpoint with frontend-friendly format
@@ -251,7 +250,7 @@ pub async fn query_rag_v2(
 
     // For string search queries, use literal text matching
     if matches!(query_type, QueryType::StringSearch) {
-        let results = state.vector_store_provider().string_search(&request.question, 10, request.organization_id.as_deref()).await?;
+        let results = state.vector_store_provider().string_search(&request.question, 10, Some(&request.organization_id)).await?;
         let processing_time_ms = start.elapsed().as_millis() as u64;
 
         let total_matches: usize = results.iter().map(|r| r.match_count).sum();
@@ -316,7 +315,7 @@ pub async fn query_rag_v2(
     let query_embedding = state.embedding_provider().embed(&request.question).await?;
 
     // Build search filter with organization and document filters
-    let filter = SearchFilter::with_organization(request.organization_id.clone())
+    let filter = SearchFilter::with_organization(Some(request.organization_id.clone()))
         .with_documents(request.document_filter.clone());
 
     // Search for relevant chunks (uses Vertex AI for GCP backend)
