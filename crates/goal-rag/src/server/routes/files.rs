@@ -1006,6 +1006,7 @@ async fn process_gcs_file(
 
     // Download file from GCS
     let file_data = document_store.get_document_by_name(filename, organization_id).await?;
+    let file_size = file_data.len() as u64;
     tracing::info!("Downloaded {} bytes from GCS for {}", file_data.len(), filename);
 
     // Determine file type
@@ -1013,11 +1014,25 @@ async fn process_gcs_file(
     let file_type = FileType::from_extension(&ext);
     tracing::info!("File type for {}: {:?}", filename, file_type);
 
+    // Calculate content hash early (needed for file registry)
+    let mut hasher = Sha256::new();
+    hasher.update(&file_data);
+    let content_hash = format!("sha256:{:x}", hasher.finalize());
+
     // Extract text content
-    let text_content = state.extract_text_from_bytes(filename, &file_data).await?;
+    let text_content = match state.extract_text_from_bytes(filename, &file_data).await {
+        Ok(content) => content,
+        Err(e) => {
+            let err = format!("Failed to extract text: {}", e);
+            state.record_file_failed(filename, &content_hash, file_size, file_type.clone(), &err, "extraction", Some(job_id));
+            state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.clone()));
+            return Err(Error::Internal(err));
+        }
+    };
 
     if text_content.trim().is_empty() {
         let err = "No text content extracted from file";
+        state.record_file_failed(filename, &content_hash, file_size, file_type.clone(), err, "extraction", Some(job_id));
         state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.to_string()));
         return Err(Error::Internal(err.to_string()));
     }
@@ -1030,11 +1045,6 @@ async fn process_gcs_file(
     // Create document record
     let doc_id = uuid::Uuid::new_v4();
 
-    // Calculate content hash
-    let mut hasher = Sha256::new();
-    hasher.update(&file_data);
-    let content_hash = format!("sha256:{:x}", hasher.finalize());
-
     let document = crate::types::Document {
         id: doc_id,
         organization_id: Some(organization_id.to_string()),
@@ -1044,7 +1054,7 @@ async fn process_gcs_file(
         content_hash: content_hash.clone(),
         total_pages: None,
         total_chunks: 0, // Will update after chunking
-        file_size: file_data.len() as u64,
+        file_size,
         ingested_at: chrono::Utc::now(),
         metadata: std::collections::HashMap::new(),
     };
@@ -1090,6 +1100,7 @@ async fn process_gcs_file(
 
     if embedded_chunks.is_empty() {
         let err = "Failed to embed any chunks";
+        state.record_file_failed(filename, &content_hash, file_size, file_type.clone(), err, "embedding", Some(job_id));
         state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.to_string()));
         return Err(Error::Internal(err.to_string()));
     }
@@ -1101,7 +1112,22 @@ async fn process_gcs_file(
     // Update document with chunk count and save
     let mut doc = document;
     doc.total_chunks = embedded_chunks.len() as u32;
+    let final_doc_id = doc.id;
+    let final_file_size = doc.file_size;
+    let final_file_type = doc.file_type.clone();
+    let final_chunks_count = doc.total_chunks;
     state.add_document(doc);
+
+    // Record file success in file registry (this updates both in-memory cache and database)
+    state.record_file_success(
+        filename,
+        &content_hash,
+        final_file_size,
+        final_file_type,
+        final_doc_id,
+        final_chunks_count,
+        Some(job_id),
+    );
 
     // Update job status to complete
     state.job_queue().update_status(job_id, JobStatus::Complete, None);
