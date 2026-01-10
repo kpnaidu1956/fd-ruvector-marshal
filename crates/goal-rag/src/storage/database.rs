@@ -256,6 +256,20 @@ impl FileRegistryDb {
             );
         }
 
+        // Rebuild FTS index if needed (handles case where data existed before FTS was added)
+        // This is safe because we drop the connection lock before calling rebuild_fts_index
+        drop(conn);
+        match self.rebuild_fts_index() {
+            Ok(count) => {
+                if count > 0 {
+                    tracing::info!("FTS index verified/rebuilt with {} entries", count);
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to rebuild FTS index (non-fatal): {}", e);
+            }
+        }
+
         tracing::info!("Database migrations complete");
         Ok(())
     }
@@ -1221,6 +1235,68 @@ impl FileRegistryDb {
             [],
             |row| row.get(0),
         ).map_err(|e| Error::Internal(format!("Failed to count chunks: {}", e)))?;
+
+        Ok(count as usize)
+    }
+
+    /// Rebuild the FTS index from chunks_content table
+    /// This should be called if the FTS table is empty but chunks_content has data
+    /// (e.g., after migrating a database that predates the FTS feature)
+    pub fn rebuild_fts_index(&self) -> Result<usize> {
+        let conn = self.conn.lock();
+
+        // First check if FTS table needs rebuilding
+        let fts_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM chunks_fts",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        let content_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM chunks_content",
+            [],
+            |row| row.get(0),
+        ).map_err(|e| Error::Internal(format!("Failed to count chunks_content: {}", e)))?;
+
+        if fts_count >= content_count && content_count > 0 {
+            tracing::info!("FTS index already populated ({} entries), skipping rebuild", fts_count);
+            return Ok(fts_count as usize);
+        }
+
+        tracing::info!(
+            "Rebuilding FTS index: chunks_fts has {} entries, chunks_content has {} entries",
+            fts_count, content_count
+        );
+
+        // Clear and repopulate FTS table
+        // For external content FTS5 tables, we use the 'delete-all' command
+        conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('delete-all')", [])
+            .map_err(|e| Error::Internal(format!("Failed to clear FTS index: {}", e)))?;
+
+        // Repopulate from chunks_content
+        let inserted = conn.execute(
+            r#"
+            INSERT INTO chunks_fts(rowid, content, chunk_id, document_id, filename, file_type, page_number)
+            SELECT rowid, content, id, document_id, filename, file_type, page_number
+            FROM chunks_content
+            "#,
+            [],
+        ).map_err(|e| Error::Internal(format!("Failed to rebuild FTS index: {}", e)))?;
+
+        tracing::info!("FTS index rebuilt with {} entries", inserted);
+
+        Ok(inserted)
+    }
+
+    /// Get FTS index row count (for diagnostics)
+    pub fn get_fts_count(&self) -> Result<usize> {
+        let conn = self.conn.lock();
+
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM chunks_fts",
+            [],
+            |row| row.get(0),
+        ).map_err(|e| Error::Internal(format!("Failed to count FTS entries: {}", e)))?;
 
         Ok(count as usize)
     }
