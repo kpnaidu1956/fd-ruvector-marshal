@@ -1005,7 +1005,14 @@ async fn process_gcs_file(
         .ok_or_else(|| Error::Internal("GCS document store not available".to_string()))?;
 
     // Download file from GCS
-    let file_data = document_store.get_document_by_name(filename, organization_id).await?;
+    let file_data = match document_store.get_document_by_name(filename, organization_id).await {
+        Ok(data) => data,
+        Err(e) => {
+            let err = format!("Failed to download file from GCS: {}", e);
+            state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.clone()));
+            return Err(Error::Internal(err));
+        }
+    };
     let file_size = file_data.len() as u64;
     tracing::info!("Downloaded {} bytes from GCS for {}", file_data.len(), filename);
 
@@ -1040,7 +1047,15 @@ async fn process_gcs_file(
     tracing::info!("Extracted {} characters from {}", text_content.len(), filename);
 
     // Store plaintext in GCS
-    document_store.store_plain_text_by_name(filename, organization_id, &text_content).await?;
+    match document_store.store_plain_text_by_name(filename, organization_id, &text_content).await {
+        Ok(_) => {},
+        Err(e) => {
+            let err = format!("Failed to store plain text in GCS: {}", e);
+            state.record_file_failed(filename, &content_hash, file_size, file_type.clone(), &err, "storage", Some(job_id));
+            state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.clone()));
+            return Err(Error::Internal(err));
+        }
+    }
 
     // Create document record
     let doc_id = uuid::Uuid::new_v4();
@@ -1106,7 +1121,15 @@ async fn process_gcs_file(
     }
 
     // Store in vector database
-    state.vector_store_provider().insert_chunks(&embedded_chunks).await?;
+    match state.vector_store_provider().insert_chunks(&embedded_chunks).await {
+        Ok(_) => {},
+        Err(e) => {
+            let err = format!("Failed to insert chunks into vector store: {}", e);
+            state.record_file_failed(filename, &content_hash, file_size, file_type.clone(), &err, "vector_store", Some(job_id));
+            state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.clone()));
+            return Err(Error::Internal(err));
+        }
+    }
     tracing::info!("Inserted {} chunks into vector store for {}", embedded_chunks.len(), filename);
 
     // Update document with chunk count and save

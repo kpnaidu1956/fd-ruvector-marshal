@@ -353,7 +353,7 @@ impl VectorStoreProvider for VertexVectorSearch {
             }
 
             if r.is_empty() { None } else { Some(r) }
-        }).flatten();
+        }).and_then(|x| x);
 
         let request = FindNeighborsRequest {
             deployed_index_id: self.deployed_index_id.clone(),
@@ -511,12 +511,9 @@ impl VectorStoreProvider for VertexVectorSearch {
 
         // Get chunk IDs by querying SQLite
         // We need to query the chunks_content table for this document
-        let conn = {
-            // This is a workaround since we don't have direct access to get chunk IDs
-            // We'll delete from SQLite and try to delete from Vertex
-            let deleted = self.database.delete_chunks_by_document(document_id)?;
-            deleted
-        };
+        // This is a workaround since we don't have direct access to get chunk IDs
+        // We'll delete from SQLite and try to delete from Vertex
+        let deleted = self.database.delete_chunks_by_document(document_id)?;
 
         // Note: We can't easily delete from Vertex without knowing the exact datapoint IDs
         // The datapoint_id is the chunk.id (UUID), which we just deleted from SQLite
@@ -528,10 +525,10 @@ impl VectorStoreProvider for VertexVectorSearch {
         // For now, we at least clean up the SQLite records
         tracing::info!(
             "Deleted {} chunks from SQLite for document {}. Vertex cleanup pending.",
-            conn, document_id
+            deleted, document_id
         );
 
-        Ok(conn)
+        Ok(deleted)
     }
 
     async fn len(&self) -> Result<usize> {

@@ -878,10 +878,8 @@ impl ExternalParser {
         strategies.retain(|s| seen.insert(*s));
 
         // Ensure we have at least one strategy
-        if strategies.is_empty() {
-            if self.config.enabled {
-                strategies.push("unstructured");
-            }
+        if strategies.is_empty() && self.config.enabled {
+            strategies.push("unstructured");
         }
 
         strategies

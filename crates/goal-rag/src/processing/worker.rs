@@ -462,14 +462,13 @@ impl ProcessingWorker {
                                     filename, result.text.len(), result.total_pages
                                 );
                                 let text_filename = format!("{}.txt", filename.trim_end_matches(".pdf"));
-                                let mut attempts = Vec::new();
-                                attempts.push(ParserAttempt {
+                                let attempts = vec![ParserAttempt {
                                     parser_name: "document_ai".to_string(),
                                     success: true,
                                     error: None,
                                     chars_extracted: Some(result.text.len()),
                                     duration_ms: 0, // Not tracked for Document AI
-                                });
+                                }];
                                 return Self::process_text_content_with_metadata(
                                     state,
                                     job_queue,
@@ -894,7 +893,9 @@ impl ProcessingWorker {
     /// - `original_filename`: The filename as uploaded by user (used for display/citations)
     /// - `internal_filename`: The converted filename if different (e.g., "report.pdf" -> "report.txt")
     /// - `original_data`: Original file bytes for GCS storage (optional)
+    ///
     /// Returns FileProcessResult to properly handle skipped files
+    #[allow(clippy::too_many_arguments)]
     async fn process_text_content(
         state: &AppState,
         job_queue: &Arc<JobQueue>,
@@ -912,7 +913,7 @@ impl ProcessingWorker {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(content.as_bytes());
-        let content_hash = format!("{:x}", hasher.finalize());
+        let content_hash = format!("sha256:{:x}", hasher.finalize());
 
         let text_size = text_data.len() as u64;
         let original_size = original_data.map(|d| d.len() as u64).unwrap_or(text_size);
@@ -1121,6 +1122,7 @@ impl ProcessingWorker {
 
     /// Process pre-extracted text content with metadata (for escalation parsing)
     /// Includes file characteristics and parser attempts tracking
+    #[allow(clippy::too_many_arguments)]
     async fn process_text_content_with_metadata(
         state: &AppState,
         job_queue: &Arc<JobQueue>,
@@ -1141,7 +1143,7 @@ impl ProcessingWorker {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(content.as_bytes());
-        let content_hash = format!("{:x}", hasher.finalize());
+        let content_hash = format!("sha256:{:x}", hasher.finalize());
 
         let text_size = text_data.len() as u64;
         let original_size = original_data.map(|d| d.len() as u64).unwrap_or(text_size);
@@ -1336,6 +1338,7 @@ impl ProcessingWorker {
     /// Process file content (chunking, embedding, storing)
     /// - `original_filename`: The filename as uploaded by user (used for display/citations)
     /// - `internal_filename`: The converted filename if different (e.g., "doc.doc" -> "doc.docx")
+    #[allow(clippy::too_many_arguments)]
     async fn process_file_content(
         state: &AppState,
         job_queue: &Arc<JobQueue>,

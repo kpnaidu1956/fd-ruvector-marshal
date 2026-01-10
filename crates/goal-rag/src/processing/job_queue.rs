@@ -751,6 +751,7 @@ impl JobQueue {
     }
 
     /// Update file progress with parser attempt
+    #[allow(clippy::too_many_arguments)]
     pub fn add_parser_attempt(
         &self,
         job_id: Uuid,

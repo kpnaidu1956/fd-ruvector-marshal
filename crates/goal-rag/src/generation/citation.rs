@@ -6,7 +6,7 @@ use crate::types::response::Citation;
 /// Extract citations from LLM response and link them to source chunks
 pub fn extract_and_link_citations(
     answer: &str,
-    available_citations: &mut Vec<Citation>,
+    available_citations: &mut [Citation],
 ) -> (String, Vec<Citation>) {
     // Pattern to match [Source: filename, Page X] or similar
     let citation_pattern = Regex::new(

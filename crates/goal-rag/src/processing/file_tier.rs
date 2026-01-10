@@ -67,10 +67,11 @@ impl std::fmt::Display for FileTier {
 }
 
 /// Parser strategy recommendation based on file characteristics
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ParserStrategy {
     /// Use native Rust libraries only (fastest)
+    #[default]
     NativeOnly,
     /// Try local tools first (pdftotext, pandoc, tesseract)
     LocalToolsFirst,
@@ -78,12 +79,6 @@ pub enum ParserStrategy {
     CloudFirst,
     /// Try multiple parsers in parallel (for very complex files)
     ParallelAttempt,
-}
-
-impl Default for ParserStrategy {
-    fn default() -> Self {
-        ParserStrategy::NativeOnly
-    }
 }
 
 /// File characteristics for intelligent routing and processing
@@ -177,10 +172,8 @@ impl FileCharacteristics {
         let timeout = calculate_timeout(size_bytes, &tier, complexity_score, analysis);
 
         // Determine parser strategy
-        let recommended_parser = if analysis.is_encrypted {
-            ParserStrategy::CloudFirst // Need cloud for decryption
-        } else if analysis.is_scanned {
-            ParserStrategy::CloudFirst // Need OCR
+        let recommended_parser = if analysis.is_encrypted || analysis.is_scanned {
+            ParserStrategy::CloudFirst // Need cloud for decryption or OCR
         } else if analysis.has_complex_fonts && size_bytes > 10 * 1024 * 1024 {
             ParserStrategy::LocalToolsFirst // pdftotext handles fonts well
         } else if complexity_score > 0.7 {

@@ -860,6 +860,7 @@ impl AppState {
     // ==================== File Registry Methods ====================
 
     /// Record a successful file processing
+    #[allow(clippy::too_many_arguments)]
     pub fn record_file_success(
         &self,
         filename: &str,
@@ -921,6 +922,7 @@ impl AppState {
     }
 
     /// Record a failed file
+    #[allow(clippy::too_many_arguments)]
     pub fn record_file_failed(
         &self,
         filename: &str,

@@ -728,6 +728,7 @@ impl FileRegistryDb {
     // ==================== GCS Sync Operations ====================
 
     /// Record a file discovered from GCS sync
+    #[allow(clippy::too_many_arguments)]
     pub fn sync_from_gcs(
         &self,
         filename: &str,
