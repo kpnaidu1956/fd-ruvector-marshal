@@ -8,6 +8,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::config::{BackendProvider, RagConfig};
+use crate::server::middleware::ProductionControls;
 use crate::error::{Error, Result};
 use crate::generation::OllamaClient;
 use crate::ingestion::ExternalParser;
@@ -33,6 +34,8 @@ pub struct AppState {
 struct AppStateInner {
     /// Configuration
     config: RagConfig,
+    /// Production controls (rate limiting, circuit breaker, backpressure)
+    production_controls: Arc<ProductionControls>,
     /// Vector store for chunks (provider abstraction)
     vector_store_provider: Arc<dyn VectorStoreProvider>,
     /// Legacy local vector store (only for Local backend, None for GCP)
@@ -310,10 +313,19 @@ impl AppState {
             );
         }
 
+        // Initialize production controls (rate limiting, circuit breaker, backpressure)
+        let production_controls = Arc::new(ProductionControls::from_config(&config.server.rate_limit));
+        tracing::info!(
+            "Production controls initialized (enabled: {}, queue_limit: {})",
+            config.server.rate_limit.enabled,
+            config.server.rate_limit.max_queue_depth
+        );
+
         // Create the state first (without the worker running)
         let state = Self {
             inner: Arc::new(AppStateInner {
                 config,
+                production_controls,
                 vector_store_provider,
                 vector_store: local_vector_store,
                 embedding_provider,
@@ -484,8 +496,18 @@ impl AppState {
                 FileRecordStatus::Failed
             };
 
+            // Extract organization_id from the GCS path (format: originals/{org_id}/{doc_id}.{ext})
+            let org_id = file_info.original_uri
+                .split('/')
+                .skip(3) // Skip gs://, bucket, prefix
+                .next()
+                .filter(|s| !s.contains('.'))  // Skip if it looks like a filename (has extension)
+                .unwrap_or("unknown")
+                .to_string();
+
             let record = FileRecord {
                 id: file_info.document_id,
+                organization_id: org_id,
                 filename: file_info.filename.clone(),
                 content_hash: file_info.content_hash.clone().unwrap_or_default(),
                 file_size: file_info.file_size,
@@ -518,6 +540,84 @@ impl AppState {
         tracing::info!(
             "GCS sync complete: {} files synced, {} failed, took {}ms",
             synced, failed, duration_ms
+        );
+
+        Ok((synced, failed))
+    }
+
+    /// Sync file registry from GCS bucket for a specific organization
+    /// Returns (files_synced, failed_count)
+    #[cfg(feature = "gcp")]
+    pub async fn sync_from_gcs_for_org(&self, organization_id: &str) -> Result<(usize, usize)> {
+        let document_store = self.document_store()
+            .ok_or_else(|| Error::Internal("GCS document store not available".to_string()))?;
+
+        let start = std::time::Instant::now();
+        // Use org-specific sync if available, otherwise filter manually
+        let files = document_store.sync_from_bucket_for_org(organization_id).await?;
+
+        let mut synced = 0;
+        let mut failed = 0;
+
+        for file_info in &files {
+            // Update database
+            if let Err(e) = self.inner.database.sync_from_gcs(
+                &file_info.filename,
+                file_info.document_id,
+                file_info.content_hash.as_deref().unwrap_or(""),
+                file_info.file_size,
+                &file_info.file_type,
+                file_info.has_plaintext,
+                &file_info.original_uri,
+                file_info.plaintext_uri.as_deref(),
+            ) {
+                tracing::warn!("Failed to sync file {}: {}", file_info.filename, e);
+                failed += 1;
+                continue;
+            }
+
+            // Update in-memory cache
+            let status = if file_info.has_plaintext {
+                FileRecordStatus::Success
+            } else {
+                FileRecordStatus::Failed
+            };
+
+            let record = FileRecord {
+                id: file_info.document_id,
+                organization_id: organization_id.to_string(),
+                filename: file_info.filename.clone(),
+                content_hash: file_info.content_hash.clone().unwrap_or_default(),
+                file_size: file_info.file_size,
+                file_type: crate::types::FileType::from_extension(&file_info.file_type),
+                status,
+                document_id: Some(file_info.document_id),
+                chunks_created: None,
+                skip_reason: None,
+                error_message: if file_info.has_plaintext { None } else {
+                    Some("No plaintext found - processing may have failed".to_string())
+                },
+                failed_at_stage: None,
+                job_id: None,
+                first_seen_at: chrono::Utc::now(),
+                last_processed_at: chrono::Utc::now(),
+                upload_count: 1,
+                original_url: Some(file_info.original_uri.clone()),
+                plaintext_url: file_info.plaintext_uri.clone(),
+            };
+
+            self.inner.file_registry.insert(file_info.filename.clone(), record);
+            synced += 1;
+        }
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        if let Err(e) = self.inner.database.update_sync_status(synced, duration_ms) {
+            tracing::warn!("Failed to update sync status: {}", e);
+        }
+
+        tracing::info!(
+            "GCS sync for org '{}' complete: {} files synced, {} failed, took {}ms",
+            organization_id, synced, failed, duration_ms
         );
 
         Ok((synced, failed))
@@ -560,6 +660,11 @@ impl AppState {
     /// Get configuration
     pub fn config(&self) -> &RagConfig {
         &self.inner.config
+    }
+
+    /// Get production controls (rate limiting, circuit breaker, backpressure)
+    pub fn production_controls(&self) -> &Arc<ProductionControls> {
+        &self.inner.production_controls
     }
 
     /// Get vector store (only available for Local backend)
@@ -863,6 +968,7 @@ impl AppState {
     #[allow(clippy::too_many_arguments)]
     pub fn record_file_success(
         &self,
+        organization_id: &str,
         filename: &str,
         content_hash: &str,
         file_size: u64,
@@ -872,6 +978,7 @@ impl AppState {
         job_id: Option<Uuid>,
     ) {
         let record = FileRecord::success(
+            organization_id.to_string(),
             filename.to_string(),
             content_hash.to_string(),
             file_size,
@@ -891,6 +998,7 @@ impl AppState {
     /// Record a skipped file
     pub fn record_file_skipped(
         &self,
+        organization_id: &str,
         filename: &str,
         content_hash: &str,
         file_size: u64,
@@ -905,6 +1013,7 @@ impl AppState {
             existing.clone()
         } else {
             FileRecord::skipped(
+                organization_id.to_string(),
                 filename.to_string(),
                 content_hash.to_string(),
                 file_size,
@@ -925,6 +1034,7 @@ impl AppState {
     #[allow(clippy::too_many_arguments)]
     pub fn record_file_failed(
         &self,
+        organization_id: &str,
         filename: &str,
         content_hash: &str,
         file_size: u64,
@@ -939,6 +1049,7 @@ impl AppState {
             existing.clone()
         } else {
             FileRecord::failed(
+                organization_id.to_string(),
                 filename.to_string(),
                 content_hash.to_string(),
                 file_size,
@@ -970,56 +1081,68 @@ impl AppState {
             .map(|entry| entry.value().clone())
     }
 
-    /// List all file records
-    pub fn list_file_records(&self) -> Vec<FileRecord> {
+    /// List all file records for an organization
+    pub fn list_file_records(&self, organization_id: &str) -> Vec<FileRecord> {
         self.inner
             .file_registry
             .iter()
+            .filter(|entry| entry.value().organization_id == organization_id)
             .map(|entry| entry.value().clone())
             .collect()
     }
 
-    /// List successful file records
-    pub fn list_successful_files(&self) -> Vec<FileRecord> {
+    /// List successful file records for an organization
+    pub fn list_successful_files(&self, organization_id: &str) -> Vec<FileRecord> {
         self.inner
             .file_registry
             .iter()
-            .filter(|entry| entry.value().status == FileRecordStatus::Success)
+            .filter(|entry| {
+                entry.value().organization_id == organization_id
+                    && entry.value().status == FileRecordStatus::Success
+            })
             .map(|entry| entry.value().clone())
             .collect()
     }
 
-    /// List failed file records
-    pub fn list_failed_files(&self) -> Vec<FileRecord> {
+    /// List failed file records for an organization
+    pub fn list_failed_files(&self, organization_id: &str) -> Vec<FileRecord> {
         self.inner
             .file_registry
             .iter()
-            .filter(|entry| entry.value().status == FileRecordStatus::Failed)
+            .filter(|entry| {
+                entry.value().organization_id == organization_id
+                    && entry.value().status == FileRecordStatus::Failed
+            })
             .map(|entry| entry.value().clone())
             .collect()
     }
 
-    /// List skipped file records
-    pub fn list_skipped_files(&self) -> Vec<FileRecord> {
+    /// List skipped file records for an organization
+    pub fn list_skipped_files(&self, organization_id: &str) -> Vec<FileRecord> {
         self.inner
             .file_registry
             .iter()
-            .filter(|entry| entry.value().status == FileRecordStatus::Skipped)
+            .filter(|entry| {
+                entry.value().organization_id == organization_id
+                    && entry.value().status == FileRecordStatus::Skipped
+            })
             .map(|entry| entry.value().clone())
             .collect()
     }
 
-    /// Get file registry statistics
-    pub fn file_registry_stats(&self) -> FileRegistryStats {
-        let total = self.inner.file_registry.len();
+    /// Get file registry statistics for an organization
+    pub fn file_registry_stats(&self, organization_id: &str) -> FileRegistryStats {
+        let total = self.inner.file_registry.iter()
+            .filter(|e| e.value().organization_id == organization_id)
+            .count();
         let success = self.inner.file_registry.iter()
-            .filter(|e| e.value().status == FileRecordStatus::Success)
+            .filter(|e| e.value().organization_id == organization_id && e.value().status == FileRecordStatus::Success)
             .count();
         let failed = self.inner.file_registry.iter()
-            .filter(|e| e.value().status == FileRecordStatus::Failed)
+            .filter(|e| e.value().organization_id == organization_id && e.value().status == FileRecordStatus::Failed)
             .count();
         let skipped = self.inner.file_registry.iter()
-            .filter(|e| e.value().status == FileRecordStatus::Skipped)
+            .filter(|e| e.value().organization_id == organization_id && e.value().status == FileRecordStatus::Skipped)
             .count();
 
         FileRegistryStats { total, success, failed, skipped }
@@ -1035,9 +1158,9 @@ impl AppState {
         self.inner.file_registry.remove(filename).map(|(_, r)| r)
     }
 
-    /// Clear all failed file records (for retry)
-    pub fn clear_failed_files(&self) -> usize {
-        // Clear from database
+    /// Clear all failed file records for an organization (for retry)
+    pub fn clear_failed_files(&self, organization_id: &str) -> usize {
+        // Clear from database (TODO: add org_id filter to database method if needed)
         let db_count = match self.inner.database.clear_failed_files() {
             Ok(count) => count,
             Err(e) => {
@@ -1046,11 +1169,14 @@ impl AppState {
             }
         };
 
-        // Clear from in-memory cache
+        // Clear from in-memory cache for this organization only
         let failed_keys: Vec<String> = self.inner
             .file_registry
             .iter()
-            .filter(|e| e.value().status == FileRecordStatus::Failed)
+            .filter(|e| {
+                e.value().organization_id == organization_id
+                    && e.value().status == FileRecordStatus::Failed
+            })
             .map(|e| e.key().clone())
             .collect();
 

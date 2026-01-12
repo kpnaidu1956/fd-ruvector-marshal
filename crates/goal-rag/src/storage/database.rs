@@ -1940,9 +1940,13 @@ fn row_to_file_record(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
     let upload_count: i64 = row.get(14)?;
     let original_url: Option<String> = row.get(15)?;
     let plaintext_url: Option<String> = row.get(16)?;
+    // gcs_synced is at index 17
+    // organization_id is at index 18 (added via migration)
+    let organization_id: Option<String> = row.get(18).ok();
 
     Ok(FileRecord {
         id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
+        organization_id: organization_id.unwrap_or_else(|| "unknown".to_string()),
         filename,
         content_hash,
         file_size: file_size as u64,

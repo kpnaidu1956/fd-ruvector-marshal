@@ -1,5 +1,6 @@
 //! HTTP server for the RAG system
 
+pub mod middleware;
 pub mod routes;
 pub mod state;
 

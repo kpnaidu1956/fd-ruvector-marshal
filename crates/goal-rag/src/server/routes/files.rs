@@ -1,10 +1,13 @@
 //! File status and tracking API endpoints
 
 use axum::{
-    extract::{Multipart, Path, Query, State},
+    extract::{Path, Query, State},
     Json,
 };
+#[cfg(feature = "gcp")]
+use axum::extract::Multipart;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "gcp")]
 use sha2::{Sha256, Digest};
 
 use crate::error::{Error, Result};
@@ -13,14 +16,18 @@ use crate::storage::SyncStatus;
 use crate::types::{
     FileCheckItem, FileCheckRequest, FileCheckResponse, FileCheckResult, FileCheckSummary,
     FileRecord, FileRecordStatus, FileRecordSummary, FileUploadAdvice,
-    FileUploadResponse, FileUploadInfo, UploadAction,
 };
 #[cfg(feature = "gcp")]
+use crate::types::{FileUploadResponse, FileUploadInfo, UploadAction};
+#[cfg(feature = "gcp")]
 use crate::processing::{GcsFileRef, GcsProcessingOptions, GcsJob};
+use crate::validation::{validate_organization_id, sanitize_filename, validate_batch_size};
 
 /// Query parameters for listing files
 #[derive(Debug, Deserialize)]
 pub struct ListFilesQuery {
+    /// Organization ID for multi-tenancy (REQUIRED for tenant isolation)
+    pub organization_id: String,
     /// Filter by status: success, failed, skipped, all
     #[serde(default = "default_status")]
     pub status: String,
@@ -36,6 +43,13 @@ pub struct ListFilesQuery {
     /// Sort order: asc, desc
     #[serde(default = "default_order")]
     pub order: String,
+}
+
+/// Query parameters for file operations requiring org context
+#[derive(Debug, Deserialize)]
+pub struct OrgQuery {
+    /// Organization ID for multi-tenancy (REQUIRED for tenant isolation)
+    pub organization_id: String,
 }
 
 fn default_status() -> String {
@@ -94,16 +108,19 @@ pub struct FailedFileDetail {
     pub suggested_action: Option<String>,
 }
 
-/// GET /api/files - List all tracked files
+/// GET /api/files - List all tracked files for an organization
 pub async fn list_files(
     State(state): State<AppState>,
     Query(params): Query<ListFilesQuery>,
-) -> Json<FileListResponse> {
+) -> Result<Json<FileListResponse>> {
+    // Validate organization_id to prevent path traversal
+    validate_organization_id(&params.organization_id)?;
+
     let mut records: Vec<FileRecord> = match params.status.as_str() {
-        "success" => state.list_successful_files(),
-        "failed" => state.list_failed_files(),
-        "skipped" => state.list_skipped_files(),
-        _ => state.list_file_records(),
+        "success" => state.list_successful_files(&params.organization_id),
+        "failed" => state.list_failed_files(&params.organization_id),
+        "skipped" => state.list_skipped_files(&params.organization_id),
+        _ => state.list_file_records(&params.organization_id),
     };
 
     let total = records.len();
@@ -127,33 +144,55 @@ pub async fn list_files(
         .map(|r| FileRecordSummary::from(&r))
         .collect();
 
-    let stats = state.file_registry_stats();
+    let stats = state.file_registry_stats(&params.organization_id);
 
-    Json(FileListResponse {
+    Ok(Json(FileListResponse {
         files: records,
         total,
         offset: params.offset,
         limit: params.limit,
         stats,
-    })
+    }))
 }
 
 /// GET /api/files/:filename - Get specific file status
 pub async fn get_file_status(
     State(state): State<AppState>,
     Path(filename): Path<String>,
+    Query(query): Query<OrgQuery>,
 ) -> Result<Json<FileRecord>> {
-    state
-        .get_file_record(&filename)
-        .map(Json)
-        .ok_or_else(|| Error::DocumentNotFound(format!("File '{}' not found in registry", filename)))
+    // Validate inputs to prevent path traversal
+    validate_organization_id(&query.organization_id)?;
+    let sanitized_filename = sanitize_filename(&filename)?;
+
+    let record = state
+        .get_file_record(&sanitized_filename)
+        .ok_or_else(|| Error::DocumentNotFound(format!("File '{}' not found in registry", sanitized_filename)))?;
+
+    // Verify file belongs to the requested organization
+    if record.organization_id != query.organization_id {
+        return Err(Error::DocumentNotFound(format!(
+            "File '{}' not found in organization {}",
+            filename, query.organization_id
+        )));
+    }
+
+    Ok(Json(record))
 }
 
 /// POST /api/files/check - Check status of files before upload
+///
+/// Requires organization_id in request body for multi-tenancy support.
 pub async fn check_files(
     State(state): State<AppState>,
     Json(request): Json<FileCheckRequest>,
-) -> Json<FileCheckResponse> {
+) -> Result<Json<FileCheckResponse>> {
+    // Validate organization_id
+    validate_organization_id(&request.organization_id)?;
+
+    // Validate batch size (max 1000 files per request)
+    validate_batch_size(request.files.len(), 1000)?;
+
     let mut results = Vec::new();
     let mut needs_upload = 0;
     let mut can_skip = 0;
@@ -161,7 +200,28 @@ pub async fn check_files(
     let total_checked = request.files.len();
 
     for item in request.files {
-        let (advice, existing_record) = check_single_file(&state, &item);
+        // Sanitize each filename before checking
+        let sanitized_filename = match sanitize_filename(&item.filename) {
+            Ok(name) => name,
+            Err(_) => {
+                // Skip invalid filenames
+                results.push(FileCheckResult {
+                    filename: item.filename.clone(),
+                    advice: FileUploadAdvice::Upload, // Will fail at upload with proper error
+                    existing_record: None,
+                });
+                needs_upload += 1;
+                continue;
+            }
+        };
+
+        let sanitized_item = FileCheckItem {
+            filename: sanitized_filename,
+            file_size: item.file_size,
+            content_hash: item.content_hash.clone(),
+        };
+
+        let (advice, existing_record) = check_single_file(&state, &sanitized_item, &request.organization_id);
 
         match &advice {
             FileUploadAdvice::Upload => needs_upload += 1,
@@ -176,7 +236,7 @@ pub async fn check_files(
         });
     }
 
-    Json(FileCheckResponse {
+    Ok(Json(FileCheckResponse {
         files: results,
         summary: FileCheckSummary {
             total_checked,
@@ -184,13 +244,18 @@ pub async fn check_files(
             can_skip,
             should_retry,
         },
-    })
+    }))
 }
 
 /// Check a single file for upload status
-fn check_single_file(state: &AppState, item: &FileCheckItem) -> (FileUploadAdvice, Option<FileRecordSummary>) {
+fn check_single_file(state: &AppState, item: &FileCheckItem, organization_id: &str) -> (FileUploadAdvice, Option<FileRecordSummary>) {
     // First check if we have a record by filename
     if let Some(record) = state.get_file_record(&item.filename) {
+        // Verify the record belongs to this organization
+        if record.organization_id != organization_id {
+            // File exists but belongs to different org - treat as new
+            return (FileUploadAdvice::Upload, None);
+        }
         let summary = FileRecordSummary::from(&record);
 
         match record.status {
@@ -281,11 +346,15 @@ fn check_single_file(state: &AppState, item: &FileCheckItem) -> (FileUploadAdvic
     }
 }
 
-/// GET /api/files/failed - List failed files with details
+/// GET /api/files/failed - List failed files with details for an organization
 pub async fn list_failed_files(
     State(state): State<AppState>,
-) -> Json<FailedFilesResponse> {
-    let failed = state.list_failed_files();
+    Query(query): Query<OrgQuery>,
+) -> Result<Json<FailedFilesResponse>> {
+    // Validate organization_id
+    validate_organization_id(&query.organization_id)?;
+
+    let failed = state.list_failed_files(&query.organization_id);
     let total = failed.len();
 
     let files: Vec<FailedFileDetail> = failed
@@ -331,11 +400,11 @@ pub async fn list_failed_files(
         suggestions.push("Rate limiting detected. Processing will resume automatically.".to_string());
     }
 
-    Json(FailedFilesResponse {
+    Ok(Json(FailedFilesResponse {
         files,
         total,
         suggestions,
-    })
+    }))
 }
 
 /// Suggest action based on error message
@@ -363,15 +432,19 @@ fn suggest_action_for_failure(error: &str, stage: &str) -> Option<String> {
     }
 }
 
-/// DELETE /api/files/failed - Clear all failed file records
+/// DELETE /api/files/failed - Clear all failed file records for an organization
 pub async fn clear_failed_files(
     State(state): State<AppState>,
-) -> Json<ClearFailedResponse> {
-    let cleared = state.clear_failed_files();
-    Json(ClearFailedResponse {
+    Query(query): Query<OrgQuery>,
+) -> Result<Json<ClearFailedResponse>> {
+    // Validate organization_id
+    validate_organization_id(&query.organization_id)?;
+
+    let cleared = state.clear_failed_files(&query.organization_id);
+    Ok(Json(ClearFailedResponse {
         cleared,
-        message: format!("Cleared {} failed file records. You can now retry uploading these files.", cleared),
-    })
+        message: format!("Cleared {} failed file records for organization '{}'. You can now retry uploading these files.", cleared, query.organization_id),
+    }))
 }
 
 #[derive(Debug, Serialize)]
@@ -384,13 +457,28 @@ pub struct ClearFailedResponse {
 pub async fn delete_file_record(
     State(state): State<AppState>,
     Path(filename): Path<String>,
+    Query(query): Query<OrgQuery>,
 ) -> Result<Json<DeleteFileResponse>> {
-    match state.remove_file_record(&filename) {
+    // Validate inputs
+    validate_organization_id(&query.organization_id)?;
+    let sanitized_filename = sanitize_filename(&filename)?;
+
+    // First verify the file belongs to this organization
+    if let Some(record) = state.get_file_record(&sanitized_filename) {
+        if record.organization_id != query.organization_id {
+            return Err(Error::DocumentNotFound(format!(
+                "File '{}' not found in organization {}",
+                sanitized_filename, query.organization_id
+            )));
+        }
+    }
+
+    match state.remove_file_record(&sanitized_filename) {
         Some(record) => Ok(Json(DeleteFileResponse {
             filename: record.filename,
             message: "File record removed. You can re-upload this file.".to_string(),
         })),
-        None => Err(Error::DocumentNotFound(format!("File '{}' not found in registry", filename))),
+        None => Err(Error::DocumentNotFound(format!("File '{}' not found in registry", sanitized_filename))),
     }
 }
 
@@ -400,12 +488,13 @@ pub struct DeleteFileResponse {
     pub message: String,
 }
 
-/// GET /api/files/stats - Get file registry statistics
+/// GET /api/files/stats - Get file registry statistics for an organization
 pub async fn file_stats(
     State(state): State<AppState>,
+    Query(query): Query<OrgQuery>,
 ) -> Json<FileStatsResponse> {
-    let stats = state.file_registry_stats();
-    let failed = state.list_failed_files();
+    let stats = state.file_registry_stats(&query.organization_id);
+    let failed = state.list_failed_files(&query.organization_id);
 
     // Group failures by error type
     let mut error_types: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -464,36 +553,53 @@ pub struct FileStatsResponse {
 // GCS Sync Endpoints
 // ============================================================================
 
+/// Request for syncing from GCS
+#[cfg(feature = "gcp")]
+#[derive(Debug, Deserialize)]
+pub struct SyncRequest {
+    /// Organization ID for multi-tenancy (REQUIRED for tenant isolation)
+    pub organization_id: String,
+}
+
 /// POST /api/files/sync - Sync file registry from GCS bucket
 #[cfg(feature = "gcp")]
 pub async fn sync_from_gcs(
     State(state): State<AppState>,
+    Json(request): Json<SyncRequest>,
 ) -> Result<Json<SyncResponse>> {
-    let (synced, failed) = state.sync_from_gcs().await?;
+    // Validate organization_id
+    validate_organization_id(&request.organization_id)?;
+
+    tracing::info!("Syncing files from GCS for organization: {}", request.organization_id);
+    let (synced, failed) = state.sync_from_gcs_for_org(&request.organization_id).await?;
 
     Ok(Json(SyncResponse {
         success: true,
         files_synced: synced,
         files_failed: failed,
         message: format!(
-            "Synced {} files from GCS bucket ({} failed)",
-            synced, failed
+            "Synced {} files from GCS bucket for org '{}' ({} failed)",
+            synced, request.organization_id, failed
         ),
         sync_status: state.get_sync_status(),
     }))
 }
 
-/// GET /api/files/sync/status - Get last sync status
+/// GET /api/files/sync/status - Get last sync status for an organization
 pub async fn get_sync_status(
     State(state): State<AppState>,
-) -> Json<SyncStatusResponse> {
+    Query(query): Query<OrgQuery>,
+) -> Result<Json<SyncStatusResponse>> {
+    // Validate organization_id
+    validate_organization_id(&query.organization_id)?;
+
     let sync_status = state.get_sync_status();
     let db_stats = state.database_stats();
 
-    Json(SyncStatusResponse {
+    Ok(Json(SyncStatusResponse {
         last_sync: sync_status,
         database_stats: db_stats,
-    })
+    }))
 }
 
 #[derive(Debug, Serialize)]
@@ -513,15 +619,20 @@ pub struct SyncStatusResponse {
     pub database_stats: crate::storage::FileRegistryDbStats,
 }
 
-/// GET /api/files/gcs-counts - Get file counts from GCS bucket
+/// GET /api/files/gcs-counts - Get file counts from GCS bucket for an organization
 #[cfg(feature = "gcp")]
 pub async fn get_gcs_counts(
     State(state): State<AppState>,
+    Query(query): Query<OrgQuery>,
 ) -> Result<Json<GcsCountsResponse>> {
+    // Validate organization_id
+    validate_organization_id(&query.organization_id)?;
+
     let document_store = state.document_store()
         .ok_or_else(|| Error::Internal("GCS document store not available".to_string()))?;
 
-    let (originals, plaintext) = document_store.get_file_counts().await?;
+    // Get counts for the specific organization
+    let (originals, plaintext) = document_store.get_file_counts_for_org(&query.organization_id).await?;
 
     Ok(Json(GcsCountsResponse {
         originals_count: originals,
@@ -547,10 +658,12 @@ pub struct GcsCountsResponse {
 /// Request for re-vectorizing chunks to Vertex AI
 #[derive(Debug, Deserialize)]
 pub struct RevectorizeRequest {
-    /// Specific document ID to re-vectorize (if None, re-vectorizes all)
+    /// Organization ID for multi-tenancy (REQUIRED for tenant isolation)
+    pub organization_id: String,
+    /// Specific document ID to re-vectorize (if None, re-vectorizes all for the org)
     #[serde(default)]
     pub document_id: Option<uuid::Uuid>,
-    /// Batch size for processing (default 100)
+    /// Batch size for processing (default 100, max 500)
     #[serde(default = "default_batch_size")]
     pub batch_size: usize,
 }
@@ -579,8 +692,12 @@ pub async fn revectorize_chunks(
     State(state): State<AppState>,
     Json(request): Json<RevectorizeRequest>,
 ) -> Result<Json<RevectorizeResponse>> {
-    tracing::info!("Starting re-vectorization (document_id: {:?}, batch_size: {})",
-        request.document_id, request.batch_size);
+    // Validate inputs
+    validate_organization_id(&request.organization_id)?;
+    validate_batch_size(request.batch_size, 500)?;
+
+    tracing::info!("Starting re-vectorization for org '{}' (document_id: {:?}, batch_size: {})",
+        request.organization_id, request.document_id, request.batch_size);
 
     // Get chunks from database
     let chunks = if let Some(doc_id) = request.document_id {
@@ -832,6 +949,32 @@ pub async fn upload_file(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Json<FileUploadResponse>> {
+    // Check rate limit for uploads
+    if !state.production_controls().allow_upload() {
+        return Err(Error::RateLimited(
+            "Upload rate limit exceeded. Please try again later.".to_string()
+        ));
+    }
+
+    // Check backpressure (job queue depth)
+    if !state.production_controls().reserve_job_slot() {
+        return Err(Error::ServiceUnavailable(
+            "Processing queue is full. Please wait for current jobs to complete.".to_string()
+        ));
+    }
+
+    // Try to acquire upload concurrency slot
+    let _upload_permit = match state.production_controls().try_acquire_upload_slot() {
+        Some(permit) => permit,
+        None => {
+            // Release job slot since we can't proceed
+            state.production_controls().release_job_slot();
+            return Err(Error::ServiceUnavailable(
+                "Maximum concurrent uploads reached. Please try again shortly.".to_string()
+            ));
+        }
+    };
+
     let mut file_data: Option<Vec<u8>> = None;
     let mut filename: Option<String> = None;
     let mut organization_id: Option<String> = None;
@@ -873,16 +1016,33 @@ pub async fn upload_file(
 
     // Validate required fields
     let file_data = file_data.ok_or_else(|| {
-        Error::Internal("Missing 'file' in multipart form".to_string())
+        Error::Validation("Missing 'file' in multipart form".to_string())
     })?;
-    let filename = filename.ok_or_else(|| {
-        Error::Internal("Missing 'filename' - provide via form field or content-disposition".to_string())
+    let raw_filename = filename.ok_or_else(|| {
+        Error::Validation("Missing 'filename' - provide via form field or content-disposition".to_string())
     })?;
     let organization_id = organization_id.ok_or_else(|| {
-        Error::Internal("Missing 'organization_id' in multipart form".to_string())
+        Error::Validation("Missing 'organization_id' in multipart form".to_string())
     })?;
 
+    // Validate and sanitize inputs
+    validate_organization_id(&organization_id)?;
+    let filename = sanitize_filename(&raw_filename)?;
+
     let file_size = file_data.len() as u64;
+
+    // Validate file size (max 100MB)
+    const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
+    if file_size > MAX_FILE_SIZE {
+        return Err(Error::Validation(format!(
+            "File size ({} MB) exceeds maximum allowed (100 MB)",
+            file_size / (1024 * 1024)
+        )));
+    }
+
+    if file_size == 0 {
+        return Err(Error::Validation("File is empty".to_string()));
+    }
 
     // Calculate content hash (SHA-256)
     let mut hasher = Sha256::new();
@@ -923,13 +1083,24 @@ pub async fn upload_file(
         }
     };
 
-    // Upload to GCS
-    let gcs_path = document_store.store_document_by_name(
+    // Upload to GCS (with concurrency limiting)
+    let _gcs_permit = state.production_controls().acquire_gcs_slot().await;
+    let gcs_path = match document_store.store_document_by_name(
         &final_filename,
         &organization_id,
         &file_data,
         &content_hash,
-    ).await?;
+    ).await {
+        Ok(path) => {
+            state.production_controls().record_success();
+            path
+        }
+        Err(e) => {
+            state.production_controls().record_failure();
+            state.production_controls().release_job_slot();
+            return Err(e);
+        }
+    };
 
     tracing::info!("File uploaded to GCS: {}", gcs_path);
 
@@ -955,12 +1126,17 @@ pub async fn upload_file(
     let process_job_id = job_id;
 
     tokio::spawn(async move {
-        if let Err(e) = process_gcs_file(
-            process_state,
+        let result = process_gcs_file(
+            process_state.clone(),
             process_job_id,
             &process_filename,
             &process_org_id,
-        ).await {
+        ).await;
+
+        // Release the job slot when processing completes (success or failure)
+        process_state.production_controls().release_job_slot();
+
+        if let Err(e) = result {
             tracing::error!("Failed to process file {}: {}", process_filename, e);
         }
     });
@@ -1004,15 +1180,21 @@ async fn process_gcs_file(
     let document_store = state.document_store()
         .ok_or_else(|| Error::Internal("GCS document store not available".to_string()))?;
 
-    // Download file from GCS
+    // Download file from GCS (with concurrency limiting)
+    let _gcs_permit = state.production_controls().acquire_gcs_slot().await;
     let file_data = match document_store.get_document_by_name(filename, organization_id).await {
-        Ok(data) => data,
+        Ok(data) => {
+            state.production_controls().record_success();
+            data
+        }
         Err(e) => {
+            state.production_controls().record_failure();
             let err = format!("Failed to download file from GCS: {}", e);
             state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.clone()));
             return Err(Error::Internal(err));
         }
     };
+    drop(_gcs_permit); // Release GCS slot after download completes
     let file_size = file_data.len() as u64;
     tracing::info!("Downloaded {} bytes from GCS for {}", file_data.len(), filename);
 
@@ -1031,7 +1213,7 @@ async fn process_gcs_file(
         Ok(content) => content,
         Err(e) => {
             let err = format!("Failed to extract text: {}", e);
-            state.record_file_failed(filename, &content_hash, file_size, file_type.clone(), &err, "extraction", Some(job_id));
+            state.record_file_failed(organization_id, filename, &content_hash, file_size, file_type.clone(), &err, "extraction", Some(job_id));
             state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.clone()));
             return Err(Error::Internal(err));
         }
@@ -1039,7 +1221,7 @@ async fn process_gcs_file(
 
     if text_content.trim().is_empty() {
         let err = "No text content extracted from file";
-        state.record_file_failed(filename, &content_hash, file_size, file_type.clone(), err, "extraction", Some(job_id));
+        state.record_file_failed(organization_id, filename, &content_hash, file_size, file_type.clone(), err, "extraction", Some(job_id));
         state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.to_string()));
         return Err(Error::Internal(err.to_string()));
     }
@@ -1051,7 +1233,7 @@ async fn process_gcs_file(
         Ok(_) => {},
         Err(e) => {
             let err = format!("Failed to store plain text in GCS: {}", e);
-            state.record_file_failed(filename, &content_hash, file_size, file_type.clone(), &err, "storage", Some(job_id));
+            state.record_file_failed(organization_id, filename, &content_hash, file_size, file_type.clone(), &err, "storage", Some(job_id));
             state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.clone()));
             return Err(Error::Internal(err));
         }
@@ -1115,7 +1297,7 @@ async fn process_gcs_file(
 
     if embedded_chunks.is_empty() {
         let err = "Failed to embed any chunks";
-        state.record_file_failed(filename, &content_hash, file_size, file_type.clone(), err, "embedding", Some(job_id));
+        state.record_file_failed(organization_id, filename, &content_hash, file_size, file_type.clone(), err, "embedding", Some(job_id));
         state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.to_string()));
         return Err(Error::Internal(err.to_string()));
     }
@@ -1125,7 +1307,7 @@ async fn process_gcs_file(
         Ok(_) => {},
         Err(e) => {
             let err = format!("Failed to insert chunks into vector store: {}", e);
-            state.record_file_failed(filename, &content_hash, file_size, file_type.clone(), &err, "vector_store", Some(job_id));
+            state.record_file_failed(organization_id, filename, &content_hash, file_size, file_type.clone(), &err, "vector_store", Some(job_id));
             state.job_queue().update_status(job_id, JobStatus::Failed, Some(err.clone()));
             return Err(Error::Internal(err));
         }
@@ -1143,6 +1325,7 @@ async fn process_gcs_file(
 
     // Record file success in file registry (this updates both in-memory cache and database)
     state.record_file_success(
+        organization_id,
         filename,
         &content_hash,
         final_file_size,

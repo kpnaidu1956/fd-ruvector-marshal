@@ -641,6 +641,59 @@ impl GcsDocumentStore {
         Ok(files)
     }
 
+    /// Sync files from GCS bucket for a specific organization
+    ///
+    /// Similar to sync_from_bucket but filtered to a specific organization's folder.
+    pub async fn sync_from_bucket_for_org(&self, organization_id: &str) -> Result<Vec<GcsFileInfo>> {
+        tracing::info!("Starting GCS bucket sync for org '{}'...", organization_id);
+        let mut files = Vec::new();
+
+        // List metadata files in organization's originals prefix
+        let org_prefix = format!("{}{}/", self.originals_prefix, organization_id);
+        let list_request = ListObjectsRequest {
+            bucket: self.bucket.clone(),
+            prefix: Some(org_prefix.clone()),
+            ..Default::default()
+        };
+
+        let objects = self
+            .client
+            .list_objects(&list_request)
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to list GCS objects for org '{}': {}", organization_id, e)))?;
+
+        let items = objects.items.unwrap_or_default();
+        let meta_files: Vec<_> = items.iter()
+            .filter(|item| item.name.ends_with(".meta.json"))
+            .collect();
+
+        tracing::info!("Found {} metadata files in GCS for org '{}'", meta_files.len(), organization_id);
+
+        // Process each metadata file
+        for item in meta_files {
+            match self.process_meta_file(&item.name).await {
+                Ok(Some(file_info)) => {
+                    files.push(file_info);
+                }
+                Ok(None) => {
+                    tracing::debug!("Skipping invalid metadata: {}", item.name);
+                }
+                Err(e) => {
+                    tracing::warn!("Error processing {}: {}", item.name, e);
+                }
+            }
+        }
+
+        tracing::info!(
+            "GCS sync for org '{}' complete: {} files found ({} with plaintext)",
+            organization_id,
+            files.len(),
+            files.iter().filter(|f| f.has_plaintext).count()
+        );
+
+        Ok(files)
+    }
+
     /// Process a metadata file and return file info
     async fn process_meta_file(&self, meta_path: &str) -> Result<Option<GcsFileInfo>> {
         // Download metadata
@@ -723,6 +776,35 @@ impl GcsDocumentStore {
         };
         let plain_objects = self.client.list_objects(&plain_request).await
             .map_err(|e| Error::Internal(format!("Failed to list plaintext: {}", e)))?;
+        let plain_count = plain_objects.items.unwrap_or_default().len();
+
+        Ok((orig_count, plain_count))
+    }
+
+    /// Get count of files for a specific organization
+    pub async fn get_file_counts_for_org(&self, organization_id: &str) -> Result<(usize, usize)> {
+        // Count originals for this organization
+        let org_originals_prefix = format!("{}{}/", self.originals_prefix, organization_id);
+        let orig_request = ListObjectsRequest {
+            bucket: self.bucket.clone(),
+            prefix: Some(org_originals_prefix),
+            ..Default::default()
+        };
+        let orig_objects = self.client.list_objects(&orig_request).await
+            .map_err(|e| Error::Internal(format!("Failed to list originals for org {}: {}", organization_id, e)))?;
+        let orig_count = orig_objects.items.unwrap_or_default().iter()
+            .filter(|i| i.name.ends_with(".meta.json"))
+            .count();
+
+        // Count plaintext for this organization
+        let org_plaintext_prefix = format!("{}{}/", self.plaintext_prefix, organization_id);
+        let plain_request = ListObjectsRequest {
+            bucket: self.bucket.clone(),
+            prefix: Some(org_plaintext_prefix),
+            ..Default::default()
+        };
+        let plain_objects = self.client.list_objects(&plain_request).await
+            .map_err(|e| Error::Internal(format!("Failed to list plaintext for org {}: {}", organization_id, e)))?;
         let plain_count = plain_objects.items.unwrap_or_default().len();
 
         Ok((orig_count, plain_count))

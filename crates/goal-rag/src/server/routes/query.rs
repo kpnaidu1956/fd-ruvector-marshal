@@ -14,12 +14,24 @@ use crate::types::{
     query::{QueryRequest, QueryType},
     response::{CacheInfo, Citation, QueryResponse, QueryResponseV2, StringSearchResponse},
 };
+use crate::validation::{validate_organization_id, validate_query};
 
 /// POST /api/query - Query the RAG system
 pub async fn query_rag(
     State(state): State<AppState>,
     Json(request): Json<QueryRequest>,
 ) -> Result<Json<QueryResponse>> {
+    // Check rate limit
+    if !state.production_controls().allow_query() {
+        return Err(crate::error::Error::RateLimited(
+            "Too many requests. Please try again later.".to_string()
+        ));
+    }
+
+    // Validate inputs
+    validate_organization_id(&request.organization_id)?;
+    validate_query(&request.question)?;
+
     let start = Instant::now();
 
     tracing::info!("Query: \"{}\"", request.question);
@@ -214,6 +226,16 @@ pub async fn string_search(
     State(state): State<AppState>,
     Json(request): Json<StringSearchRequest>,
 ) -> Result<Json<StringSearchResponse>> {
+    // Check rate limit
+    if !state.production_controls().allow_query() {
+        return Err(crate::error::Error::RateLimited(
+            "Too many requests. Please try again later.".to_string()
+        ));
+    }
+
+    // Validate inputs
+    request.validate()?;
+
     let start = Instant::now();
 
     let results = state.vector_store_provider().string_search(
@@ -236,11 +258,31 @@ pub struct StringSearchRequest {
     pub organization_id: String,
 }
 
+impl StringSearchRequest {
+    /// Validate the request
+    pub fn validate(&self) -> Result<()> {
+        validate_organization_id(&self.organization_id)?;
+        validate_query(&self.query)?;
+        Ok(())
+    }
+}
+
 /// POST /api/v2/query - V2 Query endpoint with frontend-friendly format
 pub async fn query_rag_v2(
     State(state): State<AppState>,
     Json(request): Json<QueryRequest>,
 ) -> Result<Json<QueryResponseV2>> {
+    // Check rate limit
+    if !state.production_controls().allow_query() {
+        return Err(crate::error::Error::RateLimited(
+            "Too many requests. Please try again later.".to_string()
+        ));
+    }
+
+    // Validate inputs
+    validate_organization_id(&request.organization_id)?;
+    validate_query(&request.question)?;
+
     let start = Instant::now();
 
     tracing::info!("V2 Query: \"{}\"", request.question);

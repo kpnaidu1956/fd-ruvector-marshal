@@ -179,6 +179,9 @@ pub struct ServerConfig {
     pub enable_cors: bool,
     /// Maximum upload size in bytes (default: 100MB)
     pub max_upload_size: usize,
+    /// Rate limiting configuration
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
 }
 
 impl Default for ServerConfig {
@@ -188,6 +191,60 @@ impl Default for ServerConfig {
             port: 8080,
             enable_cors: true,
             max_upload_size: 100 * 1024 * 1024, // 100MB
+            rate_limit: RateLimitConfig::default(),
+        }
+    }
+}
+
+/// Rate limiting configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitConfig {
+    /// Enable rate limiting (default: true)
+    #[serde(default = "default_rate_limit_enabled")]
+    pub enabled: bool,
+    /// Maximum requests per second for query endpoints (default: 10)
+    #[serde(default = "default_query_rps")]
+    pub query_requests_per_second: u32,
+    /// Maximum requests per second for upload endpoints (default: 5)
+    #[serde(default = "default_upload_rps")]
+    pub upload_requests_per_second: u32,
+    /// Maximum concurrent uploads (default: 3)
+    #[serde(default = "default_max_concurrent_uploads")]
+    pub max_concurrent_uploads: usize,
+    /// Maximum concurrent GCS operations (default: 5)
+    #[serde(default = "default_max_concurrent_gcs")]
+    pub max_concurrent_gcs_operations: usize,
+    /// Circuit breaker: max consecutive failures before tripping (default: 5)
+    #[serde(default = "default_circuit_breaker_threshold")]
+    pub circuit_breaker_threshold: usize,
+    /// Circuit breaker: reset time in seconds (default: 30)
+    #[serde(default = "default_circuit_breaker_reset")]
+    pub circuit_breaker_reset_secs: u64,
+    /// Maximum queue depth before rejecting new jobs (default: 100)
+    #[serde(default = "default_max_queue_depth")]
+    pub max_queue_depth: usize,
+}
+
+fn default_rate_limit_enabled() -> bool { true }
+fn default_query_rps() -> u32 { 10 }
+fn default_upload_rps() -> u32 { 5 }
+fn default_max_concurrent_uploads() -> usize { 3 }
+fn default_max_concurrent_gcs() -> usize { 5 }
+fn default_circuit_breaker_threshold() -> usize { 5 }
+fn default_circuit_breaker_reset() -> u64 { 30 }
+fn default_max_queue_depth() -> usize { 100 }
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            query_requests_per_second: 10,
+            upload_requests_per_second: 5,
+            max_concurrent_uploads: 3,
+            max_concurrent_gcs_operations: 5,
+            circuit_breaker_threshold: 5,
+            circuit_breaker_reset_secs: 30,
+            max_queue_depth: 100,
         }
     }
 }

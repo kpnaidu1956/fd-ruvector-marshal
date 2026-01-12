@@ -6,15 +6,16 @@ pub mod jobs;
 pub mod query;
 
 use axum::{
-    extract::DefaultBodyLimit,
     routing::{delete, get, post},
     Router,
 };
+#[cfg(feature = "gcp")]
+use axum::extract::DefaultBodyLimit;
 use crate::ingestion::ExternalParser;
 use crate::server::state::AppState;
 
 /// Build all API routes
-pub fn api_routes(max_upload_size: usize) -> Router<AppState> {
+pub fn api_routes(#[cfg_attr(not(feature = "gcp"), allow(unused_variables))] max_upload_size: usize) -> Router<AppState> {
     let router = Router::new()
         // Document management
         .route("/documents", get(documents::list_documents))

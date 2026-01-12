@@ -49,6 +49,7 @@ pub enum FileProcessResult {
         content_hash: String,
         file_size: u64,
         file_type: FileType,
+        organization_id: String,
     },
 }
 
@@ -135,6 +136,7 @@ impl ProcessingWorker {
             let sem = semaphore.clone();
             let filename = file_data.filename.clone();
             let file_size = file_data.data.len();
+            let org_id = file_data.organization_id.clone();
 
             // Calculate tier-based timeout for this file
             let file_timeout = if tiered_enabled {
@@ -219,7 +221,7 @@ impl ProcessingWorker {
                     );
                 }
 
-                (filename, result)
+                (filename, org_id, result)
             }
         }).collect();
 
@@ -227,11 +229,13 @@ impl ProcessingWorker {
         let results = join_all(file_futures).await;
 
         // Process results
-        for (filename, result) in results {
+        for (filename, org_id, result) in results {
             match result {
                 Ok(FileProcessResult::New { document, file_size, characteristics, parser_method, parser_attempts }) => {
                     // Record success in file registry
+                    let org_id = document.organization_id.as_deref().unwrap_or("unknown");
                     self.state.record_file_success(
+                        org_id,
                         &filename,
                         &document.content_hash,
                         file_size,
@@ -279,7 +283,9 @@ impl ProcessingWorker {
                 }
                 Ok(FileProcessResult::Updated { document, file_size, old_chunks_deleted, characteristics, parser_method, parser_attempts }) => {
                     // Record success in file registry
+                    let org_id = document.organization_id.as_deref().unwrap_or("unknown");
                     self.state.record_file_success(
+                        org_id,
                         &filename,
                         &document.content_hash,
                         file_size,
@@ -325,9 +331,10 @@ impl ProcessingWorker {
                         filename, old_chunks_deleted, tier_str, method_str
                     );
                 }
-                Ok(FileProcessResult::Skipped { reason, skip_reason, content_hash, file_size, file_type }) => {
+                Ok(FileProcessResult::Skipped { reason, skip_reason, content_hash, file_size, file_type, organization_id }) => {
                     // Record skip in file registry
                     self.state.record_file_skipped(
+                        &organization_id,
                         &filename,
                         &content_hash,
                         file_size,
@@ -353,6 +360,7 @@ impl ProcessingWorker {
                     let file_type = FileType::from_extension(ext);
                     // We don't have content hash for failed files, use empty string
                     self.state.record_file_failed(
+                        &org_id,
                         &filename,
                         "",
                         0,
@@ -447,6 +455,7 @@ impl ProcessingWorker {
                         Some(characteristics),
                         Some(result.method),
                         result.attempts,
+                        &file_data.organization_id,
                     ).await;
                 }
                 Err(e) => {
@@ -481,6 +490,7 @@ impl ProcessingWorker {
                                     Some(characteristics),
                                     Some("document_ai".to_string()),
                                     attempts,
+                                    &file_data.organization_id,
                                 ).await;
                             }
                             Ok(Err(doc_ai_err)) => {
@@ -576,6 +586,7 @@ impl ProcessingWorker {
                             text.as_bytes(),
                             Some(data),
                             parallel_embeddings,
+                            &file_data.organization_id,
                         ).await;
                     }
                     Err(e) => {
@@ -635,6 +646,7 @@ impl ProcessingWorker {
                             text.as_bytes(),
                             Some(data),
                             parallel_embeddings,
+                            &file_data.organization_id,
                         ).await;
                     }
                     Err(e) => {
@@ -729,6 +741,7 @@ impl ProcessingWorker {
                                     text.as_bytes(),
                                     Some(data),
                                     parallel_embeddings,
+                                    &file_data.organization_id,
                                 ).await;
                             }
                             Ok(_) => {
@@ -767,6 +780,7 @@ impl ProcessingWorker {
                                 parsed_ext.content.as_bytes(),
                                 Some(data),
                                 parallel_embeddings,
+                                &file_data.organization_id,
                             ).await;
                         }
                         Ok(Ok(_)) => {
@@ -804,6 +818,7 @@ impl ProcessingWorker {
                     content_hash: existing.content_hash.clone(),
                     file_size: file_size as u64,
                     file_type: parsed.file_type.clone(),
+                    organization_id: file_data.organization_id.clone(),
                 })
             }
             FileStatus::Duplicate(existing) => {
@@ -813,6 +828,7 @@ impl ProcessingWorker {
                     content_hash: existing.content_hash.clone(),
                     file_size: file_size as u64,
                     file_type: parsed.file_type.clone(),
+                    organization_id: file_data.organization_id.clone(),
                 })
             }
             FileStatus::ExistsInRegistry(record) => {
@@ -826,6 +842,7 @@ impl ProcessingWorker {
                     content_hash: record.content_hash.clone(),
                     file_size: file_size as u64,
                     file_type: parsed.file_type.clone(),
+                    organization_id: file_data.organization_id.clone(),
                 })
             }
             FileStatus::DuplicateInRegistry(record) => {
@@ -835,6 +852,7 @@ impl ProcessingWorker {
                     content_hash: record.content_hash.clone(),
                     file_size: file_size as u64,
                     file_type: parsed.file_type.clone(),
+                    organization_id: file_data.organization_id.clone(),
                 })
             }
             FileStatus::Modified(existing) => {
@@ -893,6 +911,7 @@ impl ProcessingWorker {
     /// - `original_filename`: The filename as uploaded by user (used for display/citations)
     /// - `internal_filename`: The converted filename if different (e.g., "report.pdf" -> "report.txt")
     /// - `original_data`: Original file bytes for GCS storage (optional)
+    /// - `organization_id`: Organization for multi-tenancy
     ///
     /// Returns FileProcessResult to properly handle skipped files
     #[allow(clippy::too_many_arguments)]
@@ -905,6 +924,7 @@ impl ProcessingWorker {
         text_data: &[u8],
         original_data: Option<&[u8]>,
         parallel_embeddings: usize,
+        organization_id: &str,
     ) -> Result<FileProcessResult> {
         let config = state.config();
         let content = String::from_utf8_lossy(text_data).to_string();
@@ -931,6 +951,7 @@ impl ProcessingWorker {
                     content_hash: existing.content_hash.clone(),
                     file_size: original_size,
                     file_type: crate::types::FileType::Txt,
+                    organization_id: organization_id.to_string(),
                 });
             }
             crate::server::state::FileStatus::Duplicate(existing) => {
@@ -941,6 +962,7 @@ impl ProcessingWorker {
                     content_hash: existing.content_hash.clone(),
                     file_size: original_size,
                     file_type: crate::types::FileType::Txt,
+                    organization_id: organization_id.to_string(),
                 });
             }
             crate::server::state::FileStatus::ExistsInRegistry(record) => {
@@ -955,6 +977,7 @@ impl ProcessingWorker {
                     content_hash: record.content_hash.clone(),
                     file_size: original_size,
                     file_type: crate::types::FileType::Txt,
+                    organization_id: organization_id.to_string(),
                 });
             }
             crate::server::state::FileStatus::DuplicateInRegistry(record) => {
@@ -965,6 +988,7 @@ impl ProcessingWorker {
                     content_hash: record.content_hash.clone(),
                     file_size: original_size,
                     file_type: crate::types::FileType::Txt,
+                    organization_id: organization_id.to_string(),
                 });
             }
             crate::server::state::FileStatus::Modified(existing) => {
@@ -1135,6 +1159,7 @@ impl ProcessingWorker {
         characteristics: Option<FileCharacteristics>,
         parser_method: Option<String>,
         parser_attempts: Vec<ParserAttempt>,
+        organization_id: &str,
     ) -> Result<FileProcessResult> {
         let config = state.config();
         let content = String::from_utf8_lossy(text_data).to_string();
@@ -1160,6 +1185,7 @@ impl ProcessingWorker {
                     content_hash: existing.content_hash.clone(),
                     file_size: original_size,
                     file_type: crate::types::FileType::Txt,
+                    organization_id: organization_id.to_string(),
                 });
             }
             crate::server::state::FileStatus::Duplicate(existing) => {
@@ -1169,6 +1195,7 @@ impl ProcessingWorker {
                     content_hash: existing.content_hash.clone(),
                     file_size: original_size,
                     file_type: crate::types::FileType::Txt,
+                    organization_id: organization_id.to_string(),
                 });
             }
             crate::server::state::FileStatus::ExistsInRegistry(record) => {
@@ -1182,6 +1209,7 @@ impl ProcessingWorker {
                     content_hash: record.content_hash.clone(),
                     file_size: original_size,
                     file_type: crate::types::FileType::Txt,
+                    organization_id: organization_id.to_string(),
                 });
             }
             crate::server::state::FileStatus::DuplicateInRegistry(record) => {
@@ -1191,6 +1219,7 @@ impl ProcessingWorker {
                     content_hash: record.content_hash.clone(),
                     file_size: original_size,
                     file_type: crate::types::FileType::Txt,
+                    organization_id: organization_id.to_string(),
                 });
             }
             crate::server::state::FileStatus::Modified(existing) => {

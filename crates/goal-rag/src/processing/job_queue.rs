@@ -100,6 +100,8 @@ pub enum FileProcessingStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobProgress {
     pub job_id: Uuid,
+    /// Organization ID for multi-tenancy
+    pub organization_id: Option<String>,
     pub status: JobStatus,
     pub stage: ProcessingStage,
     pub total_files: usize,
@@ -120,9 +122,14 @@ pub struct JobProgress {
 
 impl JobProgress {
     pub fn new(job_id: Uuid, total_files: usize) -> Self {
+        Self::with_org(job_id, total_files, None)
+    }
+
+    pub fn with_org(job_id: Uuid, total_files: usize, organization_id: Option<String>) -> Self {
         let now = chrono::Utc::now();
         Self {
             job_id,
+            organization_id,
             status: JobStatus::Pending,
             stage: ProcessingStage::Queued,
             total_files,
@@ -172,6 +179,8 @@ pub struct Job {
 pub struct FileData {
     pub filename: String,
     pub data: Vec<u8>,
+    /// Organization ID for multi-tenancy
+    pub organization_id: String,
 }
 
 /// Processing options
@@ -352,8 +361,8 @@ impl JobQueue {
     pub async fn submit_gcs_job(&self, gcs_job: GcsJob) -> Uuid {
         let job_id = gcs_job.id;
 
-        // Create progress entry
-        let mut progress = JobProgress::new(job_id, 1); // Single file per GCS job
+        // Create progress entry with organization_id from the file
+        let mut progress = JobProgress::with_org(job_id, 1, Some(gcs_job.file.organization_id.clone())); // Single file per GCS job
         progress.file_progress.push(FileProgressRecord {
             filename: gcs_job.file.filename.clone(),
             size_bytes: gcs_job.file.file_size,
@@ -452,6 +461,7 @@ impl JobQueue {
         // Restore progress entry
         let progress = JobProgress {
             job_id,
+            organization_id: None, // Will be set from file context during processing
             status: JobStatus::Processing,
             stage: ProcessingStage::Parsing,
             total_files: job_record.total_files,
@@ -472,12 +482,14 @@ impl JobQueue {
         self.queue_size.fetch_add(1, Ordering::SeqCst);
 
         // Convert to Job with only pending files
+        // Note: organization_id defaults to "unknown" for legacy resumed jobs
         let files: Vec<FileData> = pending_files
             .into_iter()
             .filter_map(|f| {
                 f.file_data.map(|data| FileData {
                     filename: f.filename,
                     data,
+                    organization_id: "unknown".to_string(), // Legacy job resume - org context not stored
                 })
             })
             .collect();

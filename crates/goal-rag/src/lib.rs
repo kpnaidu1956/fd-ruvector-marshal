@@ -16,6 +16,7 @@ pub mod retrieval;
 pub mod server;
 pub mod storage;
 pub mod types;
+pub mod validation;
 
 pub use config::RagConfig;
 pub use error::{Error, Result};

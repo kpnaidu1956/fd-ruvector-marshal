@@ -39,6 +39,8 @@ pub enum SkipReason {
 pub struct FileRecord {
     /// Unique record ID
     pub id: Uuid,
+    /// Organization ID for multi-tenancy
+    pub organization_id: String,
     /// Original filename as uploaded
     pub filename: String,
     /// Content hash (SHA-256)
@@ -84,6 +86,7 @@ pub struct FileRecord {
 impl FileRecord {
     /// Create a new file record for a successfully processed file
     pub fn success(
+        organization_id: String,
         filename: String,
         content_hash: String,
         file_size: u64,
@@ -95,6 +98,7 @@ impl FileRecord {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
+            organization_id,
             filename,
             content_hash,
             file_size,
@@ -116,6 +120,7 @@ impl FileRecord {
 
     /// Create a new file record for a skipped file
     pub fn skipped(
+        organization_id: String,
         filename: String,
         content_hash: String,
         file_size: u64,
@@ -126,6 +131,7 @@ impl FileRecord {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
+            organization_id,
             filename,
             content_hash,
             file_size,
@@ -147,6 +153,7 @@ impl FileRecord {
 
     /// Create a new file record for a failed file
     pub fn failed(
+        organization_id: String,
         filename: String,
         content_hash: String,
         file_size: u64,
@@ -158,6 +165,7 @@ impl FileRecord {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
+            organization_id,
             filename,
             content_hash,
             file_size,
@@ -210,6 +218,8 @@ impl FileRecord {
 /// Request to check status of files before upload
 #[derive(Debug, Clone, Deserialize)]
 pub struct FileCheckRequest {
+    /// Organization ID for multi-tenancy (REQUIRED)
+    pub organization_id: String,
     /// List of files to check
     pub files: Vec<FileCheckItem>,
 }
@@ -275,6 +285,7 @@ pub struct FileCheckSummary {
 /// Summary of a file record for API responses
 #[derive(Debug, Clone, Serialize)]
 pub struct FileRecordSummary {
+    pub organization_id: String,
     pub filename: String,
     pub status: FileRecordStatus,
     pub file_type: String,
@@ -291,6 +302,7 @@ pub struct FileRecordSummary {
 impl From<&FileRecord> for FileRecordSummary {
     fn from(record: &FileRecord) -> Self {
         Self {
+            organization_id: record.organization_id.clone(),
             filename: record.filename.clone(),
             status: record.status.clone(),
             file_type: record.file_type.display_name().to_string(),

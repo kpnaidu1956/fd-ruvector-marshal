@@ -2261,6 +2261,7 @@ dependencies = [
  "mime_guess",
  "ndarray 0.16.1",
  "num_cpus",
+ "once_cell",
  "ort",
  "parking_lot 0.12.5",
  "pdf-extract",

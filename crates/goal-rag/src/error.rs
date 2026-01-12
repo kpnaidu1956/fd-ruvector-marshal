@@ -18,6 +18,18 @@ pub enum Error {
     #[error("Configuration error: {0}")]
     Config(String),
 
+    /// Validation error (input validation failures)
+    #[error("Validation error: {0}")]
+    Validation(String),
+
+    /// Rate limited (too many requests)
+    #[error("Rate limited: {0}")]
+    RateLimited(String),
+
+    /// Service unavailable (circuit breaker open or backpressure)
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
+
     /// File parsing error
     #[error("Failed to parse file '{filename}': {message}")]
     FileParse { filename: String, message: String },
@@ -103,6 +115,9 @@ impl IntoResponse for Error {
     fn into_response(self) -> Response {
         let (status, error_type, message) = match &self {
             Error::Config(msg) => (StatusCode::BAD_REQUEST, "config_error", msg.clone()),
+            Error::Validation(msg) => (StatusCode::BAD_REQUEST, "validation_error", msg.clone()),
+            Error::RateLimited(msg) => (StatusCode::TOO_MANY_REQUESTS, "rate_limited", msg.clone()),
+            Error::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable", msg.clone()),
             Error::FileParse { filename, message } => (
                 StatusCode::BAD_REQUEST,
                 "parse_error",
