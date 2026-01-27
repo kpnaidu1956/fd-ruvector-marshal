@@ -70,3 +70,7 @@ claude-flow
 hive-mind-prompt-*.txt
 examples/scipix/test_images/
 *.json
+
+# Secrets
+secrets/
+*.credentials.txt

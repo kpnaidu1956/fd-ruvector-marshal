@@ -63,12 +63,14 @@ pub fn api_routes(#[cfg_attr(not(feature = "gcp"), allow(unused_variables))] max
             post(files::upload_file).layer(DefaultBodyLimit::max(max_upload_size)),
         )
         // Bucket-based storage for frontend attachments
+        // Routes include org_id for multi-tenancy isolation
         .route(
             "/storage/upload",
             post(storage::upload_storage_file).layer(DefaultBodyLimit::max(50 * 1024 * 1024)),
         )
-        .route("/storage/:bucket/*path", get(storage::download_storage_file))
-        .route("/storage/:bucket/*path", delete(storage::delete_storage_file));
+        .route("/storage/:bucket/list", get(storage::list_storage_files))
+        .route("/storage/:bucket/:org_id/*path", get(storage::download_storage_file))
+        .route("/storage/:bucket/:org_id/*path", delete(storage::delete_storage_file));
 
     // Add WebSocket endpoint for real-time updates
     let router = router.route("/realtime", get(realtime::websocket_handler));
@@ -109,10 +111,11 @@ async fn info() -> axum::Json<serde_json::Value> {
             "POST /api/files/revectorize": "Re-vectorize chunks to Vertex AI (GCP only)",
             "POST /api/files/migrate-gcs": "Migrate GCS files to organization-specific folders (GCP only)",
             "GET /api/capabilities": "Check document extraction capabilities",
-            "POST /api/storage/upload": "Upload file to storage bucket (multipart: bucket, path, file)",
-            "GET /api/storage/:bucket/*path": "Download file from storage bucket",
-            "DELETE /api/storage/:bucket/*path": "Delete file from storage bucket",
-            "WS /api/realtime": "WebSocket for real-time database change subscriptions"
+            "POST /api/storage/upload": "Upload file to storage bucket (multipart: organization_id, bucket, path, file)",
+            "GET /api/storage/:bucket/list": "List files in storage bucket (query: organization_id, prefix?)",
+            "GET /api/storage/:bucket/:org_id/*path": "Download file from storage bucket",
+            "DELETE /api/storage/:bucket/:org_id/*path": "Delete file from storage bucket",
+            "WS /api/realtime": "WebSocket for real-time database change subscriptions (STUB - PostgreSQL NOTIFY pending)"
         },
         "features": {
             "gcs_storage": "Original files and plain text stored in GCS",

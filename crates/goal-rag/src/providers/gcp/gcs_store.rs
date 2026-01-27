@@ -249,6 +249,20 @@ pub struct DocumentWithInfo {
     pub plaintext_uri: Option<String>,
 }
 
+/// Info about a file in storage (for listing)
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StorageFileInfo {
+    /// Relative path within the bucket/org folder
+    pub path: String,
+    /// File size in bytes
+    pub size: u64,
+    /// Content type
+    pub content_type: String,
+    /// Last updated timestamp (RFC3339 format)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 struct DocumentMetadata {
     id: Uuid,
@@ -1293,19 +1307,20 @@ impl GcsDocumentStore {
     // ===== Generic Storage Operations (for frontend attachments) =====
 
     /// Store a file in the storage prefix (not for RAG processing)
-    /// Path format: storage/{bucket}/{path}
+    /// Path format: storage/{bucket}/{org_id}/{path}
+    ///
+    /// Takes ownership of data to avoid unnecessary copying.
     pub async fn store_storage_file(
         &self,
         gcs_path: &str,
-        data: &[u8],
+        data: Vec<u8>,
         content_type: &str,
     ) -> Result<()> {
-        use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
-
+        let data_len = data.len();
         let upload_type = UploadType::Simple(Media {
             name: gcs_path.to_string().into(),
             content_type: content_type.to_string().into(),
-            content_length: Some(data.len() as u64),
+            content_length: Some(data_len as u64),
         });
 
         self.client
@@ -1314,13 +1329,60 @@ impl GcsDocumentStore {
                     bucket: self.bucket.clone(),
                     ..Default::default()
                 },
-                data.to_vec(),
+                data, // No copy needed - we own the data
                 &upload_type,
             )
             .await
             .map_err(|e| Error::Internal(format!("Failed to upload storage file to GCS: {}", e)))?;
 
         Ok(())
+    }
+
+    /// List files in a storage bucket/org path
+    ///
+    /// Returns a list of (relative_path, size, content_type) tuples for all files
+    /// under the given prefix.
+    pub async fn list_storage_files(
+        &self,
+        bucket_name: &str,
+        organization_id: &str,
+    ) -> Result<Vec<StorageFileInfo>> {
+        let prefix = format!("storage/{}/{}/", bucket_name, organization_id);
+
+        let list_request = ListObjectsRequest {
+            bucket: self.bucket.clone(),
+            prefix: Some(prefix.clone()),
+            ..Default::default()
+        };
+
+        let objects = self
+            .client
+            .list_objects(&list_request)
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to list storage files: {}", e)))?;
+
+        let files = objects
+            .items
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|item| {
+                // Extract relative path (after the prefix)
+                let relative_path = item.name.strip_prefix(&prefix)?.to_string();
+                if relative_path.is_empty() {
+                    return None;
+                }
+
+                Some(StorageFileInfo {
+                    path: relative_path,
+                    size: item.size as u64,
+                    content_type: item.content_type.unwrap_or_else(|| "application/octet-stream".to_string()),
+                    // Convert time::OffsetDateTime to string representation
+                    updated_at: item.updated.map(|dt| dt.to_string()),
+                })
+            })
+            .collect();
+
+        Ok(files)
     }
 
     /// Get a file from storage
