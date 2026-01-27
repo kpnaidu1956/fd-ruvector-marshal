@@ -15,7 +15,7 @@ categories = ["science", "machine-learning"]
 ruvector-core = { path = "../ruvector-core" }
 
 # HTTP Server (Axum)
-axum = { version = "0.7", features = ["json", "multipart", "tokio"] }
+axum = { version = "0.7", features = ["json", "multipart", "tokio", "ws"] }
 tokio = { workspace = true, features = ["full", "fs"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip", "limit", "fs"] }

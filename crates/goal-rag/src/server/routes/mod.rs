@@ -4,6 +4,8 @@ pub mod documents;
 pub mod files;
 pub mod jobs;
 pub mod query;
+pub mod realtime;
+pub mod storage;
 
 use axum::{
     routing::{delete, get, post},
@@ -59,7 +61,17 @@ pub fn api_routes(#[cfg_attr(not(feature = "gcp"), allow(unused_variables))] max
         .route(
             "/files/upload",
             post(files::upload_file).layer(DefaultBodyLimit::max(max_upload_size)),
-        );
+        )
+        // Bucket-based storage for frontend attachments
+        .route(
+            "/storage/upload",
+            post(storage::upload_storage_file).layer(DefaultBodyLimit::max(50 * 1024 * 1024)),
+        )
+        .route("/storage/:bucket/*path", get(storage::download_storage_file))
+        .route("/storage/:bucket/*path", delete(storage::delete_storage_file));
+
+    // Add WebSocket endpoint for real-time updates
+    let router = router.route("/realtime", get(realtime::websocket_handler));
 
     router
 }
@@ -96,15 +108,28 @@ async fn info() -> axum::Json<serde_json::Value> {
             "GET /api/files/gcs-counts": "Get file counts from GCS bucket (GCP only)",
             "POST /api/files/revectorize": "Re-vectorize chunks to Vertex AI (GCP only)",
             "POST /api/files/migrate-gcs": "Migrate GCS files to organization-specific folders (GCP only)",
-            "GET /api/capabilities": "Check document extraction capabilities"
+            "GET /api/capabilities": "Check document extraction capabilities",
+            "POST /api/storage/upload": "Upload file to storage bucket (multipart: bucket, path, file)",
+            "GET /api/storage/:bucket/*path": "Download file from storage bucket",
+            "DELETE /api/storage/:bucket/*path": "Delete file from storage bucket",
+            "WS /api/realtime": "WebSocket for real-time database change subscriptions"
         },
         "features": {
             "gcs_storage": "Original files and plain text stored in GCS",
             "deduplication": "Content-hash based file deduplication",
             "string_search": "Literal text search for words/phrases",
             "answer_caching": "Cached answers with document-based invalidation",
-            "grounded_answers": "LLM uses only document content, no external knowledge"
-        }
+            "grounded_answers": "LLM uses only document content, no external knowledge",
+            "bucket_storage": "Bucket-based file storage for frontend attachments",
+            "realtime_websocket": "WebSocket API for database change subscriptions"
+        },
+        "storage_buckets": [
+            "task-attachments",
+            "user-avatars",
+            "organization-logos",
+            "message-attachments",
+            "goal-attachments"
+        ]
     }))
 }
 

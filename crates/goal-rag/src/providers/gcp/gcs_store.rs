@@ -1290,6 +1290,87 @@ impl GcsDocumentStore {
         }
     }
 
+    // ===== Generic Storage Operations (for frontend attachments) =====
+
+    /// Store a file in the storage prefix (not for RAG processing)
+    /// Path format: storage/{bucket}/{path}
+    pub async fn store_storage_file(
+        &self,
+        gcs_path: &str,
+        data: &[u8],
+        content_type: &str,
+    ) -> Result<()> {
+        use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
+
+        let upload_type = UploadType::Simple(Media {
+            name: gcs_path.to_string().into(),
+            content_type: content_type.to_string().into(),
+            content_length: Some(data.len() as u64),
+        });
+
+        self.client
+            .upload_object(
+                &UploadObjectRequest {
+                    bucket: self.bucket.clone(),
+                    ..Default::default()
+                },
+                data.to_vec(),
+                &upload_type,
+            )
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to upload storage file to GCS: {}", e)))?;
+
+        Ok(())
+    }
+
+    /// Get a file from storage
+    /// Returns (data, content_type)
+    pub async fn get_storage_file(&self, gcs_path: &str) -> Result<(Vec<u8>, String)> {
+        use google_cloud_storage::http::objects::get::GetObjectRequest;
+        use google_cloud_storage::http::objects::download::Range;
+
+        // Get object metadata for content type
+        let obj = self.client
+            .get_object(&GetObjectRequest {
+                bucket: self.bucket.clone(),
+                object: gcs_path.to_string(),
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| Error::DocumentNotFound(format!("File not found: {}", e)))?;
+
+        let content_type = obj.content_type.unwrap_or_else(|| "application/octet-stream".to_string());
+
+        // Download the file
+        let data = self.client
+            .download_object(
+                &GetObjectRequest {
+                    bucket: self.bucket.clone(),
+                    object: gcs_path.to_string(),
+                    ..Default::default()
+                },
+                &Range::default(),
+            )
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to download storage file from GCS: {}", e)))?;
+
+        Ok((data, content_type))
+    }
+
+    /// Delete a file from storage
+    pub async fn delete_storage_file(&self, gcs_path: &str) -> Result<()> {
+        self.client
+            .delete_object(&DeleteObjectRequest {
+                bucket: self.bucket.clone(),
+                object: gcs_path.to_string(),
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to delete storage file from GCS: {}", e)))?;
+
+        Ok(())
+    }
+
     /// List all files in an organization folder
     pub async fn list_files_by_org(&self, organization_id: &str) -> Result<Vec<FileMetadataByName>> {
         let mut files = Vec::new();
