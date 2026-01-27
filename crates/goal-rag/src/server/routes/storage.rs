@@ -293,12 +293,13 @@ pub async fn upload_storage_file(
     let path = path.ok_or_else(|| {
         Error::Validation("Missing 'path' in multipart form".to_string())
     })?;
-    let organization_id = organization_id.ok_or_else(|| {
-        Error::Validation("Missing 'organization_id' in multipart form".to_string())
-    })?;
+    // Use provided organization_id or default to "_default" for backward compatibility
+    let organization_id = organization_id.unwrap_or_else(|| "_default".to_string());
 
-    // Validate organization_id
-    validate_organization_id(&organization_id)?;
+    // Validate organization_id (allows _default)
+    if organization_id != "_default" {
+        validate_organization_id(&organization_id)?;
+    }
 
     // Validate inputs
     validate_bucket(&bucket)?;
