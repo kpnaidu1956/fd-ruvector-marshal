@@ -26,9 +26,13 @@ pub trait LearnedIndex {
 /// Statistics for learned indexes
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexStats {
+    /// Total number of entries in the index
     pub total_entries: usize,
+    /// Size of the learned model in bytes
     pub model_size_bytes: usize,
+    /// Average prediction error across all entries
     pub avg_error: f32,
+    /// Maximum prediction error observed
     pub max_error: usize,
 }
 

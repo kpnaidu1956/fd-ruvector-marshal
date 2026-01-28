@@ -10,11 +10,9 @@
 use crate::error::{Result, RuvectorError};
 use crate::types::*;
 use crate::vector_db::VectorDB;
-use parking_lot::RwLock;
 use redb::{Database, TableDefinition};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
 
 // Table definitions
@@ -27,91 +25,143 @@ const LEARNING_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("learn
 /// Note: Serialized using JSON (not bincode) due to serde_json::Value in metadata field
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReflexionEpisode {
+    /// Unique identifier for the episode
     pub id: String,
+    /// Description of the task being reflected upon
     pub task: String,
+    /// List of actions taken during the task
     pub actions: Vec<String>,
+    /// Observations made during task execution
     pub observations: Vec<String>,
+    /// Self-critique analysis of the task execution
     pub critique: String,
+    /// Vector embedding for similarity search
     pub embedding: Vec<f32>,
+    /// Unix timestamp when the episode was created
     pub timestamp: i64,
+    /// Optional metadata as key-value pairs
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
 /// Skill definition in the library
 #[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
 pub struct Skill {
+    /// Unique identifier for the skill
     pub id: String,
+    /// Human-readable name of the skill
     pub name: String,
+    /// Detailed description of what the skill does
     pub description: String,
+    /// Parameter definitions as name-type pairs
     pub parameters: HashMap<String, String>,
+    /// Example usages of the skill
     pub examples: Vec<String>,
+    /// Vector embedding for similarity search
     pub embedding: Vec<f32>,
+    /// Number of times this skill has been used
     pub usage_count: usize,
+    /// Success rate as a value between 0.0 and 1.0
     pub success_rate: f64,
+    /// Unix timestamp when the skill was created
     pub created_at: i64,
+    /// Unix timestamp when the skill was last updated
     pub updated_at: i64,
 }
 
 /// Causal edge in the hypergraph
 #[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
 pub struct CausalEdge {
+    /// Unique identifier for the causal edge
     pub id: String,
-    pub causes: Vec<String>,  // Hypergraph: multiple causes
-    pub effects: Vec<String>, // Hypergraph: multiple effects
+    /// List of cause nodes (hypergraph supports multiple causes)
+    pub causes: Vec<String>,
+    /// List of effect nodes (hypergraph supports multiple effects)
+    pub effects: Vec<String>,
+    /// Confidence score for this causal relationship (0.0 to 1.0)
     pub confidence: f64,
+    /// Contextual description of the causal relationship
     pub context: String,
+    /// Vector embedding for similarity search
     pub embedding: Vec<f32>,
+    /// Number of times this relationship has been observed
     pub observations: usize,
+    /// Unix timestamp when the edge was created
     pub timestamp: i64,
 }
 
 /// Learning session for RL training
 #[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
 pub struct LearningSession {
+    /// Unique identifier for the learning session
     pub id: String,
-    pub algorithm: String, // Q-Learning, DQN, PPO, etc
+    /// RL algorithm name (e.g., Q-Learning, DQN, PPO)
+    pub algorithm: String,
+    /// Dimensionality of the state space
     pub state_dim: usize,
+    /// Dimensionality of the action space
     pub action_dim: usize,
+    /// Collection of experiences for training
     pub experiences: Vec<Experience>,
-    pub model_params: Option<Vec<u8>>, // Serialized model
+    /// Serialized model parameters (algorithm-specific)
+    pub model_params: Option<Vec<u8>>,
+    /// Unix timestamp when the session was created
     pub created_at: i64,
+    /// Unix timestamp when the session was last updated
     pub updated_at: i64,
 }
 
 /// Single RL experience
 #[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
 pub struct Experience {
+    /// Current state vector
     pub state: Vec<f32>,
+    /// Action taken in the current state
     pub action: Vec<f32>,
+    /// Reward received after taking the action
     pub reward: f64,
+    /// Resulting state after the action
     pub next_state: Vec<f32>,
+    /// Whether this experience ends an episode
     pub done: bool,
+    /// Unix timestamp when the experience was recorded
     pub timestamp: i64,
 }
 
 /// Prediction with confidence interval
 #[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
 pub struct Prediction {
+    /// Predicted action vector
     pub action: Vec<f32>,
+    /// Lower bound of the 95% confidence interval
     pub confidence_lower: f64,
+    /// Upper bound of the 95% confidence interval
     pub confidence_upper: f64,
+    /// Mean confidence value
     pub mean_confidence: f64,
 }
 
 /// Query result with utility score
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UtilitySearchResult {
+    /// The underlying search result
     pub result: SearchResult,
+    /// Computed utility score: U = alpha*similarity + beta*causal_uplift - gamma*latency
     pub utility_score: f64,
+    /// Similarity component of the utility score
     pub similarity_score: f64,
+    /// Causal uplift component from confidence metadata
     pub causal_uplift: f64,
+    /// Latency penalty component
     pub latency_penalty: f64,
 }
 
 /// Main AgenticDB interface
 pub struct AgenticDB {
+    /// Underlying vector database for similarity search
     vector_db: Arc<VectorDB>,
+    /// Redb database for structured table storage
     db: Arc<Database>,
+    /// Dimensionality of vector embeddings
     dimensions: usize,
 }
 

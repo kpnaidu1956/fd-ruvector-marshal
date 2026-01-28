@@ -15,22 +15,26 @@ pub struct LockFreeCounter {
 }
 
 impl LockFreeCounter {
+    /// Creates a new counter with the specified initial value.
     pub fn new(initial: u64) -> Self {
         Self {
             value: CachePadded::new(AtomicU64::new(initial)),
         }
     }
 
+    /// Atomically increments the counter by 1, returning the previous value.
     #[inline]
     pub fn increment(&self) -> u64 {
         self.value.fetch_add(1, Ordering::Relaxed)
     }
 
+    /// Returns the current value of the counter.
     #[inline]
     pub fn get(&self) -> u64 {
         self.value.load(Ordering::Relaxed)
     }
 
+    /// Atomically adds delta to the counter, returning the previous value.
     #[inline]
     pub fn add(&self, delta: u64) -> u64 {
         self.value.fetch_add(delta, Ordering::Relaxed)
@@ -39,13 +43,18 @@ impl LockFreeCounter {
 
 /// Lock-free statistics collector
 pub struct LockFreeStats {
+    /// Count of query operations
     queries: CachePadded<AtomicU64>,
+    /// Count of insert operations
     inserts: CachePadded<AtomicU64>,
+    /// Count of delete operations
     deletes: CachePadded<AtomicU64>,
+    /// Cumulative latency in nanoseconds
     total_latency_ns: CachePadded<AtomicU64>,
 }
 
 impl LockFreeStats {
+    /// Creates a new statistics collector with all counters initialized to zero.
     pub fn new() -> Self {
         Self {
             queries: CachePadded::new(AtomicU64::new(0)),
@@ -55,6 +64,7 @@ impl LockFreeStats {
         }
     }
 
+    /// Records a query operation with the given latency in nanoseconds.
     #[inline]
     pub fn record_query(&self, latency_ns: u64) {
         self.queries.fetch_add(1, Ordering::Relaxed);
@@ -62,16 +72,19 @@ impl LockFreeStats {
             .fetch_add(latency_ns, Ordering::Relaxed);
     }
 
+    /// Records an insert operation.
     #[inline]
     pub fn record_insert(&self) {
         self.inserts.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Records a delete operation.
     #[inline]
     pub fn record_delete(&self) {
         self.deletes.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Returns a snapshot of the current statistics.
     pub fn snapshot(&self) -> StatsSnapshot {
         let queries = self.queries.load(Ordering::Relaxed);
         let total_latency = self.total_latency_ns.load(Ordering::Relaxed);
@@ -95,23 +108,33 @@ impl Default for LockFreeStats {
     }
 }
 
+/// A point-in-time snapshot of statistics.
 #[derive(Debug, Clone)]
 pub struct StatsSnapshot {
+    /// Total number of query operations recorded.
     pub queries: u64,
+    /// Total number of insert operations recorded.
     pub inserts: u64,
+    /// Total number of delete operations recorded.
     pub deletes: u64,
+    /// Average latency per query in nanoseconds.
     pub avg_latency_ns: u64,
 }
 
 /// Lock-free object pool for reducing allocations
 pub struct ObjectPool<T> {
+    /// Queue holding available pooled objects
     queue: Arc<SegQueue<T>>,
+    /// Factory function to create new objects
     factory: Arc<dyn Fn() -> T + Send + Sync>,
+    /// Maximum number of objects in the pool
     capacity: usize,
+    /// Current count of allocated objects
     allocated: AtomicUsize,
 }
 
 impl<T> ObjectPool<T> {
+    /// Creates a new object pool with the given capacity and factory function.
     pub fn new<F>(capacity: usize, factory: F) -> Self
     where
         F: Fn() -> T + Send + Sync + 'static,
@@ -151,15 +174,19 @@ impl<T> ObjectPool<T> {
 
 /// RAII wrapper for pooled objects
 pub struct PooledObject<T> {
+    /// The wrapped object, returned to pool on drop
     object: Option<T>,
+    /// Reference to the parent pool for returning the object
     pool: Arc<SegQueue<T>>,
 }
 
 impl<T> PooledObject<T> {
+    /// Returns a reference to the pooled object.
     pub fn get(&self) -> &T {
         self.object.as_ref().unwrap()
     }
 
+    /// Returns a mutable reference to the pooled object.
     pub fn get_mut(&mut self) -> &mut T {
         self.object.as_mut().unwrap()
     }
@@ -189,31 +216,37 @@ impl<T> std::ops::DerefMut for PooledObject<T> {
 
 /// Lock-free ring buffer for work distribution
 pub struct LockFreeWorkQueue<T> {
+    /// Bounded lock-free queue backing this work queue
     queue: ArrayQueue<T>,
 }
 
 impl<T> LockFreeWorkQueue<T> {
+    /// Creates a new work queue with the specified capacity.
     pub fn new(capacity: usize) -> Self {
         Self {
             queue: ArrayQueue::new(capacity),
         }
     }
 
+    /// Attempts to push an item to the queue, returning the item on failure.
     #[inline]
     pub fn try_push(&self, item: T) -> Result<(), T> {
         self.queue.push(item)
     }
 
+    /// Attempts to pop an item from the queue, returning None if empty.
     #[inline]
     pub fn try_pop(&self) -> Option<T> {
         self.queue.pop()
     }
 
+    /// Returns the current number of items in the queue.
     #[inline]
     pub fn len(&self) -> usize {
         self.queue.len()
     }
 
+    /// Returns true if the queue contains no items.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()

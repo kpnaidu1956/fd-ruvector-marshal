@@ -1,5 +1,6 @@
 //! API routes for the RAG server
 
+pub mod analytics;
 pub mod documents;
 pub mod files;
 pub mod jobs;
@@ -46,6 +47,20 @@ pub fn api_routes(#[cfg_attr(not(feature = "gcp"), allow(unused_variables))] max
         .route("/v2/query", post(query::query_rag_v2))
         // String search
         .route("/string-search", post(query::string_search))
+        // Analytics endpoints
+        .route("/analytics/info", get(analytics::analytics_info))
+        .route("/analytics/analysis/task/:task_id", post(analytics::analyze_task))
+        .route("/analytics/analysis/goal/:goal_id", post(analytics::analyze_goal))
+        .route("/analytics/jobs/:job_id", get(analytics::get_analysis_job))
+        .route("/analytics/timeline/task/:task_id", get(analytics::get_task_timeline))
+        .route("/analytics/timeline/goal/:goal_id", get(analytics::get_goal_timeline))
+        .route("/analytics/interactions/task/:task_id", get(analytics::get_task_interactions))
+        .route("/analytics/interactions/search", post(analytics::search_interactions))
+        .route("/analytics/patterns", get(analytics::list_patterns))
+        .route("/analytics/patterns/learn", post(analytics::trigger_pattern_learning))
+        .route("/analytics/recommendations/task/:task_id", get(analytics::get_task_recommendations))
+        .route("/analytics/recommendations/organization", get(analytics::get_org_recommendations))
+        .route("/analytics/recommendations/:id/feedback", post(analytics::submit_recommendation_feedback))
         // Info and capabilities
         .route("/info", get(info))
         .route("/capabilities", get(capabilities));

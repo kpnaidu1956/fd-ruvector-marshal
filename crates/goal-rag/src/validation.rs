@@ -35,6 +35,8 @@ static ORG_ID_PATTERN: Lazy<Regex> = Lazy::new(|| {
 
 /// Safe filename pattern: alphanumeric, hyphens, underscores, dots, spaces
 /// No path separators, no special characters
+/// Note: Reserved for stricter filename validation in future
+#[allow(dead_code)]
 static SAFE_FILENAME_PATTERN: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^[a-zA-Z0-9][a-zA-Z0-9\-_\.\s]*[a-zA-Z0-9\.]$|^[a-zA-Z0-9]\.?[a-zA-Z0-9]*$")
         .expect("Invalid filename regex")

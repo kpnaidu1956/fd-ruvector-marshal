@@ -5,7 +5,7 @@
 //! - BM25 keyword matching (lexical)
 //! - Weighted combination of scores
 
-use crate::error::{Result, RuvectorError};
+use crate::error::Result;
 use crate::types::{SearchResult, VectorId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -53,8 +53,9 @@ pub struct BM25 {
     pub doc_lengths: HashMap<VectorId, usize>,
     /// Inverted index: term -> set of doc IDs
     pub inverted_index: HashMap<String, HashSet<VectorId>>,
-    /// BM25 parameters
+    /// BM25 k1 parameter controlling term frequency saturation
     pub k1: f32,
+    /// BM25 b parameter controlling document length normalization
     pub b: f32,
 }
 

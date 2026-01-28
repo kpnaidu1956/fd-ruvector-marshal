@@ -43,9 +43,13 @@ pub struct TemporalHyperedge {
 /// Temporal granularity for indexing
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum TemporalGranularity {
+    /// Hourly time buckets (3600 seconds)
     Hourly,
+    /// Daily time buckets (86400 seconds)
     Daily,
+    /// Monthly time buckets (approximately 30 days)
     Monthly,
+    /// Yearly time buckets (approximately 365 days)
     Yearly,
 }
 
@@ -298,8 +302,11 @@ impl HypergraphIndex {
 /// Hypergraph statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HypergraphStats {
+    /// Total number of entity nodes in the hypergraph
     pub total_entities: usize,
+    /// Total number of hyperedges connecting entities
     pub total_hyperedges: usize,
+    /// Average number of hyperedges per entity
     pub avg_entity_degree: f32,
 }
 

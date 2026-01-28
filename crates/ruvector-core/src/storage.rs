@@ -203,7 +203,7 @@ impl VectorStorage {
     /// Delete a vector by ID
     pub fn delete(&self, id: &str) -> Result<bool> {
         let write_txn = self.db.begin_write()?;
-        let mut deleted = false;
+        let deleted;
 
         {
             let mut table = write_txn.open_table(VECTORS_TABLE)?;

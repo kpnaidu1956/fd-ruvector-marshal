@@ -4,9 +4,8 @@
 //! Detects mode collapse, degeneracy, and topological structure.
 
 use crate::error::{Result, RuvectorError};
-use ndarray::{Array1, Array2};
+use ndarray::Array2;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
 
 /// Topological analyzer for embeddings
 pub struct TopologicalAnalyzer {

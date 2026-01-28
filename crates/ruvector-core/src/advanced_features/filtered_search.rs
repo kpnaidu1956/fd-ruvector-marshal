@@ -5,7 +5,7 @@
 //! - Post-filtering: Traverse graph then apply filters
 //! - Automatic strategy selection based on filter selectivity
 
-use crate::error::{Result, RuvectorError};
+use crate::error::Result;
 use crate::types::{SearchResult, VectorId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

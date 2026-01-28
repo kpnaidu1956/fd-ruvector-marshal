@@ -211,7 +211,7 @@ impl<T> std::ops::DerefMut for ArenaVec<T> {
     }
 }
 
-/// Thread-local arena for per-thread allocations
+// Thread-local arena for per-thread allocations
 thread_local! {
     static THREAD_ARENA: RefCell<Arena> = RefCell::new(Arena::with_default_chunk_size());
 }

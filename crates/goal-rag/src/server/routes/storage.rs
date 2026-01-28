@@ -11,19 +11,25 @@
 //! - Rate limiting via production controls
 
 use axum::{
-    body::Body,
     extract::{Multipart, Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
-    response::Response,
+    http::HeaderMap,
     Json,
+    response::Response,
+};
+#[cfg(feature = "gcp")]
+use axum::{
+    body::Body,
+    http::{header, StatusCode},
 };
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::server::state::AppState;
+#[cfg(feature = "gcp")]
 use crate::validation::validate_organization_id;
 
 /// Allowed storage buckets for frontend files
+#[cfg(feature = "gcp")]
 const ALLOWED_BUCKETS: &[&str] = &[
     "task-attachments",
     "user-avatars",
@@ -33,9 +39,11 @@ const ALLOWED_BUCKETS: &[&str] = &[
 ];
 
 /// Maximum file size for storage uploads (50 MB)
+#[cfg(feature = "gcp")]
 const MAX_STORAGE_FILE_SIZE: u64 = 50 * 1024 * 1024;
 
 /// Maximum message/path length
+#[cfg(feature = "gcp")]
 const MAX_PATH_LENGTH: usize = 500;
 
 /// Response for file upload
@@ -84,6 +92,7 @@ pub struct ListStorageQuery {
 }
 
 /// Validate bucket name
+#[cfg(feature = "gcp")]
 fn validate_bucket(bucket: &str) -> Result<()> {
     if !ALLOWED_BUCKETS.contains(&bucket) {
         return Err(Error::Validation(format!(
@@ -103,6 +112,7 @@ fn validate_bucket(bucket: &str) -> Result<()> {
 /// - Control characters
 /// - Empty path segments
 /// - Excessive depth/length
+#[cfg(feature = "gcp")]
 fn validate_storage_path(path: &str) -> Result<String> {
     // Reject empty paths
     if path.is_empty() {
@@ -165,6 +175,7 @@ fn validate_storage_path(path: &str) -> Result<String> {
 
 /// Sanitize filename for Content-Disposition header
 /// Removes characters that could cause header injection
+#[cfg(feature = "gcp")]
 fn sanitize_filename_for_header(filename: &str) -> String {
     filename
         .chars()
@@ -177,6 +188,7 @@ fn sanitize_filename_for_header(filename: &str) -> String {
 }
 
 /// Build public URL from request headers or fallback
+#[cfg(feature = "gcp")]
 fn build_public_url(headers: &HeaderMap, bucket: &str, org_id: &str, path: &str) -> String {
     // Try to get host from X-Forwarded-Host or Host header
     let host = headers

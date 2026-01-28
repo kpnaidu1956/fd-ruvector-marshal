@@ -11,7 +11,7 @@ use rayon::prelude::*;
 pub struct FlatIndex {
     vectors: DashMap<VectorId, Vec<f32>>,
     metric: DistanceMetric,
-    dimensions: usize,
+    _dimensions: usize,
 }
 
 impl FlatIndex {
@@ -20,7 +20,7 @@ impl FlatIndex {
         Self {
             vectors: DashMap::new(),
             metric,
-            dimensions,
+            _dimensions: dimensions,
         }
     }
 }

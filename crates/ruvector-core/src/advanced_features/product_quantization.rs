@@ -62,10 +62,10 @@ impl LookupTable {
     /// Create a new lookup table for a query vector
     pub fn new(query: &[f32], codebooks: &[Vec<Vec<f32>>], metric: DistanceMetric) -> Self {
         let num_subspaces = codebooks.len();
+        let subspace_dim = query.len() / num_subspaces;
         let mut tables = Vec::with_capacity(num_subspaces);
 
         for (subspace_idx, codebook) in codebooks.iter().enumerate() {
-            let subspace_dim = query.len() / num_subspaces;
             let start = subspace_idx * subspace_dim;
             let end = start + subspace_dim;
             let query_subvector = &query[start..end];
@@ -269,7 +269,6 @@ impl EnhancedPQ {
             )));
         }
 
-        let subspace_dim = self.dimensions / self.config.num_subspaces;
         let mut result = Vec::with_capacity(self.dimensions);
 
         for (subspace_idx, &code) in codes.iter().enumerate() {

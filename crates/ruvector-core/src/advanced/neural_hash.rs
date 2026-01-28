@@ -3,7 +3,6 @@
 //! Learn similarity-preserving binary projections for extreme compression.
 //! Achieves 32-128x compression with 90-95% recall preservation.
 
-use crate::error::{Result, RuvectorError};
 use crate::types::VectorId;
 use ndarray::{Array1, Array2};
 use rand::Rng;
@@ -342,9 +341,13 @@ impl<H: NeuralHash + Clone> HashIndex<H> {
 /// Hash index statistics
 #[derive(Debug, Clone)]
 pub struct HashIndexStats {
+    /// Total number of vectors stored in the index
     pub total_vectors: usize,
+    /// Number of unique hash buckets
     pub num_buckets: usize,
+    /// Average number of vectors per bucket
     pub avg_bucket_size: f32,
+    /// Compression ratio (original size / compressed size)
     pub compression_ratio: f32,
 }
 

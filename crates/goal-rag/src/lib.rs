@@ -4,6 +4,7 @@
 //! It supports multiple file formats, local ONNX embeddings, and LLM-powered answer generation
 //! with precise source citations.
 
+pub mod analytics;
 pub mod config;
 pub mod embeddings;
 pub mod error;
