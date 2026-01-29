@@ -176,48 +176,45 @@ impl Recommender {
         timeline: &WorkflowTimeline,
         pattern: &WorkflowPattern,
     ) -> Option<EfficiencyRecommendation> {
-        match pattern.pattern_type {
-            PatternType::Failure => {
-                // Check if timeline shows signs of the failure pattern
-                if let Some(criteria) = pattern.criteria.as_object() {
-                    if let Some(min_clarifications) = criteria.get("min_clarification_requests").and_then(|v| v.as_i64()) {
-                        let clarification_count = timeline.key_events.iter()
-                            .filter(|e| e.event_type.contains("request_clarification"))
-                            .count();
+        // Check if timeline shows signs of the failure pattern
+        if pattern.pattern_type == PatternType::Failure {
+            if let Some(criteria) = pattern.criteria.as_object() {
+                if let Some(min_clarifications) = criteria.get("min_clarification_requests").and_then(|v| v.as_i64()) {
+                    let clarification_count = timeline.key_events.iter()
+                        .filter(|e| e.event_type.contains("request_clarification"))
+                        .count();
 
-                        if clarification_count >= min_clarifications as usize {
-                            return Some(EfficiencyRecommendation {
-                                id: Uuid::new_v4(),
-                                organization_id: timeline.organization_id.clone(),
-                                target_type: RecommendationTarget::Task,
-                                target_id: Some(timeline.entity_id.clone()),
-                                recommendation_type: RecommendationType::Process,
-                                title: "High clarification count detected".to_string(),
-                                description: format!(
-                                    "This task has {} clarification requests, which is associated with higher failure rates. Consider pausing to align on requirements.",
-                                    clarification_count
-                                ),
-                                suggested_actions: vec![
-                                    "Schedule a requirements clarification meeting".to_string(),
-                                    "Document all open questions".to_string(),
-                                    "Get explicit sign-off on requirements before proceeding".to_string(),
-                                ],
-                                based_on_patterns: vec![pattern.id.to_string()],
-                                evidence: serde_json::json!({
-                                    "clarification_count": clarification_count,
-                                    "pattern_threshold": min_clarifications,
-                                }),
-                                priority: UrgencyLevel::High,
-                                estimated_time_savings_hours: pattern.avg_time_impact_hours,
-                                status: RecommendationStatus::Pending,
-                                user_feedback: None,
-                                generated_at: Utc::now(),
-                            });
-                        }
+                    if clarification_count >= min_clarifications as usize {
+                        return Some(EfficiencyRecommendation {
+                            id: Uuid::new_v4(),
+                            organization_id: timeline.organization_id.clone(),
+                            target_type: RecommendationTarget::Task,
+                            target_id: Some(timeline.entity_id.clone()),
+                            recommendation_type: RecommendationType::Process,
+                            title: "High clarification count detected".to_string(),
+                            description: format!(
+                                "This task has {} clarification requests, which is associated with higher failure rates. Consider pausing to align on requirements.",
+                                clarification_count
+                            ),
+                            suggested_actions: vec![
+                                "Schedule a requirements clarification meeting".to_string(),
+                                "Document all open questions".to_string(),
+                                "Get explicit sign-off on requirements before proceeding".to_string(),
+                            ],
+                            based_on_patterns: vec![pattern.id.to_string()],
+                            evidence: serde_json::json!({
+                                "clarification_count": clarification_count,
+                                "pattern_threshold": min_clarifications,
+                            }),
+                            priority: UrgencyLevel::High,
+                            estimated_time_savings_hours: pattern.avg_time_impact_hours,
+                            status: RecommendationStatus::Pending,
+                            user_feedback: None,
+                            generated_at: Utc::now(),
+                        });
                     }
                 }
             }
-            _ => {}
         }
 
         None

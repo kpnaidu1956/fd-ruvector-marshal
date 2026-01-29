@@ -61,7 +61,7 @@ impl InteractionType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "request_clarification" => Self::RequestClarification,
             "request_resources" => Self::RequestResources,
@@ -102,7 +102,7 @@ impl UrgencyLevel {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "low" => Self::Low,
             "medium" => Self::Medium,
@@ -133,7 +133,7 @@ impl InteractionSource {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "task_comment" => Self::TaskComment,
             "goal_comment" => Self::GoalComment,
@@ -301,7 +301,7 @@ impl PatternType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "success" => Self::Success,
             "failure" => Self::Failure,
@@ -356,7 +356,7 @@ impl RecommendationType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "process" => Self::Process,
             "communication" => Self::Communication,
@@ -388,7 +388,7 @@ impl RecommendationTarget {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "task" => Self::Task,
             "goal" => Self::Goal,
@@ -419,7 +419,7 @@ impl RecommendationStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "pending" => Self::Pending,
             "accepted" => Self::Accepted,
@@ -482,7 +482,7 @@ impl AnalysisJobStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "pending" => Self::Pending,
             "fetching_data" => Self::FetchingData,

@@ -217,7 +217,7 @@ async fn handle_socket(socket: WebSocket) {
     let connected_json = serde_json::to_string(&connected)
         .unwrap_or_else(|_| r#"{"type":"error","message":"Serialization failed"}"#.to_string());
 
-    if sender.send(Message::Text(connected_json.into())).await.is_err() {
+    if sender.send(Message::Text(connected_json)).await.is_err() {
         ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
         return;
     }
@@ -238,7 +238,7 @@ async fn handle_socket(socket: WebSocket) {
                     };
                     let json = serde_json::to_string(&error)
                         .unwrap_or_else(|_| r#"{"type":"error","message":"Message too large"}"#.to_string());
-                    if sender.send(Message::Text(json.into())).await.is_err() {
+                    if sender.send(Message::Text(json)).await.is_err() {
                         break;
                     }
                     continue;
@@ -250,7 +250,7 @@ async fn handle_socket(socket: WebSocket) {
                         format!(r#"{{"type":"error","message":"Serialization failed: {}","code":"INTERNAL_ERROR"}}"#, e)
                     });
 
-                if sender.send(Message::Text(json.into())).await.is_err() {
+                if sender.send(Message::Text(json)).await.is_err() {
                     break;
                 }
             }

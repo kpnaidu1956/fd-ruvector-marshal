@@ -191,6 +191,181 @@ impl AnalyticsDb {
             CREATE INDEX IF NOT EXISTS idx_aj_org ON analysis_jobs(organization_id);
             CREATE INDEX IF NOT EXISTS idx_aj_entity ON analysis_jobs(entity_type, entity_id);
             CREATE INDEX IF NOT EXISTS idx_aj_status ON analysis_jobs(status);
+
+            -- ==================== Phase 6: Team & Organization Aggregations ====================
+
+            -- Team memberships (team = manager + direct reports)
+            CREATE TABLE IF NOT EXISTS team_memberships (
+                id TEXT PRIMARY KEY,
+                organization_id TEXT NOT NULL,
+                team_id TEXT NOT NULL,          -- manager's user_id
+                team_name TEXT NOT NULL,        -- manager's name
+                user_id TEXT NOT NULL,
+                role TEXT DEFAULT 'member',     -- 'manager' or 'member'
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(organization_id, team_id, user_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_tm_org_team ON team_memberships(organization_id, team_id);
+            CREATE INDEX IF NOT EXISTS idx_tm_org_user ON team_memberships(organization_id, user_id);
+
+            -- Interaction type aggregations (time series)
+            CREATE TABLE IF NOT EXISTS interaction_type_aggregations (
+                id TEXT PRIMARY KEY,
+                organization_id TEXT NOT NULL,
+                team_id TEXT,                   -- NULL for org-level
+                period_start TEXT NOT NULL,
+                period_end TEXT NOT NULL,
+                period_type TEXT NOT NULL,      -- 'daily', 'weekly', 'monthly'
+                type_counts TEXT NOT NULL,      -- JSON: {"blocker": 5, ...}
+                total_interactions INTEGER NOT NULL,
+                clarification_ratio REAL,
+                blocker_ratio REAL,
+                escalation_ratio REAL,
+                computed_at TEXT NOT NULL,
+                UNIQUE(organization_id, team_id, period_start, period_type)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_ita_org_period ON interaction_type_aggregations(organization_id, period_start);
+            CREATE INDEX IF NOT EXISTS idx_ita_team_period ON interaction_type_aggregations(organization_id, team_id, period_start);
+
+            -- Sentiment aggregations
+            CREATE TABLE IF NOT EXISTS sentiment_aggregations (
+                id TEXT PRIMARY KEY,
+                organization_id TEXT NOT NULL,
+                team_id TEXT,
+                period_start TEXT NOT NULL,
+                period_end TEXT NOT NULL,
+                period_type TEXT NOT NULL,
+                avg_sentiment REAL NOT NULL,
+                min_sentiment REAL,
+                max_sentiment REAL,
+                sentiment_std_dev REAL,
+                positive_count INTEGER,
+                neutral_count INTEGER,
+                negative_count INTEGER,
+                sentiment_by_type TEXT,         -- JSON
+                rolling_7day_avg REAL,
+                rolling_30day_avg REAL,
+                total_interactions INTEGER NOT NULL,
+                computed_at TEXT NOT NULL,
+                UNIQUE(organization_id, team_id, period_start, period_type)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_sa_org_period ON sentiment_aggregations(organization_id, period_start);
+            CREATE INDEX IF NOT EXISTS idx_sa_team_period ON sentiment_aggregations(organization_id, team_id, period_start);
+
+            -- Bottleneck aggregations
+            CREATE TABLE IF NOT EXISTS bottleneck_aggregations (
+                id TEXT PRIMARY KEY,
+                organization_id TEXT NOT NULL,
+                team_id TEXT,
+                period_start TEXT NOT NULL,
+                period_end TEXT NOT NULL,
+                period_type TEXT NOT NULL,
+                type_counts TEXT NOT NULL,      -- JSON
+                type_total_hours TEXT NOT NULL, -- JSON
+                type_avg_hours TEXT NOT NULL,   -- JSON
+                total_bottlenecks INTEGER NOT NULL,
+                total_hours_lost REAL,
+                avg_bottleneck_duration REAL,
+                trend_direction TEXT,           -- 'improving', 'worsening', 'stable'
+                trend_percent_change REAL,
+                computed_at TEXT NOT NULL,
+                UNIQUE(organization_id, team_id, period_start, period_type)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_ba_org_period ON bottleneck_aggregations(organization_id, period_start);
+            CREATE INDEX IF NOT EXISTS idx_ba_team_period ON bottleneck_aggregations(organization_id, team_id, period_start);
+
+            -- Participation network edges
+            CREATE TABLE IF NOT EXISTS participation_edges (
+                id TEXT PRIMARY KEY,
+                organization_id TEXT NOT NULL,
+                team_id TEXT,                   -- NULL for cross-team
+                from_user_id TEXT NOT NULL,
+                to_user_id TEXT NOT NULL,
+                interaction_count INTEGER NOT NULL,
+                avg_sentiment REAL,
+                type_breakdown TEXT,            -- JSON
+                period_start TEXT NOT NULL,
+                period_end TEXT NOT NULL,
+                weight REAL,
+                computed_at TEXT NOT NULL,
+                UNIQUE(organization_id, from_user_id, to_user_id, period_start)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_pe_org ON participation_edges(organization_id);
+            CREATE INDEX IF NOT EXISTS idx_pe_team ON participation_edges(organization_id, team_id);
+            CREATE INDEX IF NOT EXISTS idx_pe_from ON participation_edges(organization_id, from_user_id);
+            CREATE INDEX IF NOT EXISTS idx_pe_to ON participation_edges(organization_id, to_user_id);
+
+            -- Participation metrics (per user, per period)
+            CREATE TABLE IF NOT EXISTS participation_metrics (
+                id TEXT PRIMARY KEY,
+                organization_id TEXT NOT NULL,
+                team_id TEXT,
+                user_id TEXT NOT NULL,
+                period_start TEXT NOT NULL,
+                period_end TEXT NOT NULL,
+                period_type TEXT NOT NULL,
+                degree_centrality REAL,
+                betweenness_centrality REAL,
+                closeness_centrality REAL,
+                total_interactions_sent INTEGER,
+                total_interactions_received INTEGER,
+                unique_collaborators INTEGER,
+                is_connector INTEGER,           -- Boolean
+                is_bottleneck INTEGER,          -- Boolean
+                computed_at TEXT NOT NULL,
+                UNIQUE(organization_id, user_id, period_start, period_type)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_pm_org_user ON participation_metrics(organization_id, user_id);
+            CREATE INDEX IF NOT EXISTS idx_pm_team ON participation_metrics(organization_id, team_id);
+
+            -- Intervention outcomes (for learning)
+            CREATE TABLE IF NOT EXISTS intervention_outcomes (
+                id TEXT PRIMARY KEY,
+                organization_id TEXT NOT NULL,
+                recommendation_id TEXT NOT NULL,
+                intervention_type TEXT NOT NULL,
+                intervention_date TEXT NOT NULL,
+                outcome_measured_date TEXT,
+                outcome_type TEXT,
+                outcome_value REAL,
+                pre_intervention_metrics TEXT,
+                post_intervention_metrics TEXT,
+                confidence_score REAL,
+                learned_pattern_id TEXT,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_io_org ON intervention_outcomes(organization_id);
+            CREATE INDEX IF NOT EXISTS idx_io_rec ON intervention_outcomes(recommendation_id);
+            CREATE INDEX IF NOT EXISTS idx_io_type ON intervention_outcomes(intervention_type);
+
+            -- Aggregation jobs (batch processing)
+            CREATE TABLE IF NOT EXISTS aggregation_jobs (
+                id TEXT PRIMARY KEY,
+                organization_id TEXT NOT NULL,
+                job_type TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                team_id TEXT,
+                period_start TEXT NOT NULL,
+                period_end TEXT NOT NULL,
+                period_type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                progress_percent INTEGER DEFAULT 0,
+                records_processed INTEGER DEFAULT 0,
+                error TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_agj_org_status ON aggregation_jobs(organization_id, status);
         "#)
         .map_err(|e| Error::Internal(format!("Failed to run analytics migrations: {}", e)))?;
 
@@ -577,6 +752,64 @@ impl AnalyticsDb {
         Ok(count > 0)
     }
 
+    /// Get all recommendations for an organization (any status)
+    pub fn get_recommendations_for_organization(&self, organization_id: &str, limit: usize) -> Result<Vec<EfficiencyRecommendation>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
+            "SELECT * FROM efficiency_recommendations WHERE organization_id = ?1 ORDER BY generated_at DESC LIMIT ?2"
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let records = stmt.query_map(params![organization_id, limit as i64], row_to_recommendation)
+            .map_err(|e| Error::Internal(format!("Failed to query: {}", e)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(records)
+    }
+
+    /// Get recommendations based on a specific pattern
+    pub fn get_recommendations_by_pattern(&self, organization_id: &str, pattern_id: &Uuid) -> Result<Vec<EfficiencyRecommendation>> {
+        let conn = self.conn.lock();
+        let pattern_json_match = format!("%{}%", pattern_id);
+
+        let mut stmt = conn.prepare(
+            "SELECT * FROM efficiency_recommendations WHERE organization_id = ?1 AND based_on_patterns LIKE ?2 ORDER BY generated_at DESC"
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let records = stmt.query_map(params![organization_id, pattern_json_match], row_to_recommendation)
+            .map_err(|e| Error::Internal(format!("Failed to query: {}", e)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(records)
+    }
+
+    /// Get active patterns for an organization
+    pub fn get_active_patterns(&self, organization_id: &str) -> Result<Vec<WorkflowPattern>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
+            "SELECT * FROM workflow_patterns WHERE organization_id = ?1 AND is_active = 1 ORDER BY confidence_score DESC"
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let records = stmt.query_map(params![organization_id], row_to_pattern)
+            .map_err(|e| Error::Internal(format!("Failed to query patterns: {}", e)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(records)
+    }
+
+    /// Update pattern confidence score
+    pub fn update_pattern_confidence(&self, pattern_id: &Uuid, new_confidence: f32) -> Result<bool> {
+        let conn = self.conn.lock();
+        let count = conn.execute(
+            "UPDATE workflow_patterns SET confidence_score = ?2, updated_at = ?3 WHERE id = ?1",
+            params![pattern_id.to_string(), new_confidence, Utc::now().to_rfc3339()],
+        ).map_err(|e| Error::Internal(format!("Failed to update pattern confidence: {}", e)))?;
+
+        Ok(count > 0)
+    }
+
     // ==================== Analysis Jobs ====================
 
     /// Create an analysis job
@@ -665,6 +898,559 @@ impl AnalyticsDb {
 
         Ok(record)
     }
+
+    // ==================== Team Memberships ====================
+
+    /// Clear all team memberships for an organization (for sync)
+    pub fn clear_team_memberships(&self, organization_id: &str) -> Result<()> {
+        let conn = self.conn.lock();
+        conn.execute(
+            "DELETE FROM team_memberships WHERE organization_id = ?1",
+            params![organization_id],
+        ).map_err(|e| Error::Internal(format!("Failed to clear team memberships: {}", e)))?;
+        Ok(())
+    }
+
+    /// Insert a team membership
+    pub fn insert_team_membership(&self, membership: &super::aggregation_types::TeamMembership) -> Result<()> {
+        let conn = self.conn.lock();
+        conn.execute(
+            r#"
+            INSERT INTO team_memberships (
+                id, organization_id, team_id, team_name, user_id, role, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            ON CONFLICT(organization_id, team_id, user_id) DO UPDATE SET
+                team_name = excluded.team_name,
+                role = excluded.role,
+                updated_at = excluded.updated_at
+            "#,
+            params![
+                membership.id.to_string(),
+                membership.organization_id,
+                membership.team_id,
+                membership.team_name,
+                membership.user_id,
+                membership.role.as_str(),
+                membership.created_at.to_rfc3339(),
+                membership.updated_at.to_rfc3339(),
+            ],
+        ).map_err(|e| Error::Internal(format!("Failed to insert team membership: {}", e)))?;
+        Ok(())
+    }
+
+    /// List all teams in an organization
+    pub fn list_teams(&self, organization_id: &str) -> Result<Vec<super::team_manager::TeamInfo>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT team_id, team_name, COUNT(*) as member_count
+            FROM team_memberships
+            WHERE organization_id = ?1
+            GROUP BY team_id, team_name
+            ORDER BY team_name
+            "#
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let teams = stmt.query_map(params![organization_id], |row| {
+            Ok(super::team_manager::TeamInfo {
+                team_id: row.get(0)?,
+                team_name: row.get(1)?,
+                member_count: row.get::<_, i32>(2)? as u32,
+            })
+        })
+        .map_err(|e| Error::Internal(format!("Failed to query teams: {}", e)))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(teams)
+    }
+
+    /// Get members of a team
+    pub fn get_team_members(
+        &self,
+        organization_id: &str,
+        team_id: &str,
+    ) -> Result<Vec<super::aggregation_types::TeamMembership>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
+            "SELECT * FROM team_memberships WHERE organization_id = ?1 AND team_id = ?2 ORDER BY role DESC, user_id"
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let members = stmt.query_map(params![organization_id, team_id], row_to_team_membership)
+            .map_err(|e| Error::Internal(format!("Failed to query team members: {}", e)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(members)
+    }
+
+    /// Get the team a user belongs to
+    pub fn get_user_team(
+        &self,
+        organization_id: &str,
+        user_id: &str,
+    ) -> Result<Option<super::aggregation_types::TeamMembership>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
+            "SELECT * FROM team_memberships WHERE organization_id = ?1 AND user_id = ?2 LIMIT 1"
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let membership = stmt.query_row(params![organization_id, user_id], row_to_team_membership)
+            .optional()
+            .map_err(|e| Error::Internal(format!("Failed to query user team: {}", e)))?;
+
+        Ok(membership)
+    }
+
+    /// Remove a team member
+    pub fn remove_team_member(
+        &self,
+        organization_id: &str,
+        team_id: &str,
+        user_id: &str,
+    ) -> Result<bool> {
+        let conn = self.conn.lock();
+        let count = conn.execute(
+            "DELETE FROM team_memberships WHERE organization_id = ?1 AND team_id = ?2 AND user_id = ?3",
+            params![organization_id, team_id, user_id],
+        ).map_err(|e| Error::Internal(format!("Failed to remove team member: {}", e)))?;
+        Ok(count > 0)
+    }
+
+    // ==================== Interaction Type Aggregations ====================
+
+    /// Upsert an interaction type aggregation
+    pub fn upsert_interaction_type_aggregation(
+        &self,
+        agg: &super::aggregation_types::InteractionTypeAggregation,
+    ) -> Result<()> {
+        let conn = self.conn.lock();
+        let type_counts_json = serde_json::to_string(&agg.type_counts).unwrap_or_else(|_| "{}".to_string());
+
+        conn.execute(
+            r#"
+            INSERT INTO interaction_type_aggregations (
+                id, organization_id, team_id, period_start, period_end, period_type,
+                type_counts, total_interactions, clarification_ratio, blocker_ratio, escalation_ratio, computed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            ON CONFLICT(organization_id, team_id, period_start, period_type) DO UPDATE SET
+                type_counts = excluded.type_counts,
+                total_interactions = excluded.total_interactions,
+                clarification_ratio = excluded.clarification_ratio,
+                blocker_ratio = excluded.blocker_ratio,
+                escalation_ratio = excluded.escalation_ratio,
+                computed_at = excluded.computed_at
+            "#,
+            params![
+                agg.id.to_string(),
+                agg.organization_id,
+                agg.team_id,
+                agg.period_start.to_rfc3339(),
+                agg.period_end.to_rfc3339(),
+                agg.period_type.as_str(),
+                type_counts_json,
+                agg.total_interactions,
+                agg.clarification_ratio,
+                agg.blocker_ratio,
+                agg.escalation_ratio,
+                agg.computed_at.to_rfc3339(),
+            ],
+        ).map_err(|e| Error::Internal(format!("Failed to upsert interaction type aggregation: {}", e)))?;
+        Ok(())
+    }
+
+    /// Get interaction type aggregations for a period
+    pub fn get_interaction_type_aggregations(
+        &self,
+        organization_id: &str,
+        team_id: Option<&str>,
+        period_type: &str,
+        limit: usize,
+    ) -> Result<Vec<super::aggregation_types::InteractionTypeAggregation>> {
+        let conn = self.conn.lock();
+
+        let query = if team_id.is_some() {
+            "SELECT * FROM interaction_type_aggregations WHERE organization_id = ?1 AND team_id = ?2 AND period_type = ?3 ORDER BY period_start DESC LIMIT ?4"
+        } else {
+            "SELECT * FROM interaction_type_aggregations WHERE organization_id = ?1 AND team_id IS NULL AND period_type = ?2 ORDER BY period_start DESC LIMIT ?3"
+        };
+
+        let mut stmt = conn.prepare(query)
+            .map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let results: Vec<super::aggregation_types::InteractionTypeAggregation> = if let Some(tid) = team_id {
+            stmt.query_map(params![organization_id, tid, period_type, limit as i64], row_to_interaction_type_agg)
+                .map_err(|e| Error::Internal(format!("Failed to query: {}", e)))?
+                .filter_map(|r| r.ok())
+                .collect()
+        } else {
+            stmt.query_map(params![organization_id, period_type, limit as i64], row_to_interaction_type_agg)
+                .map_err(|e| Error::Internal(format!("Failed to query: {}", e)))?
+                .filter_map(|r| r.ok())
+                .collect()
+        };
+
+        Ok(results)
+    }
+
+    // ==================== Sentiment Aggregations ====================
+
+    /// Upsert a sentiment aggregation
+    pub fn upsert_sentiment_aggregation(
+        &self,
+        agg: &super::aggregation_types::SentimentAggregation,
+    ) -> Result<()> {
+        let conn = self.conn.lock();
+        let by_type_json = serde_json::to_string(&agg.sentiment_by_type).unwrap_or_else(|_| "{}".to_string());
+
+        conn.execute(
+            r#"
+            INSERT INTO sentiment_aggregations (
+                id, organization_id, team_id, period_start, period_end, period_type,
+                avg_sentiment, min_sentiment, max_sentiment, sentiment_std_dev,
+                positive_count, neutral_count, negative_count, sentiment_by_type,
+                rolling_7day_avg, rolling_30day_avg, total_interactions, computed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+            ON CONFLICT(organization_id, team_id, period_start, period_type) DO UPDATE SET
+                avg_sentiment = excluded.avg_sentiment,
+                min_sentiment = excluded.min_sentiment,
+                max_sentiment = excluded.max_sentiment,
+                sentiment_std_dev = excluded.sentiment_std_dev,
+                positive_count = excluded.positive_count,
+                neutral_count = excluded.neutral_count,
+                negative_count = excluded.negative_count,
+                sentiment_by_type = excluded.sentiment_by_type,
+                rolling_7day_avg = excluded.rolling_7day_avg,
+                rolling_30day_avg = excluded.rolling_30day_avg,
+                total_interactions = excluded.total_interactions,
+                computed_at = excluded.computed_at
+            "#,
+            params![
+                agg.id.to_string(),
+                agg.organization_id,
+                agg.team_id,
+                agg.period_start.to_rfc3339(),
+                agg.period_end.to_rfc3339(),
+                agg.period_type.as_str(),
+                agg.avg_sentiment,
+                agg.min_sentiment,
+                agg.max_sentiment,
+                agg.sentiment_std_dev,
+                agg.positive_count,
+                agg.neutral_count,
+                agg.negative_count,
+                by_type_json,
+                agg.rolling_7day_avg,
+                agg.rolling_30day_avg,
+                agg.total_interactions,
+                agg.computed_at.to_rfc3339(),
+            ],
+        ).map_err(|e| Error::Internal(format!("Failed to upsert sentiment aggregation: {}", e)))?;
+        Ok(())
+    }
+
+    // ==================== Bottleneck Aggregations ====================
+
+    /// Get bottleneck aggregation for a specific period
+    pub fn get_bottleneck_aggregation(
+        &self,
+        organization_id: &str,
+        team_id: Option<&str>,
+        period_start: &DateTime<Utc>,
+        period_type: &str,
+    ) -> Result<Option<super::aggregation_types::BottleneckAggregation>> {
+        let conn = self.conn.lock();
+
+        let query = if team_id.is_some() {
+            "SELECT * FROM bottleneck_aggregations WHERE organization_id = ?1 AND team_id = ?2 AND period_start = ?3 AND period_type = ?4 LIMIT 1"
+        } else {
+            "SELECT * FROM bottleneck_aggregations WHERE organization_id = ?1 AND team_id IS NULL AND period_start = ?2 AND period_type = ?3 LIMIT 1"
+        };
+
+        let mut stmt = conn.prepare(query)
+            .map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let result: Option<super::aggregation_types::BottleneckAggregation> = if let Some(tid) = team_id {
+            stmt.query_row(params![organization_id, tid, period_start.to_rfc3339(), period_type], row_to_bottleneck_agg)
+                .optional()
+                .map_err(|e| Error::Internal(format!("Failed to query: {}", e)))?
+        } else {
+            stmt.query_row(params![organization_id, period_start.to_rfc3339(), period_type], row_to_bottleneck_agg)
+                .optional()
+                .map_err(|e| Error::Internal(format!("Failed to query: {}", e)))?
+        };
+
+        Ok(result)
+    }
+
+    /// Upsert a bottleneck aggregation
+    pub fn upsert_bottleneck_aggregation(
+        &self,
+        agg: &super::aggregation_types::BottleneckAggregation,
+    ) -> Result<()> {
+        let conn = self.conn.lock();
+        let type_counts_json = serde_json::to_string(&agg.type_counts).unwrap_or_else(|_| "{}".to_string());
+        let total_hours_json = serde_json::to_string(&agg.type_total_hours).unwrap_or_else(|_| "{}".to_string());
+        let avg_hours_json = serde_json::to_string(&agg.type_avg_hours).unwrap_or_else(|_| "{}".to_string());
+
+        conn.execute(
+            r#"
+            INSERT INTO bottleneck_aggregations (
+                id, organization_id, team_id, period_start, period_end, period_type,
+                type_counts, type_total_hours, type_avg_hours, total_bottlenecks,
+                total_hours_lost, avg_bottleneck_duration, trend_direction, trend_percent_change, computed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            ON CONFLICT(organization_id, team_id, period_start, period_type) DO UPDATE SET
+                type_counts = excluded.type_counts,
+                type_total_hours = excluded.type_total_hours,
+                type_avg_hours = excluded.type_avg_hours,
+                total_bottlenecks = excluded.total_bottlenecks,
+                total_hours_lost = excluded.total_hours_lost,
+                avg_bottleneck_duration = excluded.avg_bottleneck_duration,
+                trend_direction = excluded.trend_direction,
+                trend_percent_change = excluded.trend_percent_change,
+                computed_at = excluded.computed_at
+            "#,
+            params![
+                agg.id.to_string(),
+                agg.organization_id,
+                agg.team_id,
+                agg.period_start.to_rfc3339(),
+                agg.period_end.to_rfc3339(),
+                agg.period_type.as_str(),
+                type_counts_json,
+                total_hours_json,
+                avg_hours_json,
+                agg.total_bottlenecks,
+                agg.total_hours_lost,
+                agg.avg_bottleneck_duration,
+                agg.trend_direction.as_str(),
+                agg.trend_percent_change,
+                agg.computed_at.to_rfc3339(),
+            ],
+        ).map_err(|e| Error::Internal(format!("Failed to upsert bottleneck aggregation: {}", e)))?;
+        Ok(())
+    }
+
+    // ==================== Participation Network ====================
+
+    /// Upsert a participation edge
+    pub fn upsert_participation_edge(
+        &self,
+        edge: &super::aggregation_types::ParticipationEdge,
+    ) -> Result<()> {
+        let conn = self.conn.lock();
+        let type_breakdown_json = serde_json::to_string(&edge.type_breakdown).unwrap_or_else(|_| "{}".to_string());
+
+        conn.execute(
+            r#"
+            INSERT INTO participation_edges (
+                id, organization_id, team_id, from_user_id, to_user_id,
+                interaction_count, avg_sentiment, type_breakdown, period_start, period_end, weight, computed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            ON CONFLICT(organization_id, from_user_id, to_user_id, period_start) DO UPDATE SET
+                team_id = excluded.team_id,
+                interaction_count = excluded.interaction_count,
+                avg_sentiment = excluded.avg_sentiment,
+                type_breakdown = excluded.type_breakdown,
+                weight = excluded.weight,
+                computed_at = excluded.computed_at
+            "#,
+            params![
+                edge.id.to_string(),
+                edge.organization_id,
+                edge.team_id,
+                edge.from_user_id,
+                edge.to_user_id,
+                edge.interaction_count,
+                edge.avg_sentiment,
+                type_breakdown_json,
+                edge.period_start.to_rfc3339(),
+                edge.period_end.to_rfc3339(),
+                edge.weight,
+                edge.computed_at.to_rfc3339(),
+            ],
+        ).map_err(|e| Error::Internal(format!("Failed to upsert participation edge: {}", e)))?;
+        Ok(())
+    }
+
+    /// Upsert participation metrics for a user
+    pub fn upsert_participation_metrics(
+        &self,
+        metrics: &super::aggregation_types::ParticipationMetrics,
+    ) -> Result<()> {
+        let conn = self.conn.lock();
+
+        conn.execute(
+            r#"
+            INSERT INTO participation_metrics (
+                id, organization_id, team_id, user_id, period_start, period_end, period_type,
+                degree_centrality, betweenness_centrality, closeness_centrality,
+                total_interactions_sent, total_interactions_received, unique_collaborators,
+                is_connector, is_bottleneck, computed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+            ON CONFLICT(organization_id, user_id, period_start, period_type) DO UPDATE SET
+                team_id = excluded.team_id,
+                degree_centrality = excluded.degree_centrality,
+                betweenness_centrality = excluded.betweenness_centrality,
+                closeness_centrality = excluded.closeness_centrality,
+                total_interactions_sent = excluded.total_interactions_sent,
+                total_interactions_received = excluded.total_interactions_received,
+                unique_collaborators = excluded.unique_collaborators,
+                is_connector = excluded.is_connector,
+                is_bottleneck = excluded.is_bottleneck,
+                computed_at = excluded.computed_at
+            "#,
+            params![
+                metrics.id.to_string(),
+                metrics.organization_id,
+                metrics.team_id,
+                metrics.user_id,
+                metrics.period_start.to_rfc3339(),
+                metrics.period_end.to_rfc3339(),
+                metrics.period_type.as_str(),
+                metrics.degree_centrality,
+                metrics.betweenness_centrality,
+                metrics.closeness_centrality,
+                metrics.total_interactions_sent,
+                metrics.total_interactions_received,
+                metrics.unique_collaborators,
+                metrics.is_connector as i32,
+                metrics.is_bottleneck as i32,
+                metrics.computed_at.to_rfc3339(),
+            ],
+        ).map_err(|e| Error::Internal(format!("Failed to upsert participation metrics: {}", e)))?;
+        Ok(())
+    }
+
+    // ==================== Intervention Outcomes ====================
+
+    /// Insert an intervention outcome
+    pub fn insert_intervention_outcome(
+        &self,
+        outcome: &super::aggregation_types::InterventionOutcome,
+    ) -> Result<()> {
+        let conn = self.conn.lock();
+        let pre_metrics_json = outcome.pre_intervention_metrics.as_ref()
+            .map(|v| serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string()));
+        let post_metrics_json = outcome.post_intervention_metrics.as_ref()
+            .map(|v| serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string()));
+
+        conn.execute(
+            r#"
+            INSERT INTO intervention_outcomes (
+                id, organization_id, recommendation_id, intervention_type, intervention_date,
+                outcome_measured_date, outcome_type, outcome_value,
+                pre_intervention_metrics, post_intervention_metrics,
+                confidence_score, learned_pattern_id, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            "#,
+            params![
+                outcome.id.to_string(),
+                outcome.organization_id,
+                outcome.recommendation_id.to_string(),
+                outcome.intervention_type,
+                outcome.intervention_date.to_rfc3339(),
+                outcome.outcome_measured_date.map(|d| d.to_rfc3339()),
+                outcome.outcome_type,
+                outcome.outcome_value,
+                pre_metrics_json,
+                post_metrics_json,
+                outcome.confidence_score,
+                outcome.learned_pattern_id.map(|id| id.to_string()),
+                outcome.created_at.to_rfc3339(),
+            ],
+        ).map_err(|e| Error::Internal(format!("Failed to insert intervention outcome: {}", e)))?;
+        Ok(())
+    }
+
+    /// Update intervention outcome with measured results
+    pub fn update_intervention_outcome(
+        &self,
+        id: &Uuid,
+        outcome_type: &str,
+        outcome_value: f64,
+        post_metrics: &serde_json::Value,
+    ) -> Result<bool> {
+        let conn = self.conn.lock();
+        let post_json = serde_json::to_string(post_metrics).unwrap_or_else(|_| "{}".to_string());
+
+        let count = conn.execute(
+            r#"
+            UPDATE intervention_outcomes SET
+                outcome_measured_date = ?2,
+                outcome_type = ?3,
+                outcome_value = ?4,
+                post_intervention_metrics = ?5
+            WHERE id = ?1
+            "#,
+            params![
+                id.to_string(),
+                Utc::now().to_rfc3339(),
+                outcome_type,
+                outcome_value,
+                post_json,
+            ],
+        ).map_err(|e| Error::Internal(format!("Failed to update intervention outcome: {}", e)))?;
+
+        Ok(count > 0)
+    }
+
+    /// Get intervention outcomes for a recommendation
+    pub fn get_intervention_outcomes(
+        &self,
+        recommendation_id: &Uuid,
+    ) -> Result<Vec<super::aggregation_types::InterventionOutcome>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
+            "SELECT * FROM intervention_outcomes WHERE recommendation_id = ?1 ORDER BY created_at DESC"
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let outcomes = stmt.query_map(params![recommendation_id.to_string()], row_to_intervention_outcome)
+            .map_err(|e| Error::Internal(format!("Failed to query: {}", e)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(outcomes)
+    }
+
+    /// Get all classifications for an organization within a date range
+    pub fn get_classifications_in_range(
+        &self,
+        organization_id: &str,
+        start: &DateTime<Utc>,
+        end: &DateTime<Utc>,
+    ) -> Result<Vec<InteractionClassification>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
+            "SELECT * FROM interaction_classifications WHERE organization_id = ?1 AND original_created_at >= ?2 AND original_created_at < ?3 ORDER BY original_created_at ASC"
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let records = stmt.query_map(
+            params![organization_id, start.to_rfc3339(), end.to_rfc3339()],
+            row_to_classification,
+        )
+        .map_err(|e| Error::Internal(format!("Failed to query classifications: {}", e)))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(records)
+    }
+
+    /// Get all timelines for an organization
+    pub fn get_timelines_for_org(&self, organization_id: &str) -> Result<Vec<WorkflowTimeline>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
+            "SELECT * FROM workflow_timelines WHERE organization_id = ?1 ORDER BY last_analyzed_at DESC"
+        ).map_err(|e| Error::Internal(format!("Failed to prepare query: {}", e)))?;
+
+        let records = stmt.query_map(params![organization_id], row_to_timeline)
+            .map_err(|e| Error::Internal(format!("Failed to query timelines: {}", e)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(records)
+    }
 }
 
 // ==================== Row Converters ====================
@@ -691,13 +1477,13 @@ fn row_to_classification(row: &rusqlite::Row) -> rusqlite::Result<InteractionCla
     Ok(InteractionClassification {
         id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
         organization_id,
-        source_type: InteractionSource::from_str(&source_type_str),
+        source_type: InteractionSource::parse(&source_type_str),
         source_id,
         task_id,
         goal_id,
         sender_id,
         content,
-        interaction_type: InteractionType::from_str(&interaction_type_str),
+        interaction_type: InteractionType::parse(&interaction_type_str),
         secondary_types: secondary_types_json
             .and_then(|j| serde_json::from_str(&j).ok())
             .unwrap_or_default(),
@@ -706,7 +1492,7 @@ fn row_to_classification(row: &rusqlite::Row) -> rusqlite::Result<InteractionCla
             .and_then(|j| serde_json::from_str(&j).ok())
             .unwrap_or_default(),
         sentiment: sentiment.unwrap_or(0.0) as f32,
-        urgency_level: urgency_str.map(|s| UrgencyLevel::from_str(&s)).unwrap_or(UrgencyLevel::Medium),
+        urgency_level: urgency_str.map(|s| UrgencyLevel::parse(&s)).unwrap_or(UrgencyLevel::Medium),
         references_interaction_id: references_id,
         original_created_at: DateTime::parse_from_rfc3339(&original_at_str)
             .map(|d| d.with_timezone(&Utc))
@@ -778,7 +1564,7 @@ fn row_to_pattern(row: &rusqlite::Row) -> rusqlite::Result<WorkflowPattern> {
     Ok(WorkflowPattern {
         id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
         organization_id,
-        pattern_type: PatternType::from_str(&pattern_type_str),
+        pattern_type: PatternType::parse(&pattern_type_str),
         pattern_name,
         description,
         criteria: serde_json::from_str(&criteria_json).unwrap_or(serde_json::json!({})),
@@ -817,17 +1603,17 @@ fn row_to_recommendation(row: &rusqlite::Row) -> rusqlite::Result<EfficiencyReco
     Ok(EfficiencyRecommendation {
         id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
         organization_id,
-        target_type: RecommendationTarget::from_str(&target_type_str),
+        target_type: RecommendationTarget::parse(&target_type_str),
         target_id,
-        recommendation_type: RecommendationType::from_str(&rec_type_str),
+        recommendation_type: RecommendationType::parse(&rec_type_str),
         title,
         description,
         suggested_actions: serde_json::from_str(&actions_json).unwrap_or_default(),
         based_on_patterns: serde_json::from_str(&patterns_json).unwrap_or_default(),
         evidence: serde_json::from_str(&evidence_json).unwrap_or(serde_json::json!({})),
-        priority: UrgencyLevel::from_str(&priority_str),
+        priority: UrgencyLevel::parse(&priority_str),
         estimated_time_savings_hours: time_savings,
-        status: RecommendationStatus::from_str(&status_str),
+        status: RecommendationStatus::parse(&status_str),
         user_feedback,
         generated_at: DateTime::parse_from_rfc3339(&generated_at_str)
             .map(|d| d.with_timezone(&Utc))
@@ -860,7 +1646,7 @@ fn row_to_analysis_job(row: &rusqlite::Row) -> rusqlite::Result<AnalysisJob> {
         organization_id,
         entity_type,
         entity_id,
-        status: AnalysisJobStatus::from_str(&status_str),
+        status: AnalysisJobStatus::parse(&status_str),
         progress_percent: progress_clamped,
         current_stage: current_stage.unwrap_or_else(|| "unknown".to_string()),
         interactions_found: interactions_found.max(0) as u32,
@@ -877,6 +1663,156 @@ fn row_to_analysis_job(row: &rusqlite::Row) -> rusqlite::Result<AnalysisJob> {
         completed_at: completed_at_str.and_then(|s| {
             DateTime::parse_from_rfc3339(&s).map(|d| d.with_timezone(&Utc)).ok()
         }),
+    })
+}
+
+fn row_to_team_membership(row: &rusqlite::Row) -> rusqlite::Result<super::aggregation_types::TeamMembership> {
+    use super::aggregation_types::{TeamMembership, TeamRole};
+
+    let id_str: String = row.get(0)?;
+    let organization_id: String = row.get(1)?;
+    let team_id: String = row.get(2)?;
+    let team_name: String = row.get(3)?;
+    let user_id: String = row.get(4)?;
+    let role_str: String = row.get(5)?;
+    let created_at_str: String = row.get(6)?;
+    let updated_at_str: String = row.get(7)?;
+
+    Ok(TeamMembership {
+        id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
+        organization_id,
+        team_id,
+        team_name,
+        user_id,
+        role: TeamRole::parse(&role_str),
+        created_at: DateTime::parse_from_rfc3339(&created_at_str)
+            .map(|d| d.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now()),
+        updated_at: DateTime::parse_from_rfc3339(&updated_at_str)
+            .map(|d| d.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now()),
+    })
+}
+
+fn row_to_interaction_type_agg(row: &rusqlite::Row) -> rusqlite::Result<super::aggregation_types::InteractionTypeAggregation> {
+    use super::aggregation_types::{InteractionTypeAggregation, PeriodType};
+
+    let id_str: String = row.get(0)?;
+    let organization_id: String = row.get(1)?;
+    let team_id: Option<String> = row.get(2)?;
+    let period_start_str: String = row.get(3)?;
+    let period_end_str: String = row.get(4)?;
+    let period_type_str: String = row.get(5)?;
+    let type_counts_json: String = row.get(6)?;
+    let total_interactions: i32 = row.get(7)?;
+    let clarification_ratio: Option<f64> = row.get(8)?;
+    let blocker_ratio: Option<f64> = row.get(9)?;
+    let escalation_ratio: Option<f64> = row.get(10)?;
+    let computed_at_str: String = row.get(11)?;
+
+    Ok(InteractionTypeAggregation {
+        id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
+        organization_id,
+        team_id,
+        period_start: DateTime::parse_from_rfc3339(&period_start_str)
+            .map(|d| d.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now()),
+        period_end: DateTime::parse_from_rfc3339(&period_end_str)
+            .map(|d| d.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now()),
+        period_type: PeriodType::parse(&period_type_str),
+        type_counts: serde_json::from_str(&type_counts_json).unwrap_or_default(),
+        total_interactions: total_interactions.max(0) as u32,
+        clarification_ratio: clarification_ratio.unwrap_or(0.0) as f32,
+        blocker_ratio: blocker_ratio.unwrap_or(0.0) as f32,
+        escalation_ratio: escalation_ratio.unwrap_or(0.0) as f32,
+        computed_at: DateTime::parse_from_rfc3339(&computed_at_str)
+            .map(|d| d.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now()),
+    })
+}
+
+fn row_to_bottleneck_agg(row: &rusqlite::Row) -> rusqlite::Result<super::aggregation_types::BottleneckAggregation> {
+    use super::aggregation_types::{BottleneckAggregation, PeriodType, TrendDirection};
+
+    let id_str: String = row.get(0)?;
+    let organization_id: String = row.get(1)?;
+    let team_id: Option<String> = row.get(2)?;
+    let period_start_str: String = row.get(3)?;
+    let period_end_str: String = row.get(4)?;
+    let period_type_str: String = row.get(5)?;
+    let type_counts_json: String = row.get(6)?;
+    let type_total_hours_json: String = row.get(7)?;
+    let type_avg_hours_json: String = row.get(8)?;
+    let total_bottlenecks: i32 = row.get(9)?;
+    let total_hours_lost: Option<f64> = row.get(10)?;
+    let avg_bottleneck_duration: Option<f64> = row.get(11)?;
+    let trend_direction_str: Option<String> = row.get(12)?;
+    let trend_percent_change: Option<f64> = row.get(13)?;
+    let computed_at_str: String = row.get(14)?;
+
+    Ok(BottleneckAggregation {
+        id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
+        organization_id,
+        team_id,
+        period_start: DateTime::parse_from_rfc3339(&period_start_str)
+            .map(|d| d.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now()),
+        period_end: DateTime::parse_from_rfc3339(&period_end_str)
+            .map(|d| d.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now()),
+        period_type: PeriodType::parse(&period_type_str),
+        type_counts: serde_json::from_str(&type_counts_json).unwrap_or_default(),
+        type_total_hours: serde_json::from_str(&type_total_hours_json).unwrap_or_default(),
+        type_avg_hours: serde_json::from_str(&type_avg_hours_json).unwrap_or_default(),
+        total_bottlenecks: total_bottlenecks.max(0) as u32,
+        total_hours_lost: total_hours_lost.unwrap_or(0.0),
+        avg_bottleneck_duration: avg_bottleneck_duration.unwrap_or(0.0),
+        trend_direction: trend_direction_str.map(|s| TrendDirection::parse(&s)).unwrap_or(TrendDirection::Stable),
+        trend_percent_change: trend_percent_change.unwrap_or(0.0) as f32,
+        computed_at: DateTime::parse_from_rfc3339(&computed_at_str)
+            .map(|d| d.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now()),
+    })
+}
+
+fn row_to_intervention_outcome(row: &rusqlite::Row) -> rusqlite::Result<super::aggregation_types::InterventionOutcome> {
+    use super::aggregation_types::InterventionOutcome;
+
+    let id_str: String = row.get(0)?;
+    let organization_id: String = row.get(1)?;
+    let recommendation_id_str: String = row.get(2)?;
+    let intervention_type: String = row.get(3)?;
+    let intervention_date_str: String = row.get(4)?;
+    let outcome_measured_date_str: Option<String> = row.get(5)?;
+    let outcome_type: Option<String> = row.get(6)?;
+    let outcome_value: Option<f64> = row.get(7)?;
+    let pre_metrics_json: Option<String> = row.get(8)?;
+    let post_metrics_json: Option<String> = row.get(9)?;
+    let confidence_score: f64 = row.get(10)?;
+    let learned_pattern_id_str: Option<String> = row.get(11)?;
+    let created_at_str: String = row.get(12)?;
+
+    Ok(InterventionOutcome {
+        id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
+        organization_id,
+        recommendation_id: Uuid::parse_str(&recommendation_id_str).unwrap_or_else(|_| Uuid::new_v4()),
+        intervention_type,
+        intervention_date: DateTime::parse_from_rfc3339(&intervention_date_str)
+            .map(|d| d.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now()),
+        outcome_measured_date: outcome_measured_date_str.and_then(|s| {
+            DateTime::parse_from_rfc3339(&s).map(|d| d.with_timezone(&Utc)).ok()
+        }),
+        outcome_type,
+        outcome_value,
+        pre_intervention_metrics: pre_metrics_json.and_then(|j| serde_json::from_str(&j).ok()),
+        post_intervention_metrics: post_metrics_json.and_then(|j| serde_json::from_str(&j).ok()),
+        confidence_score: confidence_score as f32,
+        learned_pattern_id: learned_pattern_id_str.and_then(|s| Uuid::parse_str(&s).ok()),
+        created_at: DateTime::parse_from_rfc3339(&created_at_str)
+            .map(|d| d.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now()),
     })
 }
 

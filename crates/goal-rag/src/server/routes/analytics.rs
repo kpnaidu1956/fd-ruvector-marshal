@@ -56,7 +56,7 @@ fn default_limit() -> usize {
 
 /// Clamp limit to safe range
 fn sanitize_limit(limit: usize) -> usize {
-    limit.min(MAX_QUERY_LIMIT).max(1)
+    limit.clamp(1, MAX_QUERY_LIMIT)
 }
 
 /// Validate organization_id is non-empty and reasonable length
@@ -419,7 +419,7 @@ pub async fn search_interactions(
     let interaction_type = query
         .interaction_type
         .as_ref()
-        .map(|t| InteractionType::from_str(t))
+        .map(|t| InteractionType::parse(t))
         .unwrap_or(InteractionType::Other);
 
     match analytics_db.search_classifications_by_type(
@@ -599,7 +599,7 @@ pub async fn submit_recommendation_feedback(
         }
     };
 
-    let status = RecommendationStatus::from_str(&feedback.status);
+    let status = RecommendationStatus::parse(&feedback.status);
 
     match analytics_db.update_recommendation_feedback(&uuid, status, feedback.feedback.as_deref()) {
         Ok(true) => (

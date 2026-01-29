@@ -192,10 +192,10 @@ impl OnnxEmbedder {
             for j in 0..max_len {
                 let mask_val = attention_mask[i * max_len + j] as f32;
                 if mask_val > 0.0 {
-                    for k in 0..hidden_size {
+                    for (k, sum_val) in sum.iter_mut().enumerate() {
                         let idx = i * max_len * hidden_size + j * hidden_size + k;
                         if idx < tensor_data.len() {
-                            sum[k] += tensor_data[idx] * mask_val;
+                            *sum_val += tensor_data[idx] * mask_val;
                         }
                     }
                     count += mask_val;

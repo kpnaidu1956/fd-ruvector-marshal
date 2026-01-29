@@ -109,14 +109,14 @@ Classify this interaction and respond with ONLY a valid JSON object (no markdown
             .map_err(|e| Error::Internal(format!("Failed to parse LLM response: {} - Response: {}", e, json_str)))?;
 
         Ok(ClassificationResult {
-            primary_type: InteractionType::from_str(&parsed.primary_type),
+            primary_type: InteractionType::parse(&parsed.primary_type),
             secondary_types: parsed.secondary_types
                 .into_iter()
-                .map(|s| InteractionType::from_str(&s))
+                .map(|s| InteractionType::parse(&s))
                 .collect(),
             confidence: parsed.confidence.clamp(0.0, 1.0),
             sentiment: parsed.sentiment.clamp(-1.0, 1.0),
-            urgency: UrgencyLevel::from_str(&parsed.urgency),
+            urgency: UrgencyLevel::parse(&parsed.urgency),
             entities: ExtractedEntities {
                 mentioned_users: parsed.entities.mentioned_users,
                 mentioned_deadlines: parsed.entities.mentioned_deadlines,

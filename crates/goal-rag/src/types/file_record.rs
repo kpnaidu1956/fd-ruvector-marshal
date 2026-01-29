@@ -6,6 +6,16 @@ use uuid::Uuid;
 
 use super::FileType;
 
+/// Common parameters for creating file records
+pub struct FileRecordParams {
+    pub organization_id: String,
+    pub filename: String,
+    pub content_hash: String,
+    pub file_size: u64,
+    pub file_type: FileType,
+    pub job_id: Option<Uuid>,
+}
+
 /// Status of a file in the system
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -86,30 +96,25 @@ pub struct FileRecord {
 impl FileRecord {
     /// Create a new file record for a successfully processed file
     pub fn success(
-        organization_id: String,
-        filename: String,
-        content_hash: String,
-        file_size: u64,
-        file_type: FileType,
+        params: FileRecordParams,
         document_id: Uuid,
         chunks_created: u32,
-        job_id: Option<Uuid>,
     ) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
-            organization_id,
-            filename,
-            content_hash,
-            file_size,
-            file_type,
+            organization_id: params.organization_id,
+            filename: params.filename,
+            content_hash: params.content_hash,
+            file_size: params.file_size,
+            file_type: params.file_type,
             status: FileRecordStatus::Success,
             document_id: Some(document_id),
             chunks_created: Some(chunks_created),
             skip_reason: None,
             error_message: None,
             failed_at_stage: None,
-            job_id,
+            job_id: params.job_id,
             first_seen_at: now,
             last_processed_at: now,
             upload_count: 1,
@@ -119,30 +124,22 @@ impl FileRecord {
     }
 
     /// Create a new file record for a skipped file
-    pub fn skipped(
-        organization_id: String,
-        filename: String,
-        content_hash: String,
-        file_size: u64,
-        file_type: FileType,
-        skip_reason: SkipReason,
-        job_id: Option<Uuid>,
-    ) -> Self {
+    pub fn skipped(params: FileRecordParams, skip_reason: SkipReason) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
-            organization_id,
-            filename,
-            content_hash,
-            file_size,
-            file_type,
+            organization_id: params.organization_id,
+            filename: params.filename,
+            content_hash: params.content_hash,
+            file_size: params.file_size,
+            file_type: params.file_type,
             status: FileRecordStatus::Skipped,
             document_id: None,
             chunks_created: None,
             skip_reason: Some(skip_reason),
             error_message: None,
             failed_at_stage: None,
-            job_id,
+            job_id: params.job_id,
             first_seen_at: now,
             last_processed_at: now,
             upload_count: 1,
@@ -153,30 +150,25 @@ impl FileRecord {
 
     /// Create a new file record for a failed file
     pub fn failed(
-        organization_id: String,
-        filename: String,
-        content_hash: String,
-        file_size: u64,
-        file_type: FileType,
+        params: FileRecordParams,
         error_message: String,
         failed_at_stage: String,
-        job_id: Option<Uuid>,
     ) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
-            organization_id,
-            filename,
-            content_hash,
-            file_size,
-            file_type,
+            organization_id: params.organization_id,
+            filename: params.filename,
+            content_hash: params.content_hash,
+            file_size: params.file_size,
+            file_type: params.file_type,
             status: FileRecordStatus::Failed,
             document_id: None,
             chunks_created: None,
             skip_reason: None,
             error_message: Some(error_message),
             failed_at_stage: Some(failed_at_stage),
-            job_id,
+            job_id: params.job_id,
             first_seen_at: now,
             last_processed_at: now,
             upload_count: 1,

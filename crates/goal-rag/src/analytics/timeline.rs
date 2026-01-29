@@ -9,6 +9,18 @@ use uuid::Uuid;
 
 use super::types::*;
 
+/// Parameters for timeline reconstruction
+pub struct ReconstructParams<'a> {
+    pub organization_id: &'a str,
+    pub entity_type: &'a str,
+    pub entity_id: &'a str,
+    pub classifications: &'a [InteractionClassification],
+    pub activity_events: &'a [ActivityEvent],
+    pub entity_status: &'a str,
+    pub opened_at: DateTime<Utc>,
+    pub closed_at: Option<DateTime<Utc>>,
+}
+
 /// Timeline reconstructor for building workflow timelines
 pub struct TimelineReconstructor;
 
@@ -18,17 +30,17 @@ impl TimelineReconstructor {
     }
 
     /// Reconstruct timeline from classified interactions and activity events
-    pub fn reconstruct(
-        &self,
-        organization_id: &str,
-        entity_type: &str,
-        entity_id: &str,
-        classifications: &[InteractionClassification],
-        activity_events: &[ActivityEvent],
-        entity_status: &str,
-        opened_at: DateTime<Utc>,
-        closed_at: Option<DateTime<Utc>>,
-    ) -> WorkflowTimeline {
+    pub fn reconstruct(&self, params: ReconstructParams<'_>) -> WorkflowTimeline {
+        let ReconstructParams {
+            organization_id,
+            entity_type,
+            entity_id,
+            classifications,
+            activity_events,
+            entity_status,
+            opened_at,
+            closed_at,
+        } = params;
         // Merge and sort all events chronologically
         let mut all_events = self.merge_events(classifications, activity_events);
         all_events.sort_by_key(|e| e.timestamp);

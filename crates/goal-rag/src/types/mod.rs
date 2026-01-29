@@ -8,7 +8,7 @@ pub mod response;
 pub use document::{Chunk, ChunkSource, Document, FileType};
 pub use file_record::{
     FileCheckItem, FileCheckRequest, FileCheckResponse, FileCheckResult, FileCheckSummary,
-    FileRecord, FileRecordStatus, FileRecordSummary, FileUploadAdvice, SkipReason,
+    FileRecord, FileRecordParams, FileRecordStatus, FileRecordSummary, FileUploadAdvice, SkipReason,
 };
 pub use query::QueryRequest;
 pub use response::{

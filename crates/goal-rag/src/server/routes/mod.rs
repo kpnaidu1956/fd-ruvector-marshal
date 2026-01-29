@@ -1,6 +1,7 @@
 //! API routes for the RAG server
 
 pub mod analytics;
+pub mod analytics_aggregations;
 pub mod documents;
 pub mod files;
 pub mod jobs;
@@ -61,6 +62,19 @@ pub fn api_routes(#[cfg_attr(not(feature = "gcp"), allow(unused_variables))] max
         .route("/analytics/recommendations/task/:task_id", get(analytics::get_task_recommendations))
         .route("/analytics/recommendations/organization", get(analytics::get_org_recommendations))
         .route("/analytics/recommendations/:id/feedback", post(analytics::submit_recommendation_feedback))
+        // Phase 6: Team & Organization Aggregations
+        .route("/analytics/teams", get(analytics_aggregations::list_teams))
+        .route("/analytics/teams/sync", post(analytics_aggregations::sync_teams))
+        .route("/analytics/teams/:team_id/members", get(analytics_aggregations::get_team_members))
+        .route("/analytics/interactions/aggregate", get(analytics_aggregations::get_interaction_aggregations))
+        .route("/analytics/interactions/aggregate/team/:team_id", get(analytics_aggregations::get_team_interaction_aggregations))
+        .route("/analytics/aggregations/trigger", post(analytics_aggregations::trigger_aggregation))
+        .route("/analytics/network/graph", get(analytics_aggregations::get_participation_network))
+        .route("/analytics/network/connectors", get(analytics_aggregations::get_connectors))
+        .route("/analytics/interventions", post(analytics_aggregations::record_intervention))
+        .route("/analytics/interventions/:id/outcome", post(analytics_aggregations::record_outcome))
+        .route("/analytics/learning/effectiveness", get(analytics_aggregations::get_learning_effectiveness))
+        .route("/analytics/learning/adjust", post(analytics_aggregations::apply_learning_adjustments))
         // Info and capabilities
         .route("/info", get(info))
         .route("/capabilities", get(capabilities));
@@ -88,9 +102,7 @@ pub fn api_routes(#[cfg_attr(not(feature = "gcp"), allow(unused_variables))] max
         .route("/storage/:bucket/:org_id/*path", delete(storage::delete_storage_file));
 
     // Add WebSocket endpoint for real-time updates
-    let router = router.route("/realtime", get(realtime::websocket_handler));
-
-    router
+    router.route("/realtime", get(realtime::websocket_handler))
 }
 
 /// API info endpoint

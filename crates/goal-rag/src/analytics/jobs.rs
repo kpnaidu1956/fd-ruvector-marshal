@@ -15,7 +15,7 @@ use super::classifier::HybridClassifier;
 use super::pattern_learner::PatternLearner;
 use super::recommender::Recommender;
 use super::storage::AnalyticsDb;
-use super::timeline::{ActivityEvent, TimelineReconstructor};
+use super::timeline::{ActivityEvent, ReconstructParams, TimelineReconstructor};
 use super::types::*;
 use crate::error::Result;
 use crate::providers::interaction_classifier::InteractionClassifier;
@@ -95,16 +95,16 @@ impl AnalyticsJobProcessor {
         job.progress_percent = 60;
         self.db.update_analysis_job(job)?;
 
-        let timeline = self.timeline_builder.reconstruct(
-            &job.organization_id,
-            "task",
-            &job.entity_id,
-            &classifications,
-            &task_data.activity_events,
-            &task_data.status,
-            task_data.created_at,
-            task_data.completed_at,
-        );
+        let timeline = self.timeline_builder.reconstruct(ReconstructParams {
+            organization_id: &job.organization_id,
+            entity_type: "task",
+            entity_id: &job.entity_id,
+            classifications: &classifications,
+            activity_events: &task_data.activity_events,
+            entity_status: &task_data.status,
+            opened_at: task_data.created_at,
+            closed_at: task_data.completed_at,
+        });
 
         self.db.upsert_timeline(&timeline)?;
 

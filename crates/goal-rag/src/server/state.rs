@@ -23,7 +23,7 @@ use crate::providers::{
 use crate::providers::gcp::{DocumentAiClient, GcsDocumentStore};
 use crate::retrieval::VectorStore;
 use crate::storage::{FileRegistryDb, FileRegistryDbStats, SyncStatus};
-use crate::types::{Chunk, Document, FileRecord, FileRecordStatus, SkipReason};
+use crate::types::{Chunk, Document, FileRecord, FileRecordParams, FileRecordStatus, SkipReason};
 
 /// Shared application state
 #[derive(Clone)]
@@ -978,14 +978,16 @@ impl AppState {
         job_id: Option<Uuid>,
     ) {
         let record = FileRecord::success(
-            organization_id.to_string(),
-            filename.to_string(),
-            content_hash.to_string(),
-            file_size,
-            file_type,
+            FileRecordParams {
+                organization_id: organization_id.to_string(),
+                filename: filename.to_string(),
+                content_hash: content_hash.to_string(),
+                file_size,
+                file_type,
+                job_id,
+            },
             document_id,
             chunks_created,
-            job_id,
         );
         // Save to database
         if let Err(e) = self.inner.database.upsert_file_record(&record) {
@@ -996,6 +998,7 @@ impl AppState {
     }
 
     /// Record a skipped file
+    #[allow(clippy::too_many_arguments)]
     pub fn record_file_skipped(
         &self,
         organization_id: &str,
@@ -1013,13 +1016,15 @@ impl AppState {
             existing.clone()
         } else {
             FileRecord::skipped(
-                organization_id.to_string(),
-                filename.to_string(),
-                content_hash.to_string(),
-                file_size,
-                file_type,
+                FileRecordParams {
+                    organization_id: organization_id.to_string(),
+                    filename: filename.to_string(),
+                    content_hash: content_hash.to_string(),
+                    file_size,
+                    file_type,
+                    job_id,
+                },
                 skip_reason,
-                job_id,
             )
         };
         // Save to database
@@ -1049,14 +1054,16 @@ impl AppState {
             existing.clone()
         } else {
             FileRecord::failed(
-                organization_id.to_string(),
-                filename.to_string(),
-                content_hash.to_string(),
-                file_size,
-                file_type,
+                FileRecordParams {
+                    organization_id: organization_id.to_string(),
+                    filename: filename.to_string(),
+                    content_hash: content_hash.to_string(),
+                    file_size,
+                    file_type,
+                    job_id,
+                },
                 error_message.to_string(),
                 failed_at_stage.to_string(),
-                job_id,
             )
         };
         // Save to database

@@ -2006,19 +2006,23 @@ fn row_to_document(row: &rusqlite::Row) -> rusqlite::Result<crate::types::Docume
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::FileRecordParams;
 
     #[test]
     fn test_upsert_and_get() {
         let db = FileRegistryDb::in_memory().unwrap();
 
         let record = FileRecord::success(
-            "test.pdf".to_string(),
-            "abc123".to_string(),
-            1000,
-            FileType::Pdf,
+            FileRecordParams {
+                organization_id: "test-org".to_string(),
+                filename: "test.pdf".to_string(),
+                content_hash: "abc123".to_string(),
+                file_size: 1000,
+                file_type: FileType::Pdf,
+                job_id: None,
+            },
             Uuid::new_v4(),
             10,
-            None,
         );
 
         db.upsert_file_record(&record).unwrap();
@@ -2034,11 +2038,29 @@ mod tests {
 
         // Add some records
         db.upsert_file_record(&FileRecord::success(
-            "success.pdf".to_string(), "hash1".to_string(), 100, FileType::Pdf, Uuid::new_v4(), 5, None,
+            FileRecordParams {
+                organization_id: "test-org".to_string(),
+                filename: "success.pdf".to_string(),
+                content_hash: "hash1".to_string(),
+                file_size: 100,
+                file_type: FileType::Pdf,
+                job_id: None,
+            },
+            Uuid::new_v4(),
+            5,
         )).unwrap();
 
         db.upsert_file_record(&FileRecord::failed(
-            "failed.pdf".to_string(), "hash2".to_string(), 100, FileType::Pdf, "error".to_string(), "parsing".to_string(), None,
+            FileRecordParams {
+                organization_id: "test-org".to_string(),
+                filename: "failed.pdf".to_string(),
+                content_hash: "hash2".to_string(),
+                file_size: 100,
+                file_type: FileType::Pdf,
+                job_id: None,
+            },
+            "error".to_string(),
+            "parsing".to_string(),
         )).unwrap();
 
         let stats = db.get_stats().unwrap();
