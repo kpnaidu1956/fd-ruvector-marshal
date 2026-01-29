@@ -337,12 +337,13 @@ mod tests {
 
     #[test]
     fn test_tier_from_size() {
-        assert_eq!(FileTier::from_size(1_000_000), FileTier::Fast);       // 1MB
-        assert_eq!(FileTier::from_size(9_000_000), FileTier::Fast);       // 9MB
-        assert_eq!(FileTier::from_size(10_000_000), FileTier::Medium);    // 10MB
-        assert_eq!(FileTier::from_size(50_000_000), FileTier::Medium);    // 50MB
-        assert_eq!(FileTier::from_size(100_000_000), FileTier::Heavy);    // 100MB
-        assert_eq!(FileTier::from_size(500_000_000), FileTier::Heavy);    // 500MB
+        const MB: u64 = 1024 * 1024;
+        assert_eq!(FileTier::from_size(1 * MB), FileTier::Fast);          // 1 MiB
+        assert_eq!(FileTier::from_size(9 * MB), FileTier::Fast);          // 9 MiB
+        assert_eq!(FileTier::from_size(10 * MB), FileTier::Medium);       // 10 MiB (boundary)
+        assert_eq!(FileTier::from_size(50 * MB), FileTier::Medium);       // 50 MiB
+        assert_eq!(FileTier::from_size(100 * MB), FileTier::Heavy);       // 100 MiB (boundary)
+        assert_eq!(FileTier::from_size(500 * MB), FileTier::Heavy);       // 500 MiB
     }
 
     #[test]
@@ -361,11 +362,13 @@ mod tests {
 
     #[test]
     fn test_characteristics_for_file() {
-        let chars = FileCharacteristics::for_file("document.pdf", 5_000_000);
+        const MB: u64 = 1024 * 1024;
+        let chars = FileCharacteristics::for_file("document.pdf", 5 * MB);
         assert_eq!(chars.tier, FileTier::Fast);
         assert_eq!(chars.extension, "pdf");
 
-        let chars = FileCharacteristics::for_file("large.xlsx", 50_000_000);
+        // Files > 50 MiB use LocalToolsFirst strategy
+        let chars = FileCharacteristics::for_file("large.xlsx", 51 * MB);
         assert_eq!(chars.tier, FileTier::Medium);
         assert_eq!(chars.recommended_parser, ParserStrategy::LocalToolsFirst);
     }

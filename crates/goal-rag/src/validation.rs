@@ -112,19 +112,20 @@ pub fn sanitize_filename(filename: &str) -> Result<String> {
         )));
     }
 
+    // Check for path traversal attempts BEFORE extracting filename
+    // This rejects inputs like "../../../etc/passwd"
+    if filename.contains("..") {
+        return Err(Error::Validation(
+            "Filename contains invalid path traversal sequence".to_string(),
+        ));
+    }
+
     // Extract just the filename (remove any path components)
     let sanitized = filename
         .rsplit(['/', '\\'])
         .next()
         .unwrap_or(filename)
         .trim();
-
-    // Check for path traversal attempts
-    if sanitized.contains("..") {
-        return Err(Error::Validation(
-            "Filename contains invalid path traversal sequence".to_string(),
-        ));
-    }
 
     // Check for hidden files (starting with .)
     if sanitized.starts_with('.') && !sanitized.contains('.') {
