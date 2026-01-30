@@ -70,6 +70,11 @@ struct AppStateInner {
     /// Document AI client for advanced PDF extraction (only for GCP backend)
     #[cfg(feature = "gcp")]
     document_ai: Option<Arc<DocumentAiClient>>,
+    /// PostgreSQL pool for learning from database changes
+    #[cfg(feature = "postgres")]
+    pg_pool: Option<Arc<crate::postgres::PgPool>>,
+    /// Analytics database for storing learned patterns
+    analytics_db: Option<Arc<crate::analytics::AnalyticsDb>>,
 }
 
 impl AppState {
@@ -321,6 +326,41 @@ impl AppState {
             config.server.rate_limit.max_queue_depth
         );
 
+        // Initialize analytics database
+        let analytics_db_path = storage_dir.join("analytics.db");
+        let analytics_db = match crate::analytics::AnalyticsDb::new(&analytics_db_path) {
+            Ok(db) => {
+                tracing::info!("Analytics database initialized at {:?}", analytics_db_path);
+                Some(Arc::new(db))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to initialize analytics database: {}", e);
+                None
+            }
+        };
+
+        // Initialize PostgreSQL pool and learner (if configured)
+        #[cfg(feature = "postgres")]
+        let pg_pool: Option<Arc<crate::postgres::PgPool>> = if let Some(ref pg_config) = config.postgres {
+            match crate::postgres::PgPool::new(pg_config.clone()).await {
+                Ok(pool) => {
+                    tracing::info!(
+                        host = %pg_config.host,
+                        database = %pg_config.database,
+                        "PostgreSQL connection pool initialized"
+                    );
+                    Some(Arc::new(pool))
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to initialize PostgreSQL pool: {}", e);
+                    None
+                }
+            }
+        } else {
+            tracing::info!("PostgreSQL not configured - database learning disabled");
+            None
+        };
+
         // Create the state first (without the worker running)
         let state = Self {
             inner: Arc::new(AppStateInner {
@@ -344,8 +384,47 @@ impl AppState {
                 document_store: gcs_document_store,
                 #[cfg(feature = "gcp")]
                 document_ai: document_ai_client,
+                #[cfg(feature = "postgres")]
+                pg_pool: pg_pool.clone(),
+                analytics_db: analytics_db.clone(),
             }),
         };
+
+        // Start PostgreSQL change listener if configured
+        #[cfg(feature = "postgres")]
+        if let (Some(ref pool), Some(ref analytics)) = (&pg_pool, &analytics_db) {
+            let pg_config = state.inner.config.postgres.clone().unwrap();
+            if pg_config.learning_enabled {
+                let pool_clone = (**pool).clone();
+                let analytics_clone = Arc::clone(analytics);
+                let batch_size = pg_config.learning_batch_size;
+
+                let learner = Arc::new(crate::postgres::DatabaseLearner::new(
+                    pool_clone.clone(),
+                    analytics_clone,
+                    batch_size,
+                ));
+
+                let (tx, rx) = tokio::sync::mpsc::channel(1000);
+                let listener = crate::postgres::ChangeListener::new(pool_clone);
+
+                // Start the listener in background
+                tokio::spawn(async move {
+                    if let Err(e) = listener.start(tx).await {
+                        tracing::error!("PostgreSQL listener error: {}", e);
+                    }
+                });
+
+                // Start the learner in background
+                tokio::spawn(async move {
+                    if let Err(e) = learner.start(rx).await {
+                        tracing::error!("Database learner error: {}", e);
+                    }
+                });
+
+                tracing::info!("PostgreSQL change listener and learner started");
+            }
+        }
 
         // Start background worker with a clone of the state
         let worker_state = state.clone();

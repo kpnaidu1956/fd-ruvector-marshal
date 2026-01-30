@@ -111,3 +111,20 @@ hybrid_mode = "hybrid_local"
 
 # DEPRECATED: use hybrid_mode instead (kept for backward compatibility)
 # use_local_embeddings = true  # equivalent to hybrid_mode = "hybrid_vertex"
+
+# ============================================================
+# PostgreSQL Configuration (optional - for learning from database)
+# ============================================================
+# Uncomment to enable real-time learning from PostgreSQL database changes
+#
+# [postgres]
+# host = "34.60.42.144"
+# port = 5432
+# database = "goalrag"
+# user = "ragdba"
+# password = ""  # Set via POSTGRES_PASSWORD env var for security
+# pool_size = 5
+# schema = "api"
+# learning_enabled = true
+# learning_batch_size = 10
+# listen_tables = ["tasks", "goals", "users", "organizations", "messages", "task_comments"]

@@ -19,6 +19,9 @@ pub mod storage;
 pub mod types;
 pub mod validation;
 
+#[cfg(feature = "postgres")]
+pub mod postgres;
+
 pub use config::RagConfig;
 pub use error::{Error, Result};
 pub use types::{

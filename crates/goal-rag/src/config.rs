@@ -29,6 +29,10 @@ pub struct RagConfig {
     /// GCP configuration (required when backend = gcp)
     #[serde(default)]
     pub gcp: Option<GcpConfig>,
+    /// PostgreSQL configuration (optional - for learning from database changes)
+    #[serde(default)]
+    #[cfg(feature = "postgres")]
+    pub postgres: Option<crate::postgres::PostgresConfig>,
 }
 
 
