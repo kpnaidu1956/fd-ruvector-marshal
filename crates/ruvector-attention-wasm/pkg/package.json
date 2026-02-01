@@ -1,0 +1,17 @@
+{
+  "name": "ruvector-attention-wasm",
+  "description": "WASM bindings for ruvector-attention",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ruvnet/ruvector"
+  },
+  "files": [
+    "ruvector_attention_wasm_bg.wasm",
+    "ruvector_attention_wasm.js",
+    "ruvector_attention_wasm.d.ts"
+  ],
+  "main": "ruvector_attention_wasm.js",
+  "types": "ruvector_attention_wasm.d.ts"
+}
