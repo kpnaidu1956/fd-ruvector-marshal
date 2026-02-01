@@ -1,20 +1,55 @@
 {
   "session_date": "2026-01-31",
   "session_id": "2db53dd7-2578-4c86-8b6f-5041fa436aad",
+  "last_updated": "2026-01-31T23:30:00Z",
   "git": {
     "primary_remote": "origin",
     "primary_url": "https://github.com/kpnaidu1956/ruth-goal-rag.git",
     "backup_remote": "old-origin",
     "backup_url": "https://github.com/kpnaidu1956/fd-ruvector-marshal.git",
     "branch": "main",
-    "latest_commit": "fb1cb87",
-    "commit_message": "feat(postgres): Add PostgreSQL learning integration for real-time database change detection"
+    "latest_commit": "28bb132",
+    "commit_message": "chore: Add technical context for session restore"
   },
   "project": {
     "name": "fd-ruvector-marshal",
     "working_directory": "/Users/kpnaidu/PROJECTS/fd-ruvector-marshal",
     "main_crate": "goal-rag",
     "rust_edition": "2021"
+  },
+  "vm": {
+    "name": "rag-server",
+    "zone": "us-central1-c",
+    "ip": "34.60.42.144",
+    "hostname": "rags.goalign.ai",
+    "ssh_command": "gcloud compute ssh rag-server --zone=us-central1-c",
+    "service_name": "goal-rag.service",
+    "binary_path": "/usr/local/bin/goal-rag-server",
+    "config_path": "/home/kpnaidu/fd-ruvector-marshal/crates/goal-rag/config.toml",
+    "data_dir": "/var/lib/ruvector-rag"
+  },
+  "postgres": {
+    "enabled": true,
+    "host": "localhost",
+    "port": 5432,
+    "database": "goalrag",
+    "user": "ragdba",
+    "password": "3p8xyZrRTCxgsHCSR0q5tJ2P",
+    "schema": "api",
+    "connection_string": "postgresql://ragdba:3p8xyZrRTCxgsHCSR0q5tJ2P@localhost:5432/goalrag",
+    "learning_enabled": true,
+    "learning_batch_size": 10,
+    "listen_tables": ["tasks", "goals", "users", "organizations", "messages", "task_comments"],
+    "trigger_function": "api.notify_change()",
+    "channels": [
+      "api_tasks_changes",
+      "api_goals_changes",
+      "api_users_changes",
+      "api_organizations_changes",
+      "api_messages_changes",
+      "api_task_comments_changes",
+      "api_all_changes"
+    ]
   },
   "postgres_integration": {
     "feature_flag": "postgres",
@@ -46,26 +81,41 @@
     "UrgencyLevel": ["Low", "Medium", "High", "Critical"],
     "InteractionSource": ["TaskComment", "GoalComment", "Message", "ActivityLog"]
   },
-  "vm": {
-    "name": "rag-server",
-    "zone": "us-central1-c",
-    "ip": "34.60.42.144",
-    "hostname": "rags.goalign.ai"
-  },
   "gcp": {
     "project_id": "goalign-alpha",
     "location": "us-central1",
     "gcs_bucket": "goalign-rag-bucket",
-    "hybrid_mode": "hybrid_local"
+    "hybrid_mode": "hybrid_local",
+    "service_account_key": "/home/kpnaidu/rag-key.json"
   },
   "build_commands": {
-    "check": "cargo check --features postgres,gcp",
-    "build": "cargo build --features postgres,gcp",
-    "test": "cargo test -p goal-rag --features postgres,gcp"
+    "local_check": "cargo check --features postgres,gcp",
+    "local_build": "cargo build --features postgres,gcp",
+    "local_test": "cargo test -p goal-rag --features postgres,gcp",
+    "vm_build": "source ~/.cargo/env && cd /home/kpnaidu/fd-ruvector-marshal/crates/goal-rag && cargo build --release --features postgres,gcp",
+    "vm_deploy": "sudo systemctl stop goal-rag && sudo cp /home/kpnaidu/fd-ruvector-marshal/target/release/goal-rag-server /usr/local/bin/ && sudo systemctl start goal-rag"
   },
   "test_results": {
     "total": 21,
     "passed": 21,
     "failed": 0
+  },
+  "deployment_status": {
+    "deployed": true,
+    "postgres_learning": true,
+    "triggers_installed": true,
+    "verified_working": true,
+    "last_test": "UPDATE api.tasks triggered classification as StatusUpdate"
+  },
+  "systemd_config": {
+    "service_file": "/etc/systemd/system/goal-rag.service",
+    "override_file": "/etc/systemd/system/goal-rag.service.d/override.conf",
+    "environment": {
+      "RUST_LOG": "debug,goal_rag=debug",
+      "RAG_HOST": "127.0.0.1",
+      "RAG_PORT": "8080",
+      "RAG_CONFIG": "/home/kpnaidu/fd-ruvector-marshal/crates/goal-rag/config.toml",
+      "POSTGRES_PASSWORD": "3p8xyZrRTCxgsHCSR0q5tJ2P"
+    }
   }
 }

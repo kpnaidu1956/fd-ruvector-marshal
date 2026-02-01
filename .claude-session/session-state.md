@@ -1,8 +1,8 @@
-# Claude Session State - 2026-01-31
+# Claude Session State - 2026-01-31 (Updated)
 
 ## Session Summary
 
-This session implemented PostgreSQL real-time learning integration for the goal-rag crate.
+This session implemented PostgreSQL real-time learning integration for the goal-rag crate and deployed it to production on the VM.
 
 ## Current State
 
@@ -10,64 +10,60 @@ This session implemented PostgreSQL real-time learning integration for the goal-
 - **Primary Remote (origin):** https://github.com/kpnaidu1956/ruth-goal-rag.git
 - **Backup Remote (old-origin):** https://github.com/kpnaidu1956/fd-ruvector-marshal.git
 - **Branch:** main
-- **Latest Commit:** fb1cb87 - feat(postgres): Add PostgreSQL learning integration
-- **Working Directory:** Clean (no uncommitted changes)
+- **Latest Commit:** `28bb132` - chore: Add technical context for session restore
 
-### Project Structure
-```
-fd-ruvector-marshal/
-├── crates/
-│   └── goal-rag/           # Main RAG system
-│       ├── src/
-│       │   ├── postgres/   # NEW: PostgreSQL learning module
-│       │   │   ├── mod.rs
-│       │   │   ├── config.rs
-│       │   │   ├── pool.rs
-│       │   │   ├── schema.rs
-│       │   │   ├── listener.rs
-│       │   │   └── learner.rs
-│       │   ├── analytics/  # Pattern learning system
-│       │   ├── server/
-│       │   │   └── state.rs  # Modified: PostgreSQL integration
-│       │   └── lib.rs      # Modified: postgres module export
-│       ├── Cargo.toml      # Modified: postgres dependencies
-│       └── config.toml     # Modified: postgres config section
-```
+### VM Deployment Status
+- **VM Name:** rag-server
+- **Zone:** us-central1-c
+- **IP:** 34.60.42.144
+- **SSH:** `gcloud compute ssh rag-server --zone=us-central1-c`
+- **Service:** goal-rag.service - **RUNNING**
+- **Health:** OK (http://localhost:8080/health)
+
+### PostgreSQL Learning - ENABLED
+- **Host:** localhost:5432
+- **Database:** goalrag
+- **User:** ragdba
+- **Schema:** api
+- **Status:** ✅ ACTIVE AND LEARNING
 
 ## What Was Implemented
 
-### PostgreSQL Learning Integration
-1. **Connection Pool** (`pool.rs`): deadpool-postgres with LISTEN/NOTIFY support
-2. **Change Listener** (`listener.rs`): Real-time database change detection via PostgreSQL NOTIFY
-3. **Database Learner** (`learner.rs`): Processes changes, classifies interactions, learns patterns
-4. **Schema Types** (`schema.rs`): Task, Goal, User, Message, Comment entities
-5. **Configuration** (`config.rs`): PostgresConfig with connection and learning settings
+### 1. PostgreSQL Learning Module (Rust)
+Created `crates/goal-rag/src/postgres/` with:
+- `mod.rs` - Module exports
+- `config.rs` - PostgresConfig struct
+- `pool.rs` - Connection pool with LISTEN/NOTIFY support
+- `schema.rs` - Database entity types
+- `listener.rs` - Real-time change detection
+- `learner.rs` - Pattern learning pipeline
 
-### Key Features
-- Real-time LISTEN/NOTIFY for INSERT/UPDATE/DELETE detection
-- Multi-table support: tasks, goals, users, messages, task_comments
-- Automatic interaction classification
-- Pattern learning from batched interactions
-- Urgency detection from content/metadata
-- Multi-tenancy via organization_id
+### 2. Database Triggers (PostgreSQL)
+Created `api.notify_change()` function and triggers on:
+- `api.tasks` - Task changes
+- `api.goals` - Goal changes
+- `api.users` - User changes
+- `api.chat_messages` - Chat message changes
 
-### Build Command
-```bash
-cargo build --features postgres,gcp
-cargo test -p goal-rag --features postgres,gcp
-```
+### 3. Listening Channels
+- `api_tasks_changes`
+- `api_goals_changes`
+- `api_users_changes`
+- `api_organizations_changes`
+- `api_messages_changes`
+- `api_task_comments_changes`
+- `api_all_changes` (general)
 
-## Configuration
+## Configuration Files Modified on VM
 
-### To Enable PostgreSQL Learning
-Uncomment in `crates/goal-rag/config.toml`:
+### /home/kpnaidu/fd-ruvector-marshal/crates/goal-rag/config.toml
 ```toml
 [postgres]
-host = "34.60.42.144"  # rags.goalign.ai
+host = "localhost"
 port = 5432
 database = "goalrag"
 user = "ragdba"
-password = ""  # Set via POSTGRES_PASSWORD env var
+password = "3p8xyZrRTCxgsHCSR0q5tJ2P"
 pool_size = 5
 schema = "api"
 learning_enabled = true
@@ -75,46 +71,143 @@ learning_batch_size = 10
 listen_tables = ["tasks", "goals", "users", "organizations", "messages", "task_comments"]
 ```
 
-### GCP Configuration
-- Project: goalign-alpha
-- Location: us-central1
-- GCS Bucket: goalign-rag-bucket
-- Hybrid Mode: hybrid_local (Ollama embeddings + Local HNSW + Gemini LLM)
+### /etc/systemd/system/goal-rag.service.d/override.conf
+```ini
+[Service]
+User=kpnaidu
+Group=kpnaidu
+PrivateTmp=no
+Environment="POSTGRES_PASSWORD=3p8xyZrRTCxgsHCSR0q5tJ2P"
+```
 
-## VM Information
-- **VM Name:** rag-server
-- **Zone:** us-central1-c
-- **IP:** 34.60.42.144
-- **SSH:** `gcloud compute ssh rag-server --zone=us-central1-c`
+### /etc/systemd/system/goal-rag.service (RUST_LOG)
+Changed from `RUST_LOG=info` to `RUST_LOG=debug,goal_rag=debug`
 
-## Tasks Completed
-1. [x] Add PostgreSQL dependencies to Cargo.toml
-2. [x] Create PostgreSQL client module
-3. [x] Implement LISTEN/NOTIFY change detection
-4. [x] Create learning pipeline for database changes
-5. [x] Integrate with AppState and server startup
+## Database Trigger Function
 
-## Files Modified in This Session
-- `Cargo.lock` - Updated dependencies
-- `crates/goal-rag/Cargo.toml` - Added postgres feature and deps
-- `crates/goal-rag/config.toml` - Added postgres config section
-- `crates/goal-rag/src/config.rs` - Added PostgresConfig field
-- `crates/goal-rag/src/lib.rs` - Added postgres module export
-- `crates/goal-rag/src/server/state.rs` - Integrated pg_pool and learner
+```sql
+CREATE OR REPLACE FUNCTION api.notify_change()
+RETURNS TRIGGER AS $$
+DECLARE
+    payload JSON;
+    row_data JSON;
+    org_id TEXT := '';
+    row_id TEXT;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        row_data := row_to_json(OLD);
+        row_id := OLD.id::TEXT;
+    ELSE
+        row_data := row_to_json(NEW);
+        row_id := NEW.id::TEXT;
+    END IF;
 
-## Files Created in This Session
+    BEGIN
+        org_id := row_data->>'organization_id';
+    EXCEPTION WHEN OTHERS THEN
+        org_id := '';
+    END;
+
+    payload := json_build_object(
+        'table', TG_TABLE_NAME,
+        'action', TG_OP,
+        'row_id', row_id,
+        'organization_id', COALESCE(org_id, ''),
+        'data', row_data
+    );
+
+    PERFORM pg_notify('api_' || TG_TABLE_NAME || '_changes', payload::TEXT);
+    PERFORM pg_notify('api_all_changes', payload::TEXT);
+
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+```
+
+## Build Commands
+
+```bash
+# On VM - Build with postgres feature
+source ~/.cargo/env
+cd /home/kpnaidu/fd-ruvector-marshal/crates/goal-rag
+cargo build --release --features postgres,gcp
+
+# Deploy
+sudo systemctl stop goal-rag
+sudo cp /home/kpnaidu/fd-ruvector-marshal/target/release/goal-rag-server /usr/local/bin/
+sudo systemctl start goal-rag
+```
+
+## Verification Commands
+
+```bash
+# Check service status
+sudo systemctl status goal-rag
+
+# Check postgres learning logs
+sudo journalctl -u goal-rag --since '5 minutes ago' | grep -i postgres
+
+# Test trigger
+psql 'postgresql://ragdba:3p8xyZrRTCxgsHCSR0q5tJ2P@localhost:5432/goalrag' \
+  -c "UPDATE api.tasks SET updated_at = NOW() WHERE id = (SELECT id FROM api.tasks LIMIT 1);"
+
+# Verify learning happened
+sudo journalctl -u goal-rag --since '10 seconds ago' | grep -i 'classification\|change'
+```
+
+## Interaction Types Classified
+- `Assignment` - New task created
+- `StatusUpdate` - Task/goal status changed
+- `Direction` - New goal created
+- `Feedback` - Task comments
+- `Other` - Chat messages, other changes
+
+## Session Commands Reference
+
+```bash
+# SSH to VM
+gcloud compute ssh rag-server --zone=us-central1-c
+
+# Pull latest code
+cd /home/kpnaidu/fd-ruvector-marshal
+git pull ruth main
+
+# Restart service
+sudo systemctl restart goal-rag
+
+# View logs
+sudo journalctl -u goal-rag -f
+
+# PostgreSQL CLI
+psql 'postgresql://ragdba:3p8xyZrRTCxgsHCSR0q5tJ2P@localhost:5432/goalrag'
+```
+
+## Files in Local Repository
+
+### Created
 - `crates/goal-rag/src/postgres/mod.rs`
 - `crates/goal-rag/src/postgres/config.rs`
 - `crates/goal-rag/src/postgres/pool.rs`
 - `crates/goal-rag/src/postgres/schema.rs`
 - `crates/goal-rag/src/postgres/listener.rs`
 - `crates/goal-rag/src/postgres/learner.rs`
+- `.claude-session/session-state.md`
+- `.claude-session/technical-context.txt`
+
+### Modified
+- `Cargo.lock`
+- `crates/goal-rag/Cargo.toml` - Added postgres feature
+- `crates/goal-rag/config.toml` - Added postgres section
+- `crates/goal-rag/src/config.rs` - Added PostgresConfig field
+- `crates/goal-rag/src/lib.rs` - Added postgres module
+- `crates/goal-rag/src/server/state.rs` - Integrated postgres
 
 ## Test Results
-All 21 tests passing with `--features postgres,gcp`
+- All 21 unit tests passing with `--features postgres,gcp`
+- PostgreSQL learning verified working in production
 
-## Next Steps (if continuing)
-1. Set up PostgreSQL triggers on the database (run `generate_trigger_sql()`)
-2. Configure POSTGRES_PASSWORD environment variable
-3. Enable the postgres config section
-4. Deploy and test real-time learning
+## Next Session Checklist
+1. Run `git pull origin main` to get latest code
+2. Read `.claude-session/` files for context
+3. SSH to VM to check service status if needed
+4. Check `sudo journalctl -u goal-rag -n 50` for recent activity
