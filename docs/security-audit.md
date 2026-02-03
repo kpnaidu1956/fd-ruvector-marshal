@@ -22,8 +22,8 @@ The codebase demonstrates a generally security-conscious design with input valid
 **File:** `/Users/kpnaidu/PROJECTS/fd-ruvector-marshal/.claude/settings.local.json` (lines 42-56)
 
 **Finding:** The file `.claude/settings.local.json` contains hardcoded PostgreSQL credentials in plaintext:
-- Password: `3p8xyZrRTCxgsHCSR0q5tJ2P`
-- Host: `34.60.42.144`
+- Password: `REDACTED`
+- Host: `REDACTED_HOST`
 - User: `ragdba`
 - Database: `goalrag`
 
@@ -34,7 +34,7 @@ Additionally, JWT tokens (both anonymous and user) are embedded in lines 50-52.
 **Attack Vector:** Any developer or CI system with repository access can extract production database credentials and gain full read/write access to the PostgreSQL database.
 
 **Recommendation:**
-1. Immediately rotate the `ragdba` password on `34.60.42.144`
+1. Immediately rotate the `ragdba` password on `REDACTED_HOST`
 2. Rotate all JWT signing secrets
 3. Run `git log --all --full-history -- .claude/settings.local.json` to verify this file was never committed
 4. Add a pre-commit hook that scans for credential patterns
@@ -194,7 +194,7 @@ Any user who knows or guesses another organization's ID can access their documen
 tokio_postgres::connect(&self.config.connection_string(), NoTls)
 ```
 
-Database credentials and query data are transmitted in plaintext. The connection goes to `34.60.42.144` which appears to be a GCP VM with a public IP.
+Database credentials and query data are transmitted in plaintext. The connection goes to `REDACTED_HOST` which appears to be a GCP VM with a public IP.
 
 **Attack Vector:** Network-level attacker (e.g., on the same GCP VPC, or if traffic routes over the internet) can sniff database credentials and all query data.
 

@@ -44,7 +44,7 @@ enabled = true
 unstructured_url = "https://api.unstructured.io/general/v0/general"
 use_libreoffice_fallback = true
 prefer_local_tools = true
-unstructured_api_key = "eOzuk6fAo9rduwOG3NbOhWzFAfqHpe"
+unstructured_api_key = ""  # Set via UNSTRUCTURED_API_KEY env var
 
 [processing]
 file_timeout_secs = 600
@@ -118,7 +118,7 @@ hybrid_mode = "hybrid_local"
 # Uncomment to enable real-time learning from PostgreSQL database changes
 #
 # [postgres]
-# host = "34.60.42.144"
+# host = "localhost"
 # port = 5432
 # database = "goalrag"
 # user = "ragdba"

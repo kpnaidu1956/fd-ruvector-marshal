@@ -71,6 +71,9 @@ hive-mind-prompt-*.txt
 examples/scipix/test_images/
 *.json
 
+# Session state (may contain credentials)
+.claude-session/
+
 # Secrets
 secrets/
 *.credentials.txt
