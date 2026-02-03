@@ -145,9 +145,13 @@ impl MmapManager {
     /// # Returns
     /// A new `MmapManager` instance
     pub fn new(path: &Path, d_embed: usize, max_nodes: usize) -> Result<Self> {
-        // Calculate required file size
-        let embedding_size = d_embed * std::mem::size_of::<f32>();
-        let file_size = max_nodes * embedding_size;
+        // Calculate required file size with overflow checks
+        let embedding_size = d_embed
+            .checked_mul(std::mem::size_of::<f32>())
+            .ok_or_else(|| GnnError::mmap("embedding_size overflow".to_string()))?;
+        let file_size = max_nodes
+            .checked_mul(embedding_size)
+            .ok_or_else(|| GnnError::mmap("file_size overflow".to_string()))?;
 
         // Create or open the file
         let file = OpenOptions::new()
@@ -405,9 +409,13 @@ impl MmapGradientAccumulator {
     /// # Returns
     /// A new `MmapGradientAccumulator` instance
     pub fn new(path: &Path, d_embed: usize, max_nodes: usize) -> Result<Self> {
-        // Calculate required file size
-        let grad_size = d_embed * std::mem::size_of::<f32>();
-        let file_size = max_nodes * grad_size;
+        // Calculate required file size with overflow checks
+        let grad_size = d_embed
+            .checked_mul(std::mem::size_of::<f32>())
+            .ok_or_else(|| GnnError::mmap("grad_size overflow".to_string()))?;
+        let file_size = max_nodes
+            .checked_mul(grad_size)
+            .ok_or_else(|| GnnError::mmap("gradient file_size overflow".to_string()))?;
 
         // Create or open the file
         let file = OpenOptions::new()
@@ -457,9 +465,22 @@ impl MmapGradientAccumulator {
     ///
     /// # Returns
     /// Byte offset in the gradient file
+    ///
+    /// # Panics
+    /// Panics if node_id is out of bounds or offset calculation overflows.
     #[inline]
     pub fn grad_offset(&self, node_id: u64) -> usize {
-        (node_id as usize) * self.d_embed * std::mem::size_of::<f32>()
+        let node_idx = node_id as usize;
+        assert!(
+            node_idx < self.n_nodes,
+            "node_id {} out of bounds (max: {})",
+            node_id,
+            self.n_nodes
+        );
+        node_idx
+            .checked_mul(self.d_embed)
+            .and_then(|v| v.checked_mul(std::mem::size_of::<f32>()))
+            .expect("gradient offset calculation overflow")
     }
 
     /// Accumulate gradients for a specific node.
@@ -477,14 +498,23 @@ impl MmapGradientAccumulator {
             "Gradient length must match d_embed"
         );
 
+        let offset = self.grad_offset(node_id);
+        let end = offset
+            .checked_add(self.d_embed.checked_mul(std::mem::size_of::<f32>()).unwrap())
+            .expect("end offset overflow");
+
         let lock_idx = (node_id as usize) / self.lock_granularity;
         let _lock = self.locks[lock_idx].write();
 
-        let offset = self.grad_offset(node_id);
-
-        // Safety: We hold the write lock for this region, ensuring exclusive access
+        // Safety: We hold the write lock for this region, ensuring exclusive access.
+        // Bounds have been validated by grad_offset (which asserts node_id < n_nodes)
+        // and the end offset is checked against mmap length.
         unsafe {
             let mmap = &mut *self.grad_mmap.get();
+            assert!(
+                end <= mmap.len(),
+                "gradient extends beyond mmap bounds"
+            );
             let ptr = mmap.as_mut_ptr().add(offset) as *mut f32;
             let grad_slice = std::slice::from_raw_parts_mut(ptr, self.d_embed);
 
@@ -543,14 +573,22 @@ impl MmapGradientAccumulator {
     /// # Returns
     /// Slice containing the gradient vector
     pub fn get_grad(&self, node_id: u64) -> &[f32] {
+        let offset = self.grad_offset(node_id);
+        let end = offset
+            .checked_add(self.d_embed.checked_mul(std::mem::size_of::<f32>()).unwrap())
+            .expect("end offset overflow");
+
         let lock_idx = (node_id as usize) / self.lock_granularity;
         let _lock = self.locks[lock_idx].read();
 
-        let offset = self.grad_offset(node_id);
-
-        // Safety: We hold the read lock for this region
+        // Safety: We hold the read lock for this region.
+        // Bounds have been validated by grad_offset and the end offset check.
         unsafe {
             let mmap = &*self.grad_mmap.get();
+            assert!(
+                end <= mmap.len(),
+                "gradient extends beyond mmap bounds"
+            );
             let ptr = mmap.as_ptr().add(offset) as *const f32;
             std::slice::from_raw_parts(ptr, self.d_embed)
         }

@@ -128,7 +128,7 @@ pub async fn analyze_task(
         );
     }
 
-    let analytics_db = match get_analytics_db(&state).await {
+    let analytics_db = match get_analytics_db(&state) {
         Ok(db) => db,
         Err(e) => return e,
     };
@@ -181,7 +181,7 @@ pub async fn analyze_goal(
         );
     }
 
-    let analytics_db = match get_analytics_db(&state).await {
+    let analytics_db = match get_analytics_db(&state) {
         Ok(db) => db,
         Err(e) => return e,
     };
@@ -217,7 +217,7 @@ pub async fn get_analysis_job(
     State(state): State<AppState>,
     Path(job_id): Path<String>,
 ) -> impl IntoResponse {
-    let analytics_db = match get_analytics_db(&state).await {
+    let analytics_db = match get_analytics_db(&state) {
         Ok(db) => db,
         Err(e) => return e,
     };
@@ -277,7 +277,7 @@ pub async fn get_task_timeline(
         );
     }
 
-    let analytics_db = match get_analytics_db(&state).await {
+    let analytics_db = match get_analytics_db(&state) {
         Ok(db) => db,
         Err(e) => return e,
     };
@@ -318,7 +318,7 @@ pub async fn get_goal_timeline(
         );
     }
 
-    let analytics_db = match get_analytics_db(&state).await {
+    let analytics_db = match get_analytics_db(&state) {
         Ok(db) => db,
         Err(e) => return e,
     };
@@ -359,7 +359,7 @@ pub async fn get_task_interactions(
         );
     }
 
-    let analytics_db = match get_analytics_db(&state).await {
+    let analytics_db = match get_analytics_db(&state) {
         Ok(db) => db,
         Err(e) => return e,
     };
@@ -409,7 +409,7 @@ pub async fn search_interactions(
 
     let limit = sanitize_limit(query.limit);
 
-    let analytics_db = match get_analytics_db(&state).await {
+    let analytics_db = match get_analytics_db(&state) {
         Ok(db) => db,
         Err(e) => return e,
     };
@@ -466,7 +466,7 @@ pub async fn list_patterns(
         return e;
     }
 
-    let analytics_db = match get_analytics_db(&state).await {
+    let analytics_db = match get_analytics_db(&state) {
         Ok(db) => db,
         Err(e) => return e,
     };
@@ -522,7 +522,7 @@ pub async fn get_task_recommendations(
         );
     }
 
-    let analytics_db = match get_analytics_db(&state).await {
+    let analytics_db = match get_analytics_db(&state) {
         Ok(db) => db,
         Err(e) => return e,
     };
@@ -556,7 +556,7 @@ pub async fn get_org_recommendations(
 
     let limit = sanitize_limit(query.limit);
 
-    let analytics_db = match get_analytics_db(&state).await {
+    let analytics_db = match get_analytics_db(&state) {
         Ok(db) => db,
         Err(e) => return e,
     };
@@ -584,7 +584,7 @@ pub async fn submit_recommendation_feedback(
     Path(id): Path<String>,
     Json(feedback): Json<RecommendationFeedback>,
 ) -> impl IntoResponse {
-    let analytics_db = match get_analytics_db(&state).await {
+    let analytics_db = match get_analytics_db(&state) {
         Ok(db) => db,
         Err(e) => return e,
     };
@@ -664,29 +664,23 @@ pub async fn analytics_info() -> impl IntoResponse {
 
 // ==================== Helpers ====================
 
-/// Get or initialize the analytics database
-async fn get_analytics_db(state: &AppState) -> Result<Arc<AnalyticsDb>, (StatusCode, Json<serde_json::Value>)> {
-    // Get data directory from config (same pattern as state.rs)
+/// Get the analytics database from app state (pre-initialized at startup)
+///
+/// Falls back to opening a new connection if state doesn't have one,
+/// but this should rarely happen since analytics_db is initialized in AppState::new.
+fn get_analytics_db(state: &AppState) -> Result<Arc<AnalyticsDb>, (StatusCode, Json<serde_json::Value>)> {
+    // Prefer the pre-initialized instance from AppState (avoids re-opening on every request)
+    if let Some(db) = state.analytics_db() {
+        return Ok(Arc::clone(db));
+    }
+
+    // Fallback: open a new connection (should rarely happen)
     let data_dir = state.config().vector_db.storage_path
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::path::PathBuf::from("."));
     let analytics_db_path = data_dir.join("analytics.db");
 
-    // Ensure directory exists
-    if let Some(parent) = analytics_db_path.parent() {
-        if let Err(_e) = std::fs::create_dir_all(parent) {
-            tracing::error!("Failed to create analytics data directory");
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({
-                    "error": "Failed to initialize analytics storage"
-                })),
-            ));
-        }
-    }
-
-    // Open database
     match AnalyticsDb::new(&analytics_db_path) {
         Ok(db) => Ok(Arc::new(db)),
         Err(_e) => {
@@ -694,7 +688,7 @@ async fn get_analytics_db(state: &AppState) -> Result<Arc<AnalyticsDb>, (StatusC
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({
-                    "error": "Failed to initialize analytics storage"
+                    "error": "Analytics database not available"
                 })),
             ))
         }

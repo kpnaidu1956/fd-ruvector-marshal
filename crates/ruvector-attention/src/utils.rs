@@ -282,6 +282,12 @@ pub fn apply_dropout(
         return;
     }
 
+    // If dropout_prob >= 1.0, zero out everything
+    if dropout_prob >= 1.0 {
+        vector.fill(0.0);
+        return;
+    }
+
     let scale = 1.0 / (1.0 - dropout_prob);
     for x in vector.iter_mut() {
         if rng.gen::<f32>() < dropout_prob {

@@ -121,10 +121,19 @@ impl ArenaAllocator {
     fn allocate_chunk(&self) -> NonNull<Chunk> {
         unsafe {
             let layout = Layout::from_size_align_unchecked(self.chunk_size, 64);
-            let data = NonNull::new_unchecked(alloc(layout));
+            let data_ptr = alloc(layout);
+            if data_ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+            let data = NonNull::new_unchecked(data_ptr);
 
             let chunk_layout = Layout::new::<Chunk>();
             let chunk_ptr = alloc(chunk_layout) as *mut Chunk;
+            if chunk_ptr.is_null() {
+                // Deallocate the data buffer before aborting
+                dealloc(data_ptr, layout);
+                std::alloc::handle_alloc_error(chunk_layout);
+            }
 
             ptr::write(
                 chunk_ptr,

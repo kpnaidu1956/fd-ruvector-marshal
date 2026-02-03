@@ -20,7 +20,7 @@ fn norm(x: &[f32]) -> f32 {
 
 /// Compute Poincaré distance between two points in hyperbolic space
 pub fn poincare_distance(u: &[f32], v: &[f32], c: f32) -> f32 {
-    let c = c.abs();
+    let c = c.abs().max(EPS);
     let sqrt_c = c.sqrt();
 
     let diff: Vec<f32> = u.iter().zip(v).map(|(a, b)| a - b).collect();
@@ -40,7 +40,7 @@ pub fn poincare_distance(u: &[f32], v: &[f32], c: f32) -> f32 {
 
 /// Möbius addition in Poincaré ball
 pub fn mobius_add(u: &[f32], v: &[f32], c: f32) -> Vec<f32> {
-    let c = c.abs();
+    let c = c.abs().max(EPS);
     let norm_u_sq = norm_squared(u);
     let norm_v_sq = norm_squared(v);
     let dot_uv: f32 = u.iter().zip(v).map(|(a, b)| a * b).sum();
@@ -59,7 +59,7 @@ pub fn mobius_add(u: &[f32], v: &[f32], c: f32) -> Vec<f32> {
 
 /// Möbius scalar multiplication
 pub fn mobius_scalar_mult(r: f32, v: &[f32], c: f32) -> Vec<f32> {
-    let c = c.abs();
+    let c = c.abs().max(EPS);
     let sqrt_c = c.sqrt();
     let norm_v = norm(v);
 
@@ -75,7 +75,7 @@ pub fn mobius_scalar_mult(r: f32, v: &[f32], c: f32) -> Vec<f32> {
 
 /// Exponential map: maps tangent vector v at point p to hyperbolic space
 pub fn exp_map(v: &[f32], p: &[f32], c: f32) -> Vec<f32> {
-    let c = c.abs();
+    let c = c.abs().max(EPS);
     let sqrt_c = c.sqrt();
 
     let norm_p_sq = norm_squared(p);
@@ -96,7 +96,7 @@ pub fn exp_map(v: &[f32], p: &[f32], c: f32) -> Vec<f32> {
 
 /// Logarithmic map: maps point y to tangent space at point p
 pub fn log_map(y: &[f32], p: &[f32], c: f32) -> Vec<f32> {
-    let c = c.abs();
+    let c = c.abs().max(EPS);
     let sqrt_c = c.sqrt();
 
     let neg_p: Vec<f32> = p.iter().map(|&pi| -pi).collect();
@@ -118,7 +118,7 @@ pub fn log_map(y: &[f32], p: &[f32], c: f32) -> Vec<f32> {
 
 /// Project point to Poincaré ball
 pub fn project_to_ball(x: &[f32], c: f32, eps: f32) -> Vec<f32> {
-    let c = c.abs();
+    let c = c.abs().max(EPS);
     let norm_x = norm(x);
     let max_norm = (1.0 / c.sqrt()) - eps;
 
@@ -130,7 +130,7 @@ pub fn project_to_ball(x: &[f32], c: f32, eps: f32) -> Vec<f32> {
     }
 }
 
-/// Compute the Fréchet mean (centroid) of points in hyperbolic space
+/// Compute the Frechet mean (centroid) of points in hyperbolic space
 pub fn frechet_mean(
     points: &[&[f32]],
     weights: Option<&[f32]>,
@@ -138,8 +138,11 @@ pub fn frechet_mean(
     max_iter: usize,
     tol: f32,
 ) -> Vec<f32> {
+    if points.is_empty() {
+        return vec![];
+    }
     let dim = points[0].len();
-    let c = c.abs();
+    let c = c.abs().max(EPS);
 
     let uniform_weights: Vec<f32>;
     let w = if let Some(weights) = weights {

@@ -360,17 +360,16 @@ pub async fn list_failed_files(
     let files: Vec<FailedFileDetail> = failed
         .iter()
         .map(|record| {
-            let suggested_action = suggest_action_for_failure(
-                &record.error_message.clone().unwrap_or_default(),
-                &record.failed_at_stage.clone().unwrap_or_default(),
-            );
+            let error_msg = record.error_message.as_deref().unwrap_or("Unknown error");
+            let stage = record.failed_at_stage.as_deref().unwrap_or("unknown");
+            let suggested_action = suggest_action_for_failure(error_msg, stage);
 
             FailedFileDetail {
                 filename: record.filename.clone(),
                 file_type: record.file_type.display_name().to_string(),
                 file_size: record.file_size,
-                error_message: record.error_message.clone().unwrap_or_else(|| "Unknown error".to_string()),
-                failed_at_stage: record.failed_at_stage.clone().unwrap_or_else(|| "unknown".to_string()),
+                error_message: error_msg.to_string(),
+                failed_at_stage: stage.to_string(),
                 last_attempt: record.last_processed_at.to_rfc3339(),
                 upload_count: record.upload_count,
                 suggested_action,
@@ -496,11 +495,11 @@ pub async fn file_stats(
     let stats = state.file_registry_stats(&query.organization_id);
     let failed = state.list_failed_files(&query.organization_id);
 
-    // Group failures by error type
-    let mut error_types: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    // Group failures by error type (max ~8 distinct categories from categorize_error)
+    let mut error_types: std::collections::HashMap<String, usize> = std::collections::HashMap::with_capacity(8);
     for record in &failed {
-        let error = record.error_message.clone().unwrap_or_else(|| "Unknown".to_string());
-        let error_type = categorize_error(&error);
+        let error = record.error_message.as_deref().unwrap_or("Unknown");
+        let error_type = categorize_error(error);
         *error_types.entry(error_type).or_insert(0) += 1;
     }
 
@@ -699,12 +698,25 @@ pub async fn revectorize_chunks(
     tracing::info!("Starting re-vectorization for org '{}' (document_id: {:?}, batch_size: {})",
         request.organization_id, request.document_id, request.batch_size);
 
-    // Get chunks from database
+    // Get chunks from database, filtered by organization
     let chunks = if let Some(doc_id) = request.document_id {
+        // Verify document belongs to this organization before processing
+        if let Some(doc) = state.get_document(&doc_id) {
+            if doc.organization_id.as_deref() != Some(&request.organization_id) {
+                return Err(Error::Validation(format!("Document {} not found in organization {}", doc_id, request.organization_id)));
+            }
+        }
         state.database().get_chunks_for_document(&doc_id)?
     } else {
-        // Get all chunks - this could be large, so we process in batches
-        state.database().get_all_chunks(None, None)?
+        // Get all documents for this org, then collect their chunks
+        let org_docs = state.database().list_documents_by_org(&request.organization_id)?;
+        let mut all_chunks = Vec::new();
+        for doc in &org_docs {
+            if let Ok(doc_chunks) = state.database().get_chunks_for_document(&doc.id) {
+                all_chunks.extend(doc_chunks);
+            }
+        }
+        all_chunks
     };
 
     let total_chunks = chunks.len();
@@ -780,8 +792,8 @@ pub async fn revectorize_chunks(
 #[cfg(feature = "gcp")]
 #[derive(Debug, Deserialize)]
 pub struct MigrateGcsRequest {
-    /// Organization ID to migrate files to (if not specified, uses each document's organization_id)
-    pub organization_id: Option<String>,
+    /// Organization ID to migrate files to (required for multi-tenancy)
+    pub organization_id: String,
     /// Limit number of documents to migrate (for testing)
     pub limit: Option<usize>,
     /// Dry run - don't actually move files, just report what would be moved
@@ -817,8 +829,10 @@ pub async fn migrate_gcs_files(
     Json(request): Json<MigrateGcsRequest>,
 ) -> Result<Json<MigrateGcsResponse>> {
     let dry_run = request.dry_run;
+    validate_organization_id(&request.organization_id)?;
+
     tracing::info!(
-        "Starting GCS migration (org_id: {:?}, limit: {:?}, dry_run: {})",
+        "Starting GCS migration (org_id: {}, limit: {:?}, dry_run: {})",
         request.organization_id, request.limit, dry_run
     );
 
@@ -826,10 +840,10 @@ pub async fn migrate_gcs_files(
     let document_store = state.document_store()
         .ok_or_else(|| Error::Internal("GCS document store not configured".to_string()))?;
 
-    // Get all documents from database
-    let documents = state.list_documents();
+    // Get documents for this organization only
+    let documents = state.database().list_documents_by_org(&request.organization_id)?;
     let total_docs = documents.len();
-    tracing::info!("Found {} documents in database", total_docs);
+    tracing::info!("Found {} documents for org '{}' in database", total_docs, request.organization_id);
 
     let mut documents_processed = 0;
     let mut originals_moved = 0;
@@ -846,11 +860,8 @@ pub async fn migrate_gcs_files(
     };
 
     for doc in docs_to_process {
-        // Determine organization ID
-        let org_id = request.organization_id.as_ref()
-            .or(doc.organization_id.as_ref())
-            .cloned()
-            .unwrap_or_else(|| "north-county-fire-protection-district".to_string());
+        // Use the validated organization ID from the request
+        let org_id = request.organization_id.clone();
 
         if dry_run {
             // Just log what would happen

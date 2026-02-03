@@ -52,6 +52,13 @@ impl LearnedRouter {
 
     /// Compute raw gate logits
     fn compute_logits(&self, x: &[f32]) -> Vec<f32> {
+        assert_eq!(
+            x.len(),
+            self.dim,
+            "Input dimension {} does not match router dimension {}",
+            x.len(),
+            self.dim
+        );
         (0..self.num_experts)
             .map(|i| {
                 x.iter()

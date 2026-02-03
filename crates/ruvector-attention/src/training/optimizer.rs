@@ -291,9 +291,12 @@ impl LearningRateScheduler {
 
     /// Get learning rate without advancing
     pub fn get_lr(&self) -> f32 {
-        if self.current_step < self.warmup_steps {
+        if self.current_step < self.warmup_steps && self.warmup_steps > 0 {
             // Linear warmup
             self.initial_lr * (self.current_step + 1) as f32 / self.warmup_steps as f32
+        } else if self.decay_steps == 0 {
+            // No decay configured, return initial LR
+            self.initial_lr
         } else {
             // Cosine decay
             let progress =

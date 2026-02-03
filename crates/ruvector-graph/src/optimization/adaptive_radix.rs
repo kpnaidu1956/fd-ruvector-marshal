@@ -84,9 +84,11 @@ impl<V: Clone> AdaptiveRadixTree<V> {
                     None
                 };
 
-                // Take ownership of old leaf's data
+                // Take ownership of old leaf's data safely
                 let old_key = std::mem::take(leaf_key);
-                let old_value = unsafe { std::ptr::read(leaf_value) };
+                // Use Clone instead of unsafe ptr::read to avoid double-free UB.
+                // The original leaf_value in the Box will be dropped when node is dropped.
+                let old_value = leaf_value.clone();
 
                 // Add old leaf
                 if let Some(byte) = old_byte {
@@ -300,8 +302,12 @@ impl<V: Clone> AdaptiveRadixTree<V> {
 
     /// Find common prefix length
     fn common_prefix_len(a: &[u8], b: &[u8], start: usize) -> usize {
+        let min_len = a.len().min(b.len());
+        if start >= min_len {
+            return 0;
+        }
+        let max = min_len - start;
         let mut len = 0;
-        let max = a.len().min(b.len()) - start;
 
         for i in 0..max {
             if a[start + i] == b[start + i] {
@@ -316,6 +322,9 @@ impl<V: Clone> AdaptiveRadixTree<V> {
 
     /// Check prefix match
     fn check_prefix(prefix: &[u8], key: &[u8], depth: usize) -> usize {
+        if depth >= key.len() {
+            return 0;
+        }
         let max = prefix.len().min(key.len() - depth);
         let mut matched = 0;
 

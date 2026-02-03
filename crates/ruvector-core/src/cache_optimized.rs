@@ -49,7 +49,13 @@ impl SoAVectorStorage {
             Self::MAX_CAPACITY
         );
 
-        let capacity = initial_capacity.next_power_of_two();
+        let capacity = initial_capacity.max(1).next_power_of_two();
+        assert!(
+            capacity <= Self::MAX_CAPACITY,
+            "rounded-up capacity {} exceeds maximum of {}",
+            capacity,
+            Self::MAX_CAPACITY
+        );
 
         // Security: Use checked arithmetic to prevent overflow
         let total_elements = dimensions
@@ -63,6 +69,9 @@ impl SoAVectorStorage {
             Layout::from_size_align(total_bytes, CACHE_LINE_SIZE).expect("invalid memory layout");
 
         let data = unsafe { alloc(layout) as *mut f32 };
+        if data.is_null() {
+            std::alloc::handle_alloc_error(layout);
+        }
 
         // Zero initialize
         unsafe {
@@ -139,7 +148,16 @@ impl SoAVectorStorage {
 
     /// Grow the storage capacity
     fn grow(&mut self) {
-        let new_capacity = self.capacity * 2;
+        let new_capacity = self
+            .capacity
+            .checked_mul(2)
+            .expect("capacity overflow during grow");
+        assert!(
+            new_capacity <= Self::MAX_CAPACITY,
+            "new capacity {} exceeds maximum of {}",
+            new_capacity,
+            Self::MAX_CAPACITY
+        );
 
         // Security: Use checked arithmetic to prevent overflow
         let new_total_elements = self.dimensions
@@ -153,6 +171,9 @@ impl SoAVectorStorage {
             .expect("invalid memory layout in grow");
 
         let new_data = unsafe { alloc(new_layout) as *mut f32 };
+        if new_data.is_null() {
+            std::alloc::handle_alloc_error(new_layout);
+        }
 
         // Copy old data dimension by dimension
         for dim_idx in 0..self.dimensions {

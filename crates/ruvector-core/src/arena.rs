@@ -89,6 +89,9 @@ impl Arena {
         let chunk_size = self.chunk_size.max(size + align);
         let layout = Layout::from_size_align(chunk_size, 64).unwrap();
         let data = unsafe { alloc(layout) };
+        if data.is_null() {
+            std::alloc::handle_alloc_error(layout);
+        }
 
         let aligned = align;
         let chunk = Chunk {

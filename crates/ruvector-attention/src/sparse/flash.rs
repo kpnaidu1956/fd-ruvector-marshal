@@ -18,6 +18,8 @@ pub struct FlashAttention {
 impl FlashAttention {
     /// Create new flash attention
     pub fn new(dim: usize, block_size: usize) -> Self {
+        assert!(dim > 0, "dim must be positive");
+        assert!(block_size > 0, "block_size must be positive");
         Self {
             dim,
             block_size,
@@ -28,6 +30,8 @@ impl FlashAttention {
 
     /// Create with causal masking
     pub fn causal(dim: usize, block_size: usize) -> Self {
+        assert!(dim > 0, "dim must be positive");
+        assert!(block_size > 0, "block_size must be positive");
         Self {
             dim,
             block_size,

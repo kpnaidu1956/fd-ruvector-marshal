@@ -127,34 +127,30 @@ pub struct ErrorResponse {
 
 // ==================== Helper Functions ====================
 
-/// Get or initialize the analytics database
+/// Get the analytics database from app state (pre-initialized at startup)
+///
+/// Falls back to opening a new connection if state doesn't have one,
+/// but this should rarely happen since analytics_db is initialized in AppState::new.
 fn get_analytics_db(state: &AppState) -> Result<Arc<AnalyticsDb>, (StatusCode, Json<ErrorResponse>)> {
-    // Get data directory from config (same pattern as state.rs)
+    // Prefer the pre-initialized instance from AppState (avoids re-opening on every request)
+    if let Some(db) = state.analytics_db() {
+        return Ok(Arc::clone(db));
+    }
+
+    // Fallback: open a new connection (should rarely happen)
     let data_dir = state.config().vector_db.storage_path
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::path::PathBuf::from("."));
     let analytics_db_path = data_dir.join("analytics.db");
 
-    // Ensure directory exists
-    if let Some(parent) = analytics_db_path.parent() {
-        if let Err(_e) = std::fs::create_dir_all(parent) {
-            tracing::error!("Failed to create analytics data directory");
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse { error: "Failed to initialize analytics storage".to_string() }),
-            ));
-        }
-    }
-
-    // Open database
     match AnalyticsDb::new(&analytics_db_path) {
         Ok(db) => Ok(Arc::new(db)),
         Err(_e) => {
             tracing::error!("Failed to open analytics database");
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse { error: "Failed to initialize analytics storage".to_string() }),
+                Json(ErrorResponse { error: "Analytics database not available".to_string() }),
             ))
         }
     }

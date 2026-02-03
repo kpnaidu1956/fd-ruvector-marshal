@@ -55,10 +55,12 @@ pub enum WsRequest {
     #[serde(rename = "subscribe")]
     Subscribe {
         table: String,
+        /// Required: organization_id for multi-tenancy isolation
+        organization_id: String,
         #[serde(default)]
         event: Option<String>, // INSERT, UPDATE, DELETE, or * for all
         #[serde(default)]
-        filter: Option<String>, // e.g., "organization_id=eq.abc123"
+        filter: Option<String>, // e.g., "status=eq.done"
     },
     /// Unsubscribe from a table
     #[serde(rename = "unsubscribe")]
@@ -183,7 +185,9 @@ pub async fn websocket_handler(
         return Response::builder()
             .status(503)
             .body(axum::body::Body::from("Too many WebSocket connections"))
-            .unwrap();
+            .unwrap_or_else(|_| {
+                Response::new(axum::body::Body::from("Too many WebSocket connections"))
+            });
     }
 
     ws.on_upgrade(handle_socket)
@@ -301,7 +305,22 @@ async fn handle_message(
     };
 
     match request {
-        WsRequest::Subscribe { table, event, filter } => {
+        WsRequest::Subscribe { table, organization_id, event, filter } => {
+            // Validate organization_id (required for multi-tenancy)
+            if organization_id.is_empty() || organization_id == "_default" {
+                return WsResponse::Error {
+                    message: "organization_id is required and cannot be empty or '_default'".to_string(),
+                    code: "INVALID_ORGANIZATION_ID".to_string(),
+                };
+            }
+            // Reject org_ids with suspicious characters
+            if organization_id.chars().any(|c| !c.is_alphanumeric() && c != '-' && c != '_') {
+                return WsResponse::Error {
+                    message: "organization_id contains invalid characters".to_string(),
+                    code: "INVALID_ORGANIZATION_ID".to_string(),
+                };
+            }
+
             // Validate table
             if let Err(e) = validate_table(&table) {
                 return WsResponse::Error {
@@ -325,10 +344,10 @@ async fn handle_message(
                 }
             }
 
-            // Create subscription ID
+            // Create subscription ID scoped to organization
             let event_str = event.as_deref().unwrap_or("*");
             let filter_str = filter.as_deref().unwrap_or("");
-            let sub_id = format!("{}:{}:{}", table, event_str, filter_str);
+            let sub_id = format!("{}:{}:{}:{}", organization_id, table, event_str, filter_str);
 
             // Add to subscriptions
             {
@@ -336,9 +355,10 @@ async fn handle_message(
                 subs.insert(sub_id.clone());
             }
 
-            // Log without sensitive filter data
+            // Log subscription (without sensitive filter data)
             tracing::info!(
                 table = %table,
+                organization_id = %organization_id,
                 event = %event_str,
                 has_filter = filter.is_some(),
                 "Client subscribed to table"

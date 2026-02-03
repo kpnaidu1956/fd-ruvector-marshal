@@ -165,17 +165,22 @@ async fn info() -> axum::Json<serde_json::Value> {
 
 /// Document extraction capabilities endpoint
 async fn capabilities() -> axum::Json<serde_json::Value> {
-    let has_pdftotext = ExternalParser::has_pdftotext();
-    let has_tesseract = ExternalParser::has_tesseract();
-    let has_pdftoppm = ExternalParser::has_pdftoppm();
-    let has_pandoc = ExternalParser::has_pandoc();
-
-    // Check for LibreOffice
-    let has_libreoffice = std::process::Command::new("libreoffice")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    // Run blocking process checks on a blocking thread to avoid stalling the async runtime
+    let (has_pdftotext, has_tesseract, has_pdftoppm, has_pandoc, has_libreoffice) =
+        tokio::task::spawn_blocking(|| {
+            let pdftotext = ExternalParser::has_pdftotext();
+            let tesseract = ExternalParser::has_tesseract();
+            let pdftoppm = ExternalParser::has_pdftoppm();
+            let pandoc = ExternalParser::has_pandoc();
+            let libreoffice = std::process::Command::new("libreoffice")
+                .arg("--version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            (pdftotext, tesseract, pdftoppm, pandoc, libreoffice)
+        })
+        .await
+        .unwrap_or((false, false, false, false, false));
 
     axum::Json(serde_json::json!({
         "tools": {

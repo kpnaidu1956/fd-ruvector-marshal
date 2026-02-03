@@ -29,7 +29,7 @@ impl ScaledDotProductAttention {
 
     /// Computes attention scores (before softmax).
     fn compute_scores(&self, query: &[f32], keys: &[&[f32]]) -> Vec<f32> {
-        let scale = (self.dim as f32).sqrt();
+        let scale = (self.dim as f32).sqrt().max(1e-8);
         keys.iter()
             .map(|key| {
                 query.iter()
@@ -42,9 +42,18 @@ impl ScaledDotProductAttention {
 
     /// Applies softmax to attention scores.
     fn softmax(&self, scores: &[f32]) -> Vec<f32> {
-        let max_score = scores.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
+        let max_score = scores.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        if !max_score.is_finite() {
+            // All scores are -inf or NaN; return uniform distribution
+            let n = scores.len();
+            return vec![1.0 / n as f32; n];
+        }
         let exp_scores: Vec<f32> = scores.iter().map(|s| (s - max_score).exp()).collect();
         let sum: f32 = exp_scores.iter().sum();
+        if sum <= 0.0 || !sum.is_finite() {
+            let n = scores.len();
+            return vec![1.0 / n as f32; n];
+        }
         exp_scores.iter().map(|e| e / sum).collect()
     }
 }

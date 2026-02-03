@@ -395,17 +395,22 @@ pub struct StatusSummary {
 pub async fn get_parsers_status() -> Json<ParsersStatusResponse> {
     use crate::ingestion::ExternalParser;
 
-    let has_pdftotext = ExternalParser::has_pdftotext();
-    let has_tesseract = ExternalParser::has_tesseract();
-    let has_pdftoppm = ExternalParser::has_pdftoppm();
-    let has_pandoc = ExternalParser::has_pandoc();
-
-    // Check for LibreOffice
-    let has_libreoffice = std::process::Command::new("libreoffice")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    // Run blocking process checks on a blocking thread to avoid stalling the async runtime
+    let (has_pdftotext, has_tesseract, has_pdftoppm, has_pandoc, has_libreoffice) =
+        tokio::task::spawn_blocking(|| {
+            let pdftotext = ExternalParser::has_pdftotext();
+            let tesseract = ExternalParser::has_tesseract();
+            let pdftoppm = ExternalParser::has_pdftoppm();
+            let pandoc = ExternalParser::has_pandoc();
+            let libreoffice = std::process::Command::new("libreoffice")
+                .arg("--version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            (pdftotext, tesseract, pdftoppm, pandoc, libreoffice)
+        })
+        .await
+        .unwrap_or((false, false, false, false, false));
 
     // Check for Unstructured API
     let has_unstructured = std::env::var("UNSTRUCTURED_API_KEY").is_ok();
@@ -603,10 +608,16 @@ pub async fn list_incomplete_jobs(
     Query(query): Query<OrgQuery>,
 ) -> Json<IncompleteJobsResponse> {
     let incomplete_jobs = state.job_queue().get_incomplete_jobs();
-    let _ = query; // organization_id used for filtering via memory lookup
 
     let jobs: Vec<IncompleteJobInfo> = incomplete_jobs
         .into_iter()
+        .filter(|job| {
+            // Filter by organization: check in-memory job progress for org_id match
+            state.job_queue().get_progress(job.id)
+                .and_then(|p| p.organization_id)
+                .map(|org| org == query.organization_id)
+                .unwrap_or(false)
+        })
         .map(|job| {
             let pending_files = state.job_queue().get_pending_files(job.id);
             IncompleteJobInfo {

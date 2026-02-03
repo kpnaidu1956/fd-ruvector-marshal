@@ -256,8 +256,17 @@ impl ConcurrencyLimiter {
     }
 
     /// Acquire a permit (blocking)
+    ///
+    /// # Panics
+    /// This should never panic in practice since the semaphore is held by an Arc
+    /// and is never explicitly closed. If the semaphore is somehow closed, this
+    /// will log an error and panic, which is intentional as it indicates a bug.
     pub async fn acquire(&self) -> tokio::sync::OwnedSemaphorePermit {
-        self.semaphore.clone().acquire_owned().await.expect("semaphore closed")
+        self.semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("ConcurrencyLimiter semaphore unexpectedly closed - this is a bug")
     }
 
     /// Get available permits

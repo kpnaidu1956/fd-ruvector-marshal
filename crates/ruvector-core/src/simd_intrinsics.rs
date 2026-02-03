@@ -169,7 +169,11 @@ unsafe fn cosine_similarity_avx2_impl(a: &[f32], b: &[f32]) -> f32 {
         norm_b_sum += b[i] * b[i];
     }
 
-    dot_sum / (norm_a_sum.sqrt() * norm_b_sum.sqrt())
+    let denom = norm_a_sum.sqrt() * norm_b_sum.sqrt();
+    if denom == 0.0 {
+        return 0.0;
+    }
+    dot_sum / denom
 }
 
 // Scalar fallback implementations
@@ -193,7 +197,11 @@ fn cosine_similarity_scalar(a: &[f32], b: &[f32]) -> f32 {
     let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
     let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    dot / (norm_a * norm_b)
+    let denom = norm_a * norm_b;
+    if denom == 0.0 {
+        return 0.0;
+    }
+    dot / denom
 }
 
 #[cfg(test)]

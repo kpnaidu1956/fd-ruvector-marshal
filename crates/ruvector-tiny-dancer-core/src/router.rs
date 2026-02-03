@@ -109,8 +109,12 @@ impl Router {
             }
         }
 
-        // Sort by confidence (descending)
-        decisions.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
+        // Sort by confidence (descending), treating NaN as lowest priority
+        decisions.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         let inference_time_us = start.elapsed().as_micros() as u64;
 

@@ -393,7 +393,13 @@ impl AppState {
         // Start PostgreSQL change listener if configured
         #[cfg(feature = "postgres")]
         if let (Some(ref pool), Some(ref analytics)) = (&pg_pool, &analytics_db) {
-            let pg_config = state.inner.config.postgres.clone().unwrap();
+            let pg_config = match state.inner.config.postgres.clone() {
+                Some(cfg) => cfg,
+                None => {
+                    tracing::error!("PostgreSQL config disappeared between pool init and learner start");
+                    return Ok(state);
+                }
+            };
             if pg_config.learning_enabled {
                 let pool_clone = (**pool).clone();
                 let analytics_clone = Arc::clone(analytics);
@@ -536,6 +542,11 @@ impl AppState {
     /// Get database reference
     pub fn database(&self) -> &Arc<FileRegistryDb> {
         &self.inner.database
+    }
+
+    /// Get analytics database reference (if initialized)
+    pub fn analytics_db(&self) -> Option<&Arc<crate::analytics::AnalyticsDb>> {
+        self.inner.analytics_db.as_ref()
     }
 
     /// Sync file registry from GCS bucket
@@ -1217,19 +1228,25 @@ impl AppState {
     }
 
     /// Get file registry statistics for an organization
+    ///
+    /// Computes all stats in a single pass over the registry for efficiency.
     pub fn file_registry_stats(&self, organization_id: &str) -> FileRegistryStats {
-        let total = self.inner.file_registry.iter()
-            .filter(|e| e.value().organization_id == organization_id)
-            .count();
-        let success = self.inner.file_registry.iter()
-            .filter(|e| e.value().organization_id == organization_id && e.value().status == FileRecordStatus::Success)
-            .count();
-        let failed = self.inner.file_registry.iter()
-            .filter(|e| e.value().organization_id == organization_id && e.value().status == FileRecordStatus::Failed)
-            .count();
-        let skipped = self.inner.file_registry.iter()
-            .filter(|e| e.value().organization_id == organization_id && e.value().status == FileRecordStatus::Skipped)
-            .count();
+        let mut total = 0usize;
+        let mut success = 0usize;
+        let mut failed = 0usize;
+        let mut skipped = 0usize;
+
+        for entry in self.inner.file_registry.iter() {
+            if entry.value().organization_id == organization_id {
+                total += 1;
+                match entry.value().status {
+                    FileRecordStatus::Success => success += 1,
+                    FileRecordStatus::Failed => failed += 1,
+                    FileRecordStatus::Skipped => skipped += 1,
+                    _ => {}
+                }
+            }
+        }
 
         FileRegistryStats { total, success, failed, skipped }
     }

@@ -89,17 +89,33 @@ impl ChangeListener {
         let tables = self.config.tables_to_listen();
         let schema = &self.config.schema;
 
+        // Validate schema name (prevents injection through config)
+        if !schema.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            return Err(Error::Internal(format!(
+                "Invalid schema name '{}': only alphanumeric and underscore allowed",
+                schema
+            )));
+        }
+
         // Subscribe to each table's notification channel
+        // Channel names are sanitized to prevent SQL injection (only alphanumeric + underscore)
         for table in &tables {
+            if !table.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                tracing::warn!(table = %table, "Skipping table with invalid characters in name");
+                continue;
+            }
             let channel = format!("{}_{}_changes", schema, table);
-            client.execute(&format!("LISTEN {}", channel), &[]).await
+            // LISTEN channel names are identifiers, not values - quote them as identifiers
+            let quoted_channel = format!("\"{}\"", channel.replace('"', "\"\""));
+            client.execute(&format!("LISTEN {}", quoted_channel), &[]).await
                 .map_err(|e| Error::Internal(format!("Failed to LISTEN on {}: {}", channel, e)))?;
             tracing::info!(channel = %channel, "Subscribed to PostgreSQL notifications");
         }
 
         // Also listen to a general channel for all changes
         let general_channel = format!("{}_all_changes", schema);
-        client.execute(&format!("LISTEN {}", general_channel), &[]).await
+        let quoted_general = format!("\"{}\"", general_channel.replace('"', "\"\""));
+        client.execute(&format!("LISTEN {}", quoted_general), &[]).await
             .map_err(|e| Error::Internal(format!("Failed to LISTEN on {}: {}", general_channel, e)))?;
         tracing::info!(channel = %general_channel, "Subscribed to general change notifications");
 
@@ -163,9 +179,27 @@ impl ChangeListener {
 
     /// Generate SQL to create notification triggers
     /// This should be run once to set up the database
+    ///
+    /// # Panics
+    /// Panics if schema or table names contain characters other than alphanumeric/underscore.
+    /// These names come from configuration and should be validated at startup.
     pub fn generate_trigger_sql(&self) -> String {
         let tables = self.config.tables_to_listen();
         let schema = &self.config.schema;
+
+        // Validate schema name before using in SQL generation
+        assert!(
+            schema.chars().all(|c| c.is_alphanumeric() || c == '_'),
+            "Schema name '{}' contains invalid characters", schema
+        );
+        // Validate all table names
+        for table in &tables {
+            assert!(
+                table.chars().all(|c| c.is_alphanumeric() || c == '_'),
+                "Table name '{}' contains invalid characters", table
+            );
+        }
+
         let mut sql = String::new();
 
         // Create the notification function

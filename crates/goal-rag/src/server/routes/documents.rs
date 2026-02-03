@@ -23,17 +23,12 @@ pub async fn list_documents(
     State(state): State<AppState>,
     Query(query): Query<ListDocumentsQuery>,
 ) -> Result<Json<DocumentListResponse>> {
-    let all_documents = state.list_documents();
-
-    // Filter by organization_id (required for multi-tenancy)
-    let filtered_documents: Vec<_> = all_documents
-        .into_iter()
-        .filter(|doc| doc.organization_id.as_ref() == Some(&query.organization_id))
-        .collect();
-
-    let documents: Vec<DocumentSummary> = filtered_documents
+    // Filter and map in a single pass over the DashMap, avoiding cloning all documents
+    let documents: Vec<DocumentSummary> = state
+        .documents()
         .iter()
-        .map(DocumentSummary::from)
+        .filter(|entry| entry.value().organization_id.as_ref() == Some(&query.organization_id))
+        .map(|entry| DocumentSummary::from(entry.value()))
         .collect();
 
     let total_count = documents.len();
