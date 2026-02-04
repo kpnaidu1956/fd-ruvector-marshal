@@ -375,6 +375,16 @@ impl AnalyticsDb {
 
     // ==================== Interaction Classifications ====================
 
+    /// Delete all classifications for a task (used before re-analysis)
+    pub fn delete_classifications_for_task(&self, task_id: &str) -> Result<u64> {
+        let conn = self.conn.lock();
+        let count = conn.execute(
+            "DELETE FROM interaction_classifications WHERE task_id = ?1",
+            params![task_id],
+        ).map_err(|e| Error::Internal(format!("Failed to delete classifications: {}", e)))?;
+        Ok(count as u64)
+    }
+
     /// Insert a classification
     pub fn insert_classification(&self, classification: &InteractionClassification) -> Result<()> {
         let conn = self.conn.lock();
@@ -386,7 +396,7 @@ impl AnalyticsDb {
 
         conn.execute(
             r#"
-            INSERT INTO interaction_classifications (
+            INSERT OR REPLACE INTO interaction_classifications (
                 id, organization_id, source_type, source_id, task_id, goal_id,
                 sender_id, content, interaction_type, secondary_types, confidence_score,
                 entities, sentiment, urgency_level, references_interaction_id,

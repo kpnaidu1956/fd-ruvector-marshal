@@ -75,6 +75,12 @@ impl AnalyticsJobProcessor {
         job.progress_percent = 20;
         self.db.update_analysis_job(job)?;
 
+        // Clear old classifications for this task so re-analysis produces fresh results
+        let deleted = self.db.delete_classifications_for_task(&job.entity_id)?;
+        if deleted > 0 {
+            tracing::info!(job_id = %job.id, deleted = deleted, "Cleared old classifications for re-analysis");
+        }
+
         // Step 2: Classify interactions (skip if none found)
         let classifications = if interactions.is_empty() {
             tracing::info!(job_id = %job.id, "No interactions to classify, skipping classification step");
@@ -223,19 +229,22 @@ impl AnalyticsJobProcessor {
             .map(|i| (i.content.clone(), i.source_type.clone()))
             .collect();
 
+        tracing::info!(
+            classifier = self.classifier.name(),
+            batch_size = batch.len(),
+            "Classifying interactions"
+        );
+
         let results = self.classifier.classify_batch(&batch, Some(&context)).await?;
+
+        tracing::info!(
+            results_count = results.len(),
+            "Classification complete"
+        );
 
         let mut classifications = Vec::new();
 
         for (interaction, result) in interactions.iter().zip(results.into_iter()) {
-            // Skip if already classified
-            if self.db.is_source_classified(
-                interaction.source_type.as_str(),
-                &interaction.source_id,
-            )? {
-                continue;
-            }
-
             classifications.push(InteractionClassification {
                 id: Uuid::new_v4(),
                 organization_id: organization_id.to_string(),
