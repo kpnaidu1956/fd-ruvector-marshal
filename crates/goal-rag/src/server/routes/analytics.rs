@@ -793,58 +793,79 @@ fn spawn_goal_analysis(
 }
 
 /// Fetch task data from PostgreSQL for analysis
+///
+/// Schema notes:
+/// - api.tasks has no organization_id; org scoping is via team_assignments or goals
+/// - api.tasks has no completed_at column
+/// - api.task_comments uses author_id (not user_id) and content (not body)
+/// - api.task_activity_logs uses changed_by (not user_id), changes jsonb (not details text)
+/// - api.messages has no organization_id or metadata column
 #[cfg(feature = "postgres")]
 async fn fetch_task_data_from_pg(
     state: &AppState,
     task_id: &str,
-    org_id: &str,
+    _org_id: &str,
 ) -> std::result::Result<TaskAnalysisInput, String> {
     let pool = state.pg_pool()
         .ok_or_else(|| "PostgreSQL pool not available".to_string())?;
     let client = pool.get().await
         .map_err(|e| format!("Failed to get PG connection: {}", e))?;
 
-    // Fetch task details
+    // Parse task_id as UUID for parameterized queries
+    let task_uuid = uuid::Uuid::parse_str(task_id)
+        .map_err(|_| format!("Invalid task_id UUID: {}", task_id))?;
+
+    // Fetch task details (no organization_id column on tasks table)
     let task_row = client
         .query_opt(
-            "SELECT id, title, status, goal_id, created_at, completed_at \
-             FROM api.tasks WHERE id = $1::uuid AND organization_id = $2::uuid",
-            &[&task_id, &org_id],
+            "SELECT id, title, status, goal_id, created_at, updated_at \
+             FROM api.tasks WHERE id = $1",
+            &[&task_uuid],
         )
         .await
         .map_err(|e| format!("Failed to query task: {}", e))?
-        .ok_or_else(|| format!("Task {} not found in organization {}", task_id, org_id))?;
+        .ok_or_else(|| format!("Task {} not found", task_id))?;
 
-    let task_title: String = task_row.get::<_, Option<String>>("title").unwrap_or_default();
-    let status: String = task_row.get::<_, Option<String>>("status").unwrap_or_else(|| "unknown".to_string());
+    let task_title: String = task_row.get("title");
+    let status: String = task_row.get("status");
     let goal_id: Option<String> = task_row.get::<_, Option<uuid::Uuid>>("goal_id").map(|u| u.to_string());
-    let created_at: DateTime<Utc> = task_row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now);
-    let completed_at: Option<DateTime<Utc>> = task_row.get("completed_at");
-
-    // Fetch goal title if goal_id present
-    let goal_title = if let Some(ref gid) = goal_id {
-        client
-            .query_opt(
-                "SELECT title FROM api.goals WHERE id = $1::uuid AND organization_id = $2::uuid",
-                &[&gid.as_str(), &org_id],
-            )
-            .await
-            .ok()
-            .flatten()
-            .and_then(|row| row.get::<_, Option<String>>("title"))
+    let created_at: DateTime<Utc> = task_row.get("created_at");
+    // Tasks have no completed_at; use updated_at if status is done
+    let completed_at: Option<DateTime<Utc>> = if status == "Done" || status == "Completed" {
+        Some(task_row.get("updated_at"))
     } else {
         None
     };
 
-    // Fetch task comments
+    // Fetch goal title if goal_id present
+    let goal_title = if let Some(ref gid) = goal_id {
+        let goal_uuid = uuid::Uuid::parse_str(gid).ok();
+        if let Some(gu) = goal_uuid {
+            client
+                .query_opt(
+                    "SELECT title FROM api.goals WHERE id = $1",
+                    &[&gu],
+                )
+                .await
+                .ok()
+                .flatten()
+                .map(|row| row.get::<_, String>("title"))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Fetch task comments (columns: id, author_id, content, created_at)
     let comment_rows = client
         .query(
-            "SELECT id, user_id, body, created_at \
+            "SELECT id, author_id, content, created_at \
              FROM api.task_comments \
-             WHERE task_id = $1::uuid \
+             WHERE task_id = $1 \
              ORDER BY created_at ASC \
              LIMIT 500",
-            &[&task_id],
+            &[&task_uuid],
         )
         .await
         .unwrap_or_default();
@@ -853,24 +874,22 @@ async fn fetch_task_data_from_pg(
         .iter()
         .map(|row| TaskComment {
             id: row.get::<_, uuid::Uuid>("id").to_string(),
-            author_id: row.get::<_, Option<uuid::Uuid>>("user_id")
-                .map(|u| u.to_string())
-                .unwrap_or_default(),
-            content: row.get::<_, Option<String>>("body").unwrap_or_default(),
-            created_at: row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now),
+            author_id: row.get::<_, uuid::Uuid>("author_id").to_string(),
+            content: row.get::<_, String>("content"),
+            created_at: row.get("created_at"),
         })
         .collect();
 
-    // Fetch related messages (messages that reference this task)
+    // Fetch related messages (messages table has no org_id; search by content mention)
+    let search_pattern = format!("%{}%", task_id);
     let message_rows = client
         .query(
             "SELECT id, sender_id, content, created_at \
              FROM api.messages \
-             WHERE organization_id = $1::uuid \
-             AND (content ILIKE '%' || $2 || '%' OR metadata::text ILIKE '%' || $2 || '%') \
+             WHERE content ILIKE $1 \
              ORDER BY created_at ASC \
              LIMIT 100",
-            &[&org_id, &task_id],
+            &[&search_pattern],
         )
         .await
         .unwrap_or_default();
@@ -879,38 +898,41 @@ async fn fetch_task_data_from_pg(
         .iter()
         .map(|row| RelatedMessage {
             id: row.get::<_, uuid::Uuid>("id").to_string(),
-            sender_id: row.get::<_, Option<uuid::Uuid>>("sender_id")
-                .map(|u| u.to_string())
-                .unwrap_or_default(),
-            content: row.get::<_, Option<String>>("content").unwrap_or_default(),
-            created_at: row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now),
+            sender_id: row.get::<_, uuid::Uuid>("sender_id").to_string(),
+            content: row.get::<_, String>("content"),
+            created_at: row.get("created_at"),
         })
         .collect();
 
-    // Fetch activity logs for this task
+    // Fetch activity logs (columns: id, action, changed_by, changed_by_name, created_at, changes)
     let activity_rows = client
         .query(
-            "SELECT id, action, user_id, created_at, details \
+            "SELECT id, action, changed_by, changed_by_name, created_at, changes \
              FROM api.task_activity_logs \
-             WHERE task_id = $1::uuid \
+             WHERE task_id = $1 \
              ORDER BY created_at ASC \
              LIMIT 500",
-            &[&task_id],
+            &[&task_uuid],
         )
         .await
         .unwrap_or_default();
 
     let activity_events: Vec<ActivityEvent> = activity_rows
         .iter()
-        .map(|row| ActivityEvent {
-            action: row.get::<_, Option<String>>("action").unwrap_or_else(|| "unknown".to_string()),
-            description: row.get::<_, Option<String>>("details").unwrap_or_default(),
-            actor_id: row.get::<_, Option<uuid::Uuid>>("user_id")
-                .map(|u| u.to_string())
-                .unwrap_or_default(),
-            actor_name: None,
-            timestamp: row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now),
-            changes: None,
+        .map(|row| {
+            let changes_json: Option<serde_json::Value> = row.get("changes");
+            ActivityEvent {
+                action: row.get::<_, String>("action"),
+                description: changes_json.as_ref()
+                    .and_then(|v| serde_json::to_string(v).ok())
+                    .unwrap_or_default(),
+                actor_id: row.get::<_, Option<uuid::Uuid>>("changed_by")
+                    .map(|u| u.to_string())
+                    .unwrap_or_default(),
+                actor_name: row.get("changed_by_name"),
+                timestamp: row.get("created_at"),
+                changes: changes_json,
+            }
         })
         .collect();
 
@@ -958,6 +980,12 @@ async fn fetch_task_data_from_pg(
 }
 
 /// Fetch goal data from PostgreSQL for analysis
+///
+/// Schema notes:
+/// - api.goals has organization_id (UUID)
+/// - api.tasks has no organization_id; linked to goals via goal_id
+/// - api.task_comments uses author_id and content
+/// - api.task_activity_logs uses changed_by, changed_by_name, changes (jsonb)
 #[cfg(feature = "postgres")]
 async fn fetch_goal_data_from_pg(
     state: &AppState,
@@ -969,31 +997,36 @@ async fn fetch_goal_data_from_pg(
     let client = pool.get().await
         .map_err(|e| format!("Failed to get PG connection: {}", e))?;
 
-    // Fetch goal details
+    let goal_uuid = uuid::Uuid::parse_str(goal_id)
+        .map_err(|_| format!("Invalid goal_id UUID: {}", goal_id))?;
+    let org_uuid = uuid::Uuid::parse_str(org_id)
+        .map_err(|_| format!("Invalid organization_id UUID: {}", org_id))?;
+
+    // Fetch goal details (goals table has organization_id)
     let goal_row = client
         .query_opt(
             "SELECT id, title, status, created_at \
-             FROM api.goals WHERE id = $1::uuid AND organization_id = $2::uuid",
-            &[&goal_id, &org_id],
+             FROM api.goals WHERE id = $1 AND organization_id = $2",
+            &[&goal_uuid, &org_uuid],
         )
         .await
         .map_err(|e| format!("Failed to query goal: {}", e))?
         .ok_or_else(|| format!("Goal {} not found in organization {}", goal_id, org_id))?;
 
-    let goal_title: String = goal_row.get::<_, Option<String>>("title").unwrap_or_default();
-    let status: String = goal_row.get::<_, Option<String>>("status").unwrap_or_else(|| "unknown".to_string());
+    let goal_title: String = goal_row.get("title");
+    let status: String = goal_row.get::<_, Option<String>>("status").unwrap_or_else(|| "not_started".to_string());
     let created_at: DateTime<Utc> = goal_row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now);
 
     // Fetch all task comments under this goal's tasks
     let comment_rows = client
         .query(
-            "SELECT tc.id, tc.user_id, tc.body, tc.created_at, t.id as task_id \
+            "SELECT tc.id, tc.author_id, tc.content, tc.created_at \
              FROM api.task_comments tc \
              JOIN api.tasks t ON tc.task_id = t.id \
-             WHERE t.goal_id = $1::uuid AND t.organization_id = $2::uuid \
+             WHERE t.goal_id = $1 \
              ORDER BY tc.created_at ASC \
              LIMIT 1000",
-            &[&goal_id, &org_id],
+            &[&goal_uuid],
         )
         .await
         .unwrap_or_default();
@@ -1002,39 +1035,42 @@ async fn fetch_goal_data_from_pg(
         .iter()
         .map(|row| TaskComment {
             id: row.get::<_, uuid::Uuid>("id").to_string(),
-            author_id: row.get::<_, Option<uuid::Uuid>>("user_id")
-                .map(|u| u.to_string())
-                .unwrap_or_default(),
-            content: row.get::<_, Option<String>>("body").unwrap_or_default(),
-            created_at: row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now),
+            author_id: row.get::<_, uuid::Uuid>("author_id").to_string(),
+            content: row.get::<_, String>("content"),
+            created_at: row.get("created_at"),
         })
         .collect();
 
     // Fetch activity logs across all tasks in this goal
     let activity_rows = client
         .query(
-            "SELECT tal.id, tal.action, tal.user_id, tal.created_at, tal.details \
+            "SELECT tal.id, tal.action, tal.changed_by, tal.changed_by_name, tal.created_at, tal.changes \
              FROM api.task_activity_logs tal \
              JOIN api.tasks t ON tal.task_id = t.id \
-             WHERE t.goal_id = $1::uuid AND t.organization_id = $2::uuid \
+             WHERE t.goal_id = $1 \
              ORDER BY tal.created_at ASC \
              LIMIT 1000",
-            &[&goal_id, &org_id],
+            &[&goal_uuid],
         )
         .await
         .unwrap_or_default();
 
     let activity_events: Vec<ActivityEvent> = activity_rows
         .iter()
-        .map(|row| ActivityEvent {
-            action: row.get::<_, Option<String>>("action").unwrap_or_else(|| "unknown".to_string()),
-            description: row.get::<_, Option<String>>("details").unwrap_or_default(),
-            actor_id: row.get::<_, Option<uuid::Uuid>>("user_id")
-                .map(|u| u.to_string())
-                .unwrap_or_default(),
-            actor_name: None,
-            timestamp: row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now),
-            changes: None,
+        .map(|row| {
+            let changes_json: Option<serde_json::Value> = row.get("changes");
+            ActivityEvent {
+                action: row.get::<_, String>("action"),
+                description: changes_json.as_ref()
+                    .and_then(|v| serde_json::to_string(v).ok())
+                    .unwrap_or_default(),
+                actor_id: row.get::<_, Option<uuid::Uuid>>("changed_by")
+                    .map(|u| u.to_string())
+                    .unwrap_or_default(),
+                actor_name: row.get("changed_by_name"),
+                timestamp: row.get("created_at"),
+                changes: changes_json,
+            }
         })
         .collect();
 
