@@ -355,23 +355,29 @@ impl RuleBasedClassifier {
         let lower = content.to_lowercase();
 
         // Detect primary type based on keywords
-        // Note: more specific patterns must come before general ones
+        // Note: more specific patterns must come before general ones.
+        // Synthesized activity content (e.g. "Status updated from blocked to in_progress")
+        // must be matched early to avoid false positives from substring matches like "blocked".
         let primary_type = if lower.contains("approved by") || lower.starts_with("task approved") {
             InteractionType::Acknowledgment
+        } else if lower.starts_with("status updated") || lower.starts_with("status changed") || lower.starts_with("priority changed") {
+            InteractionType::StatusUpdate
+        } else if lower.starts_with("task completed") || lower.contains("complet") || lower.contains("finished") || lower.contains("done") {
+            InteractionType::StatusUpdate
+        } else if lower.starts_with("task unblocked") || lower.contains("unblocked") || lower.contains("resolved") {
+            InteractionType::StatusUpdate
+        } else if lower.contains("started working") || lower.contains("in progress") {
+            InteractionType::StatusUpdate
+        } else if lower.contains("submitted") || lower.contains("for review") {
+            InteractionType::RequestApproval
         } else if lower.contains("approve") || lower.contains("sign off") || lower.contains("greenlight") {
             InteractionType::RequestApproval
-        } else if lower.contains("unblocked") || lower.contains("resolved") {
-            InteractionType::StatusUpdate
         } else if lower.contains("clarify") || lower.contains("explain") || lower.contains("what do you mean") {
             InteractionType::RequestClarification
         } else if lower.contains("blocked") || lower.contains("stuck") || lower.contains("can't proceed") {
             InteractionType::Blocker
         } else if lower.contains("escalat") {
             InteractionType::Escalation
-        } else if lower.contains("complet") || lower.contains("finished") || lower.contains("done") {
-            InteractionType::StatusUpdate
-        } else if lower.contains("started working") || lower.contains("in progress") {
-            InteractionType::StatusUpdate
         } else if lower.contains("status") || lower.contains("update") || lower.contains("progress") {
             InteractionType::StatusUpdate
         } else if lower.contains("suggest") || lower.contains("recommend") || lower.contains("how about") {
@@ -397,10 +403,12 @@ impl RuleBasedClassifier {
             UrgencyLevel::Medium
         };
 
-        // Simple sentiment
+        // Simple sentiment (avoid false negatives from status transitions like "from blocked to...")
         let sentiment = if lower.contains("great") || lower.contains("thanks") || lower.contains("good") {
             0.5
-        } else if lower.contains("problem") || lower.contains("issue") || lower.contains("blocked") {
+        } else if lower.contains("problem") || lower.contains("issue")
+            || (lower.contains("blocked") && !lower.contains("unblocked") && !lower.starts_with("status updated"))
+        {
             -0.3
         } else {
             0.0
@@ -544,5 +552,48 @@ mod tests {
         // Test urgency
         let result = classifier.classify_by_keywords("This needs to be done ASAP!");
         assert_eq!(result.urgency, UrgencyLevel::Critical);
+    }
+
+    #[test]
+    fn test_status_update_not_misclassified_as_blocker() {
+        let classifier = RuleBasedClassifier::new();
+
+        // "Status updated from blocked to in_progress" must be StatusUpdate, NOT Blocker
+        let result = classifier.classify_by_keywords("Status updated from blocked to in_progress");
+        assert_eq!(result.primary_type, InteractionType::StatusUpdate,
+            "Status transition mentioning 'blocked' should be StatusUpdate, not Blocker");
+
+        // Actual blockers should still classify correctly
+        let result = classifier.classify_by_keywords("Task blocked by missing API credentials");
+        assert_eq!(result.primary_type, InteractionType::Blocker);
+
+        // Unblocked should be StatusUpdate
+        let result = classifier.classify_by_keywords("Task unblocked by admin");
+        assert_eq!(result.primary_type, InteractionType::StatusUpdate);
+    }
+
+    #[test]
+    fn test_synthesized_activity_classification() {
+        let classifier = RuleBasedClassifier::new();
+
+        // Completed tasks
+        let result = classifier.classify_by_keywords("Task completed by Alice");
+        assert_eq!(result.primary_type, InteractionType::StatusUpdate);
+
+        // Submitted for review → RequestApproval
+        let result = classifier.classify_by_keywords("Bob submitted the task for review");
+        assert_eq!(result.primary_type, InteractionType::RequestApproval);
+
+        // Approved → Acknowledgment
+        let result = classifier.classify_by_keywords("Task approved by manager");
+        assert_eq!(result.primary_type, InteractionType::Acknowledgment);
+
+        // Priority changes
+        let result = classifier.classify_by_keywords("Priority changed from low to high");
+        assert_eq!(result.primary_type, InteractionType::StatusUpdate);
+
+        // Escalation
+        let result = classifier.classify_by_keywords("Task escalated by team lead");
+        assert_eq!(result.primary_type, InteractionType::Escalation);
     }
 }

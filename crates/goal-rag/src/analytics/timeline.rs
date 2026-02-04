@@ -177,7 +177,12 @@ impl TimelineReconstructor {
             "interaction:assignment" => Some("assigned".to_string()),
 
             // Progress (status updates from activity events or comments)
-            "interaction:status_update" if current_phase == "assigned" || current_phase == "initiated" || current_phase == "blocked" => {
+            // Includes "escalated" so the timeline can recover from escalation
+            "interaction:status_update" if current_phase == "assigned"
+                || current_phase == "initiated"
+                || current_phase == "blocked"
+                || current_phase == "escalated" =>
+            {
                 Some("in_progress".to_string())
             }
 
@@ -190,7 +195,7 @@ impl TimelineReconstructor {
             "interaction:blocker" if current_phase != "blocked" => Some("blocked".to_string()),
 
             // Escalation
-            "interaction:escalation" => Some("escalated".to_string()),
+            "interaction:escalation" if current_phase != "escalated" => Some("escalated".to_string()),
 
             // Recognition / acknowledgment after approval request can signal approval
             "interaction:acknowledgment" if current_phase == "pending_approval" => {
@@ -432,6 +437,18 @@ mod tests {
         assert_eq!(
             reconstructor.detect_phase_transition("interaction:escalation", "in_progress"),
             Some("escalated".to_string())
+        );
+
+        // Escalated phase can recover via status_update
+        assert_eq!(
+            reconstructor.detect_phase_transition("interaction:status_update", "escalated"),
+            Some("in_progress".to_string())
+        );
+
+        // Escalation should not re-trigger when already escalated
+        assert_eq!(
+            reconstructor.detect_phase_transition("interaction:escalation", "escalated"),
+            None
         );
 
         // No transition for unrecognized types
