@@ -705,14 +705,9 @@ fn spawn_task_analysis(
             }
         };
 
-        // Create processor and run analysis
-        let ollama_url = &state.config().llm.base_url;
-        let ollama_model = &state.config().llm.generate_model;
-        let processor = AnalyticsJobProcessor::with_ollama(
-            Arc::clone(&analytics_db),
-            ollama_url,
-            ollama_model,
-        );
+        // Create processor with fast rule-based classifier (instant)
+        // Use with_ollama() instead if higher-quality LLM classification is needed
+        let processor = AnalyticsJobProcessor::with_rule_based(Arc::clone(&analytics_db));
 
         match processor.process_task_analysis(&mut job, task_input).await {
             Ok(result) => {
@@ -764,13 +759,8 @@ fn spawn_goal_analysis(
             }
         };
 
-        let ollama_url = &state.config().llm.base_url;
-        let ollama_model = &state.config().llm.generate_model;
-        let processor = AnalyticsJobProcessor::with_ollama(
-            Arc::clone(&analytics_db),
-            ollama_url,
-            ollama_model,
-        );
+        // Create processor with fast rule-based classifier (instant)
+        let processor = AnalyticsJobProcessor::with_rule_based(Arc::clone(&analytics_db));
 
         match processor.process_task_analysis(&mut job, task_input).await {
             Ok(result) => {

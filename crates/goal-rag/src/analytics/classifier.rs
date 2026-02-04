@@ -223,27 +223,105 @@ impl InteractionClassifier for OllamaClassifier {
         interactions: &[(String, InteractionSource)],
         context: Option<&ClassificationContext>,
     ) -> Result<Vec<ClassificationResult>> {
-        // For now, process sequentially
-        // TODO: Implement true batch processing if Ollama supports it
-        let mut results = Vec::with_capacity(interactions.len());
+        if interactions.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Process up to 4 concurrently to avoid overwhelming Ollama
+        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
+        let mut handles = Vec::with_capacity(interactions.len());
 
         for (content, source) in interactions {
-            match self.classify(content, source.clone(), context).await {
-                Ok(result) => results.push(result),
-                Err(e) => {
-                    tracing::warn!("Classification failed for interaction: {}", e);
-                    // Return a default/fallback classification
-                    results.push(ClassificationResult {
-                        primary_type: InteractionType::Other,
-                        secondary_types: vec![],
-                        confidence: 0.0,
-                        sentiment: 0.0,
-                        urgency: UrgencyLevel::Medium,
-                        entities: ExtractedEntities::default(),
-                        reasoning: Some(format!("Classification failed: {}", e)),
-                    });
+            let content = content.clone();
+            let source = source.clone();
+            let prompt = self.build_prompt(&content, &source, context);
+            let client = self.client.clone();
+            let base_url = self.base_url.clone();
+            let model = self.model.clone();
+            let sem = semaphore.clone();
+
+            handles.push(tokio::spawn(async move {
+                let _permit = sem.acquire().await.unwrap();
+                let request = OllamaRequest {
+                    model,
+                    prompt,
+                    stream: false,
+                    options: OllamaOptions {
+                        temperature: 0.1,
+                        num_predict: 512,
+                    },
+                };
+
+                let response = client
+                    .post(format!("{}/api/generate", base_url))
+                    .json(&request)
+                    .send()
+                    .await;
+
+                match response {
+                    Ok(resp) if resp.status().is_success() => {
+                        match resp.json::<OllamaResponse>().await {
+                            Ok(ollama_resp) => {
+                                // Try to extract JSON from the response
+                                let response_str = &ollama_resp.response;
+                                let json_str = if let Some(start) = response_str.find('{') {
+                                    if let Some(end) = response_str.rfind('}') {
+                                        &response_str[start..=end]
+                                    } else {
+                                        response_str.as_str()
+                                    }
+                                } else {
+                                    response_str.as_str()
+                                };
+
+                                match serde_json::from_str::<LlmClassificationResponse>(json_str) {
+                                    Ok(parsed) => ClassificationResult {
+                                        primary_type: InteractionType::parse(&parsed.primary_type),
+                                        secondary_types: parsed.secondary_types
+                                            .into_iter()
+                                            .map(|s| InteractionType::parse(&s))
+                                            .collect(),
+                                        confidence: parsed.confidence.clamp(0.0, 1.0),
+                                        sentiment: parsed.sentiment.clamp(-1.0, 1.0),
+                                        urgency: UrgencyLevel::parse(&parsed.urgency),
+                                        entities: ExtractedEntities {
+                                            mentioned_users: parsed.entities.mentioned_users,
+                                            mentioned_deadlines: parsed.entities.mentioned_deadlines,
+                                            action_items: parsed.entities.action_items,
+                                            blockers: parsed.entities.blockers,
+                                            resources: parsed.entities.resources,
+                                        },
+                                        reasoning: parsed.reasoning,
+                                    },
+                                    Err(e) => {
+                                        tracing::warn!("Failed to parse LLM response: {}", e);
+                                        ClassificationResult::fallback(&format!("Parse error: {}", e))
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to decode Ollama response: {}", e);
+                                ClassificationResult::fallback(&format!("Decode error: {}", e))
+                            }
+                        }
+                    }
+                    Ok(resp) => {
+                        tracing::warn!("Ollama returned status {}", resp.status());
+                        ClassificationResult::fallback(&format!("HTTP {}", resp.status()))
+                    }
+                    Err(e) => {
+                        tracing::warn!("Ollama request failed: {}", e);
+                        ClassificationResult::fallback(&format!("Request error: {}", e))
+                    }
                 }
-            }
+            }));
+        }
+
+        let mut results = Vec::with_capacity(handles.len());
+        for handle in handles {
+            results.push(handle.await.unwrap_or_else(|e| {
+                ClassificationResult::fallback(&format!("Task join error: {}", e))
+            }));
         }
 
         Ok(results)

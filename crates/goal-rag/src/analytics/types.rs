@@ -185,6 +185,21 @@ pub struct ClassificationResult {
     pub reasoning: Option<String>,
 }
 
+impl ClassificationResult {
+    /// Create a fallback result when classification fails
+    pub fn fallback(reason: &str) -> Self {
+        Self {
+            primary_type: InteractionType::Other,
+            secondary_types: vec![],
+            confidence: 0.0,
+            sentiment: 0.0,
+            urgency: UrgencyLevel::Medium,
+            entities: ExtractedEntities::default(),
+            reasoning: Some(format!("Classification failed: {}", reason)),
+        }
+    }
+}
+
 /// Context for classification (provides additional info to the classifier)
 #[derive(Debug, Clone, Default)]
 pub struct ClassificationContext {

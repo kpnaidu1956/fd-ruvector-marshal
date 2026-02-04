@@ -44,9 +44,16 @@ impl AnalyticsJobProcessor {
         }
     }
 
-    /// Create with default Ollama classifier
+    /// Create with default Ollama classifier (slower, higher quality)
     pub fn with_ollama(db: Arc<AnalyticsDb>, ollama_url: &str, model: &str) -> Self {
         let classifier = Arc::new(HybridClassifier::new(ollama_url, model));
+        Self::new(db, classifier)
+    }
+
+    /// Create with fast rule-based classifier (instant, keyword-based)
+    pub fn with_rule_based(db: Arc<AnalyticsDb>) -> Self {
+        use super::classifier::RuleBasedClassifier;
+        let classifier = Arc::new(RuleBasedClassifier::new());
         Self::new(db, classifier)
     }
 
@@ -68,26 +75,38 @@ impl AnalyticsJobProcessor {
         job.progress_percent = 20;
         self.db.update_analysis_job(job)?;
 
-        // Step 2: Classify interactions
-        job.status = AnalysisJobStatus::Classifying;
-        job.current_stage = "classifying".to_string();
-        self.db.update_analysis_job(job)?;
+        // Step 2: Classify interactions (skip if none found)
+        let classifications = if interactions.is_empty() {
+            tracing::info!(job_id = %job.id, "No interactions to classify, skipping classification step");
+            job.status = AnalysisJobStatus::Classifying;
+            job.current_stage = "classifying".to_string();
+            job.interactions_classified = 0;
+            job.progress_percent = 50;
+            self.db.update_analysis_job(job)?;
+            vec![]
+        } else {
+            job.status = AnalysisJobStatus::Classifying;
+            job.current_stage = "classifying".to_string();
+            self.db.update_analysis_job(job)?;
 
-        let classifications = self.classify_interactions(
-            &job.organization_id,
-            &interactions,
-            Some(&task_data.task_title),
-            task_data.goal_title.as_deref(),
-        ).await?;
+            let result = self.classify_interactions(
+                &job.organization_id,
+                &interactions,
+                Some(&task_data.task_title),
+                task_data.goal_title.as_deref(),
+            ).await?;
 
-        job.interactions_classified = classifications.len() as u32;
-        job.progress_percent = 50;
-        self.db.update_analysis_job(job)?;
+            job.interactions_classified = result.len() as u32;
+            job.progress_percent = 50;
+            self.db.update_analysis_job(job)?;
 
-        // Store classifications
-        for classification in &classifications {
-            self.db.insert_classification(classification)?;
-        }
+            // Store classifications
+            for classification in &result {
+                self.db.insert_classification(classification)?;
+            }
+
+            result
+        };
 
         // Step 3: Build timeline
         job.status = AnalysisJobStatus::BuildingTimeline;
