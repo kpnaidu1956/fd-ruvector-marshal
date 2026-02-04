@@ -63,8 +63,6 @@ impl AnalyticsJobProcessor {
         job: &mut AnalysisJob,
         task_data: TaskAnalysisInput,
     ) -> Result<AnalysisResult> {
-        tracing::info!(job_id = %job.id, "[STEP 0] process_task_analysis started");
-
         // Update job status
         job.status = AnalysisJobStatus::FetchingData;
         job.current_stage = "fetching_data".to_string();
@@ -73,31 +71,19 @@ impl AnalyticsJobProcessor {
 
         // Step 1: Collect all interactions
         let interactions = self.collect_task_interactions(&task_data);
-        tracing::info!(
-            job_id = %job.id,
-            interaction_count = interactions.len(),
-            comments = task_data.comments.len(),
-            messages = task_data.related_messages.len(),
-            "[STEP 1] Collected interactions"
-        );
         job.interactions_found = interactions.len() as u32;
         job.progress_percent = 20;
         self.db.update_analysis_job(job)?;
 
         // Clear old classifications for this task so re-analysis produces fresh results
-        tracing::info!(job_id = %job.id, entity_id = %job.entity_id, "[STEP 1b] Deleting old classifications");
         let deleted = self.db.delete_classifications_for_task(&job.entity_id)?;
-        tracing::info!(job_id = %job.id, deleted = deleted, "[STEP 1c] Delete complete");
+        if deleted > 0 {
+            tracing::info!(job_id = %job.id, deleted = deleted, "Cleared old classifications for re-analysis");
+        }
 
         // Step 2: Classify interactions (skip if none found)
-        tracing::info!(
-            job_id = %job.id,
-            is_empty = interactions.is_empty(),
-            count = interactions.len(),
-            "[STEP 2] About to classify"
-        );
         let classifications = if interactions.is_empty() {
-            tracing::info!(job_id = %job.id, "[STEP 2a] No interactions, skipping classification");
+            tracing::info!(job_id = %job.id, "No interactions to classify, skipping classification step");
             job.status = AnalysisJobStatus::Classifying;
             job.current_stage = "classifying".to_string();
             job.interactions_classified = 0;
@@ -105,7 +91,6 @@ impl AnalyticsJobProcessor {
             self.db.update_analysis_job(job)?;
             vec![]
         } else {
-            tracing::info!(job_id = %job.id, count = interactions.len(), "[STEP 2b] Classifying non-empty batch");
             job.status = AnalysisJobStatus::Classifying;
             job.current_stage = "classifying".to_string();
             self.db.update_analysis_job(job)?;
@@ -117,28 +102,14 @@ impl AnalyticsJobProcessor {
                 task_data.goal_title.as_deref(),
             ).await?;
 
-            tracing::info!(
-                job_id = %job.id,
-                classified = result.len(),
-                "[STEP 2c] Classification returned"
-            );
-
             job.interactions_classified = result.len() as u32;
             job.progress_percent = 50;
             self.db.update_analysis_job(job)?;
 
             // Store classifications
-            for (i, classification) in result.iter().enumerate() {
-                tracing::debug!(
-                    job_id = %job.id,
-                    idx = i,
-                    source_type = classification.source_type.as_str(),
-                    interaction_type = classification.interaction_type.as_str(),
-                    "[STEP 2d] Storing classification"
-                );
+            for classification in &result {
                 self.db.insert_classification(classification)?;
             }
-            tracing::info!(job_id = %job.id, stored = result.len(), "[STEP 2e] All classifications stored");
 
             result
         };
