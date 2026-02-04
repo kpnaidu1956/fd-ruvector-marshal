@@ -689,6 +689,7 @@ fn spawn_task_analysis(
             job_id = %job.id,
             task_id = %task_id,
             org_id = %org_id,
+            build = "2026-02-04-v3",
             "Starting background task analysis"
         );
 
