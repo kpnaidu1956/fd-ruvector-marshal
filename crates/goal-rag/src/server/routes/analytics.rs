@@ -9,14 +9,22 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+#[cfg(feature = "postgres")]
+use chrono::DateTime;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::analytics::{
-    AnalysisJob, InteractionType, RecommendationStatus,
+    AnalysisJob, AnalysisJobStatus, InteractionType, RecommendationStatus,
 };
+use crate::analytics::jobs::{AnalyticsJobProcessor, TaskAnalysisInput};
+#[cfg(feature = "postgres")]
+use crate::analytics::jobs::{TaskComment, RelatedMessage};
 use crate::analytics::storage::AnalyticsDb;
+#[cfg(feature = "postgres")]
+use crate::analytics::timeline::ActivityEvent;
 use crate::server::state::AppState;
 
 // ==================== Request/Response Types ====================
@@ -149,16 +157,16 @@ pub async fn analyze_task(
         );
     }
 
-    // TODO: Spawn background task to process analysis
-    // For now, return the job ID for polling
+    // Spawn background task to fetch data from PostgreSQL and run analysis
+    let job_id = job.id;
+    spawn_task_analysis(state, job, analytics_db);
 
     (
         StatusCode::ACCEPTED,
         Json(serde_json::json!({
-            "job_id": job.id.to_string(),
+            "job_id": job_id.to_string(),
             "status": "pending",
-            "message": "Analysis job created. Poll /api/analytics/jobs/{job_id} for status.",
-            "note": "Full analysis requires PostgreSQL integration (pending)"
+            "message": "Analysis job created. Poll /api/analytics/jobs/{job_id} for status."
         })),
     )
 }
@@ -201,10 +209,14 @@ pub async fn analyze_goal(
         );
     }
 
+    // Spawn background task to fetch data from PostgreSQL and run analysis
+    let job_id = job.id;
+    spawn_goal_analysis(state, job, analytics_db);
+
     (
         StatusCode::ACCEPTED,
         Json(serde_json::json!({
-            "job_id": job.id.to_string(),
+            "job_id": job_id.to_string(),
             "status": "pending",
             "message": "Analysis job created. Poll /api/analytics/jobs/{job_id} for status."
         })),
@@ -626,8 +638,7 @@ pub async fn analytics_info() -> impl IntoResponse {
         "name": "Interaction Analytics API",
         "version": "1.0.0",
         "description": "Analyze team communications, reconstruct workflow timelines, and generate efficiency recommendations",
-        "status": "partial_implementation",
-        "note": "Full functionality requires PostgreSQL integration for fetching task_comments, messages, and activity_logs",
+        "status": "active",
         "endpoints": {
             "POST /api/analytics/analysis/task/:task_id": "Trigger analysis for a task",
             "POST /api/analytics/analysis/goal/:goal_id": "Trigger analysis for a goal",
@@ -660,6 +671,413 @@ pub async fn analytics_info() -> impl IntoResponse {
             "other"
         ]
     }))
+}
+
+// ==================== Background Job Processing ====================
+
+/// Spawn background task analysis job
+fn spawn_task_analysis(
+    state: AppState,
+    mut job: AnalysisJob,
+    analytics_db: Arc<AnalyticsDb>,
+) {
+    tokio::spawn(async move {
+        let task_id = job.entity_id.clone();
+        let org_id = job.organization_id.clone();
+
+        tracing::info!(
+            job_id = %job.id,
+            task_id = %task_id,
+            org_id = %org_id,
+            "Starting background task analysis"
+        );
+
+        // Fetch task data from PostgreSQL
+        let task_input = match fetch_task_data_from_pg(&state, &task_id, &org_id).await {
+            Ok(input) => input,
+            Err(e) => {
+                tracing::error!(job_id = %job.id, error = %e, "Failed to fetch task data from PostgreSQL");
+                job.status = AnalysisJobStatus::Failed;
+                job.error = Some(format!("Failed to fetch task data: {}", e));
+                job.updated_at = Utc::now();
+                let _ = analytics_db.update_analysis_job(&job);
+                return;
+            }
+        };
+
+        // Create processor and run analysis
+        let ollama_url = &state.config().llm.base_url;
+        let ollama_model = &state.config().llm.generate_model;
+        let processor = AnalyticsJobProcessor::with_ollama(
+            Arc::clone(&analytics_db),
+            ollama_url,
+            ollama_model,
+        );
+
+        match processor.process_task_analysis(&mut job, task_input).await {
+            Ok(result) => {
+                tracing::info!(
+                    job_id = %job.id,
+                    interactions = result.classifications.len(),
+                    recommendations = result.recommendations.len(),
+                    "Task analysis completed"
+                );
+            }
+            Err(e) => {
+                tracing::error!(job_id = %job.id, error = %e, "Task analysis failed");
+                job.status = AnalysisJobStatus::Failed;
+                job.error = Some(format!("Analysis failed: {}", e));
+                job.updated_at = Utc::now();
+                let _ = analytics_db.update_analysis_job(&job);
+            }
+        }
+    });
+}
+
+/// Spawn background goal analysis job
+fn spawn_goal_analysis(
+    state: AppState,
+    mut job: AnalysisJob,
+    analytics_db: Arc<AnalyticsDb>,
+) {
+    tokio::spawn(async move {
+        let goal_id = job.entity_id.clone();
+        let org_id = job.organization_id.clone();
+
+        tracing::info!(
+            job_id = %job.id,
+            goal_id = %goal_id,
+            org_id = %org_id,
+            "Starting background goal analysis"
+        );
+
+        // Fetch goal's tasks from PostgreSQL and analyze them collectively
+        let task_input = match fetch_goal_data_from_pg(&state, &goal_id, &org_id).await {
+            Ok(input) => input,
+            Err(e) => {
+                tracing::error!(job_id = %job.id, error = %e, "Failed to fetch goal data from PostgreSQL");
+                job.status = AnalysisJobStatus::Failed;
+                job.error = Some(format!("Failed to fetch goal data: {}", e));
+                job.updated_at = Utc::now();
+                let _ = analytics_db.update_analysis_job(&job);
+                return;
+            }
+        };
+
+        let ollama_url = &state.config().llm.base_url;
+        let ollama_model = &state.config().llm.generate_model;
+        let processor = AnalyticsJobProcessor::with_ollama(
+            Arc::clone(&analytics_db),
+            ollama_url,
+            ollama_model,
+        );
+
+        match processor.process_task_analysis(&mut job, task_input).await {
+            Ok(result) => {
+                tracing::info!(
+                    job_id = %job.id,
+                    interactions = result.classifications.len(),
+                    recommendations = result.recommendations.len(),
+                    "Goal analysis completed"
+                );
+            }
+            Err(e) => {
+                tracing::error!(job_id = %job.id, error = %e, "Goal analysis failed");
+                job.status = AnalysisJobStatus::Failed;
+                job.error = Some(format!("Analysis failed: {}", e));
+                job.updated_at = Utc::now();
+                let _ = analytics_db.update_analysis_job(&job);
+            }
+        }
+    });
+}
+
+/// Fetch task data from PostgreSQL for analysis
+#[cfg(feature = "postgres")]
+async fn fetch_task_data_from_pg(
+    state: &AppState,
+    task_id: &str,
+    org_id: &str,
+) -> std::result::Result<TaskAnalysisInput, String> {
+    let pool = state.pg_pool()
+        .ok_or_else(|| "PostgreSQL pool not available".to_string())?;
+    let client = pool.get().await
+        .map_err(|e| format!("Failed to get PG connection: {}", e))?;
+
+    // Fetch task details
+    let task_row = client
+        .query_opt(
+            "SELECT id, title, status, goal_id, created_at, completed_at \
+             FROM api.tasks WHERE id = $1::uuid AND organization_id = $2::uuid",
+            &[&task_id, &org_id],
+        )
+        .await
+        .map_err(|e| format!("Failed to query task: {}", e))?
+        .ok_or_else(|| format!("Task {} not found in organization {}", task_id, org_id))?;
+
+    let task_title: String = task_row.get::<_, Option<String>>("title").unwrap_or_default();
+    let status: String = task_row.get::<_, Option<String>>("status").unwrap_or_else(|| "unknown".to_string());
+    let goal_id: Option<String> = task_row.get::<_, Option<uuid::Uuid>>("goal_id").map(|u| u.to_string());
+    let created_at: DateTime<Utc> = task_row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now);
+    let completed_at: Option<DateTime<Utc>> = task_row.get("completed_at");
+
+    // Fetch goal title if goal_id present
+    let goal_title = if let Some(ref gid) = goal_id {
+        client
+            .query_opt(
+                "SELECT title FROM api.goals WHERE id = $1::uuid AND organization_id = $2::uuid",
+                &[&gid.as_str(), &org_id],
+            )
+            .await
+            .ok()
+            .flatten()
+            .and_then(|row| row.get::<_, Option<String>>("title"))
+    } else {
+        None
+    };
+
+    // Fetch task comments
+    let comment_rows = client
+        .query(
+            "SELECT id, user_id, body, created_at \
+             FROM api.task_comments \
+             WHERE task_id = $1::uuid \
+             ORDER BY created_at ASC \
+             LIMIT 500",
+            &[&task_id],
+        )
+        .await
+        .unwrap_or_default();
+
+    let comments: Vec<TaskComment> = comment_rows
+        .iter()
+        .map(|row| TaskComment {
+            id: row.get::<_, uuid::Uuid>("id").to_string(),
+            author_id: row.get::<_, Option<uuid::Uuid>>("user_id")
+                .map(|u| u.to_string())
+                .unwrap_or_default(),
+            content: row.get::<_, Option<String>>("body").unwrap_or_default(),
+            created_at: row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now),
+        })
+        .collect();
+
+    // Fetch related messages (messages that reference this task)
+    let message_rows = client
+        .query(
+            "SELECT id, sender_id, content, created_at \
+             FROM api.messages \
+             WHERE organization_id = $1::uuid \
+             AND (content ILIKE '%' || $2 || '%' OR metadata::text ILIKE '%' || $2 || '%') \
+             ORDER BY created_at ASC \
+             LIMIT 100",
+            &[&org_id, &task_id],
+        )
+        .await
+        .unwrap_or_default();
+
+    let related_messages: Vec<RelatedMessage> = message_rows
+        .iter()
+        .map(|row| RelatedMessage {
+            id: row.get::<_, uuid::Uuid>("id").to_string(),
+            sender_id: row.get::<_, Option<uuid::Uuid>>("sender_id")
+                .map(|u| u.to_string())
+                .unwrap_or_default(),
+            content: row.get::<_, Option<String>>("content").unwrap_or_default(),
+            created_at: row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now),
+        })
+        .collect();
+
+    // Fetch activity logs for this task
+    let activity_rows = client
+        .query(
+            "SELECT id, action, user_id, created_at, details \
+             FROM api.task_activity_logs \
+             WHERE task_id = $1::uuid \
+             ORDER BY created_at ASC \
+             LIMIT 500",
+            &[&task_id],
+        )
+        .await
+        .unwrap_or_default();
+
+    let activity_events: Vec<ActivityEvent> = activity_rows
+        .iter()
+        .map(|row| ActivityEvent {
+            action: row.get::<_, Option<String>>("action").unwrap_or_else(|| "unknown".to_string()),
+            description: row.get::<_, Option<String>>("details").unwrap_or_default(),
+            actor_id: row.get::<_, Option<uuid::Uuid>>("user_id")
+                .map(|u| u.to_string())
+                .unwrap_or_default(),
+            actor_name: None,
+            timestamp: row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now),
+            changes: None,
+        })
+        .collect();
+
+    tracing::info!(
+        task_id = %task_id,
+        comments = comments.len(),
+        messages = related_messages.len(),
+        events = activity_events.len(),
+        "Fetched task data from PostgreSQL"
+    );
+
+    Ok(TaskAnalysisInput {
+        task_id: task_id.to_string(),
+        task_title,
+        goal_id,
+        goal_title,
+        status,
+        created_at,
+        completed_at,
+        comments,
+        related_messages,
+        activity_events,
+    })
+}
+
+/// Fetch task data without PostgreSQL - returns minimal input from available context
+#[cfg(not(feature = "postgres"))]
+async fn fetch_task_data_from_pg(
+    _state: &AppState,
+    task_id: &str,
+    _org_id: &str,
+) -> std::result::Result<TaskAnalysisInput, String> {
+    Ok(TaskAnalysisInput {
+        task_id: task_id.to_string(),
+        task_title: String::new(),
+        goal_id: None,
+        goal_title: None,
+        status: "unknown".to_string(),
+        created_at: Utc::now(),
+        completed_at: None,
+        comments: vec![],
+        related_messages: vec![],
+        activity_events: vec![],
+    })
+}
+
+/// Fetch goal data from PostgreSQL for analysis
+#[cfg(feature = "postgres")]
+async fn fetch_goal_data_from_pg(
+    state: &AppState,
+    goal_id: &str,
+    org_id: &str,
+) -> std::result::Result<TaskAnalysisInput, String> {
+    let pool = state.pg_pool()
+        .ok_or_else(|| "PostgreSQL pool not available".to_string())?;
+    let client = pool.get().await
+        .map_err(|e| format!("Failed to get PG connection: {}", e))?;
+
+    // Fetch goal details
+    let goal_row = client
+        .query_opt(
+            "SELECT id, title, status, created_at \
+             FROM api.goals WHERE id = $1::uuid AND organization_id = $2::uuid",
+            &[&goal_id, &org_id],
+        )
+        .await
+        .map_err(|e| format!("Failed to query goal: {}", e))?
+        .ok_or_else(|| format!("Goal {} not found in organization {}", goal_id, org_id))?;
+
+    let goal_title: String = goal_row.get::<_, Option<String>>("title").unwrap_or_default();
+    let status: String = goal_row.get::<_, Option<String>>("status").unwrap_or_else(|| "unknown".to_string());
+    let created_at: DateTime<Utc> = goal_row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now);
+
+    // Fetch all task comments under this goal's tasks
+    let comment_rows = client
+        .query(
+            "SELECT tc.id, tc.user_id, tc.body, tc.created_at, t.id as task_id \
+             FROM api.task_comments tc \
+             JOIN api.tasks t ON tc.task_id = t.id \
+             WHERE t.goal_id = $1::uuid AND t.organization_id = $2::uuid \
+             ORDER BY tc.created_at ASC \
+             LIMIT 1000",
+            &[&goal_id, &org_id],
+        )
+        .await
+        .unwrap_or_default();
+
+    let comments: Vec<TaskComment> = comment_rows
+        .iter()
+        .map(|row| TaskComment {
+            id: row.get::<_, uuid::Uuid>("id").to_string(),
+            author_id: row.get::<_, Option<uuid::Uuid>>("user_id")
+                .map(|u| u.to_string())
+                .unwrap_or_default(),
+            content: row.get::<_, Option<String>>("body").unwrap_or_default(),
+            created_at: row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now),
+        })
+        .collect();
+
+    // Fetch activity logs across all tasks in this goal
+    let activity_rows = client
+        .query(
+            "SELECT tal.id, tal.action, tal.user_id, tal.created_at, tal.details \
+             FROM api.task_activity_logs tal \
+             JOIN api.tasks t ON tal.task_id = t.id \
+             WHERE t.goal_id = $1::uuid AND t.organization_id = $2::uuid \
+             ORDER BY tal.created_at ASC \
+             LIMIT 1000",
+            &[&goal_id, &org_id],
+        )
+        .await
+        .unwrap_or_default();
+
+    let activity_events: Vec<ActivityEvent> = activity_rows
+        .iter()
+        .map(|row| ActivityEvent {
+            action: row.get::<_, Option<String>>("action").unwrap_or_else(|| "unknown".to_string()),
+            description: row.get::<_, Option<String>>("details").unwrap_or_default(),
+            actor_id: row.get::<_, Option<uuid::Uuid>>("user_id")
+                .map(|u| u.to_string())
+                .unwrap_or_default(),
+            actor_name: None,
+            timestamp: row.get::<_, Option<DateTime<Utc>>>("created_at").unwrap_or_else(Utc::now),
+            changes: None,
+        })
+        .collect();
+
+    tracing::info!(
+        goal_id = %goal_id,
+        comments = comments.len(),
+        events = activity_events.len(),
+        "Fetched goal data from PostgreSQL"
+    );
+
+    Ok(TaskAnalysisInput {
+        task_id: goal_id.to_string(), // Reusing task_id field for goal
+        task_title: goal_title.clone(),
+        goal_id: Some(goal_id.to_string()),
+        goal_title: Some(goal_title),
+        status,
+        created_at,
+        completed_at: None,
+        comments,
+        related_messages: vec![],
+        activity_events,
+    })
+}
+
+/// Fetch goal data without PostgreSQL
+#[cfg(not(feature = "postgres"))]
+async fn fetch_goal_data_from_pg(
+    _state: &AppState,
+    goal_id: &str,
+    _org_id: &str,
+) -> std::result::Result<TaskAnalysisInput, String> {
+    Ok(TaskAnalysisInput {
+        task_id: goal_id.to_string(),
+        task_title: String::new(),
+        goal_id: Some(goal_id.to_string()),
+        goal_title: None,
+        status: "unknown".to_string(),
+        created_at: Utc::now(),
+        completed_at: None,
+        comments: vec![],
+        related_messages: vec![],
+        activity_events: vec![],
+    })
 }
 
 // ==================== Helpers ====================

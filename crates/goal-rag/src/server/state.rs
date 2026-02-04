@@ -549,6 +549,12 @@ impl AppState {
         self.inner.analytics_db.as_ref()
     }
 
+    /// Get PostgreSQL pool reference (if initialized)
+    #[cfg(feature = "postgres")]
+    pub fn pg_pool(&self) -> Option<&Arc<crate::postgres::PgPool>> {
+        self.inner.pg_pool.as_ref()
+    }
+
     /// Sync file registry from GCS bucket
     /// Returns (files_synced, failed_count)
     #[cfg(feature = "gcp")]
