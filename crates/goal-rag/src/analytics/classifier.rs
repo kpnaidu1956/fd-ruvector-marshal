@@ -355,14 +355,23 @@ impl RuleBasedClassifier {
         let lower = content.to_lowercase();
 
         // Detect primary type based on keywords
-        let primary_type = if lower.contains("approve") || lower.contains("sign off") || lower.contains("greenlight") {
+        // Note: more specific patterns must come before general ones
+        let primary_type = if lower.contains("approved by") || lower.starts_with("task approved") {
+            InteractionType::Acknowledgment
+        } else if lower.contains("approve") || lower.contains("sign off") || lower.contains("greenlight") {
             InteractionType::RequestApproval
+        } else if lower.contains("unblocked") || lower.contains("resolved") {
+            InteractionType::StatusUpdate
         } else if lower.contains("clarify") || lower.contains("explain") || lower.contains("what do you mean") {
             InteractionType::RequestClarification
         } else if lower.contains("blocked") || lower.contains("stuck") || lower.contains("can't proceed") {
             InteractionType::Blocker
         } else if lower.contains("escalat") {
             InteractionType::Escalation
+        } else if lower.contains("complet") || lower.contains("finished") || lower.contains("done") {
+            InteractionType::StatusUpdate
+        } else if lower.contains("started working") || lower.contains("in progress") {
+            InteractionType::StatusUpdate
         } else if lower.contains("status") || lower.contains("update") || lower.contains("progress") {
             InteractionType::StatusUpdate
         } else if lower.contains("suggest") || lower.contains("recommend") || lower.contains("how about") {

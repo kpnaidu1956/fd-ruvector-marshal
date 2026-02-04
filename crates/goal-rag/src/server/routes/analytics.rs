@@ -912,6 +912,7 @@ async fn fetch_task_data_from_pg(
         .map(|row| {
             let changes_json: Option<serde_json::Value> = row.get("changes");
             ActivityEvent {
+                id: row.get::<_, uuid::Uuid>("id").to_string(),
                 action: row.get::<_, String>("action"),
                 description: changes_json.as_ref()
                     .and_then(|v| serde_json::to_string(v).ok())
@@ -1050,6 +1051,7 @@ async fn fetch_goal_data_from_pg(
         .map(|row| {
             let changes_json: Option<serde_json::Value> = row.get("changes");
             ActivityEvent {
+                id: row.get::<_, uuid::Uuid>("id").to_string(),
                 action: row.get::<_, String>("action"),
                 description: changes_json.as_ref()
                     .and_then(|v| serde_json::to_string(v).ok())

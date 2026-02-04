@@ -15,7 +15,6 @@ pub struct ReconstructParams<'a> {
     pub entity_type: &'a str,
     pub entity_id: &'a str,
     pub classifications: &'a [InteractionClassification],
-    pub activity_events: &'a [ActivityEvent],
     pub entity_status: &'a str,
     pub opened_at: DateTime<Utc>,
     pub closed_at: Option<DateTime<Utc>>,
@@ -36,13 +35,12 @@ impl TimelineReconstructor {
             entity_type,
             entity_id,
             classifications,
-            activity_events,
             entity_status,
             opened_at,
             closed_at,
         } = params;
-        // Merge and sort all events chronologically
-        let mut all_events = self.merge_events(classifications, activity_events);
+        // Convert classifications to timeline events (activity events are now classified too)
+        let mut all_events = self.merge_events(classifications);
         all_events.sort_by_key(|e| e.timestamp);
 
         // Identify unique participants
@@ -81,51 +79,35 @@ impl TimelineReconstructor {
         }
     }
 
-    /// Merge classifications and activity events into timeline events
+    /// Convert classifications into timeline events
     fn merge_events(
         &self,
         classifications: &[InteractionClassification],
-        activity_events: &[ActivityEvent],
     ) -> Vec<TimelineEvent> {
-        let mut events = Vec::new();
+        classifications
+            .iter()
+            .map(|c| {
+                let description = format!(
+                    "{}: {}",
+                    c.interaction_type.as_str(),
+                    truncate_content(&c.content, 100)
+                );
 
-        // Convert classifications to timeline events
-        for c in classifications {
-            let description = format!(
-                "{}: {}",
-                c.interaction_type.as_str(),
-                truncate_content(&c.content, 100)
-            );
-
-            events.push(TimelineEvent {
-                timestamp: c.original_created_at,
-                event_type: format!("interaction:{}", c.interaction_type.as_str()),
-                description,
-                actor_id: c.sender_id.clone(),
-                actor_name: None,
-                interaction_id: Some(c.id.to_string()),
-                metadata: Some(serde_json::json!({
-                    "source_type": c.source_type.as_str(),
-                    "confidence": c.confidence_score,
-                    "urgency": c.urgency_level.as_str(),
-                })),
-            });
-        }
-
-        // Convert activity events
-        for a in activity_events {
-            events.push(TimelineEvent {
-                timestamp: a.timestamp,
-                event_type: format!("activity:{}", a.action),
-                description: a.description.clone(),
-                actor_id: a.actor_id.clone(),
-                actor_name: a.actor_name.clone(),
-                interaction_id: None,
-                metadata: a.changes.clone(),
-            });
-        }
-
-        events
+                TimelineEvent {
+                    timestamp: c.original_created_at,
+                    event_type: format!("interaction:{}", c.interaction_type.as_str()),
+                    description,
+                    actor_id: c.sender_id.clone(),
+                    actor_name: None,
+                    interaction_id: Some(c.id.to_string()),
+                    metadata: Some(serde_json::json!({
+                        "source_type": c.source_type.as_str(),
+                        "confidence": c.confidence_score,
+                        "urgency": c.urgency_level.as_str(),
+                    })),
+                }
+            })
+            .collect()
     }
 
     /// Identify workflow phases based on events
@@ -191,18 +173,29 @@ impl TimelineReconstructor {
     /// Detect if an event triggers a phase transition
     fn detect_phase_transition(&self, event_type: &str, current_phase: &str) -> Option<String> {
         match event_type {
-            // Activity-based transitions
-            "activity:assigned" | "activity:assignment_changed" => Some("assigned".to_string()),
-            "activity:started" | "activity:in_progress" => Some("in_progress".to_string()),
-            "activity:submitted" | "activity:review_requested" => Some("review".to_string()),
-            "activity:approved" => Some("approved".to_string()),
-            "activity:completed" | "activity:closed" => Some("completed".to_string()),
-            "activity:blocked" => Some("blocked".to_string()),
+            // Assignment (activity events classified as assignment)
+            "interaction:assignment" => Some("assigned".to_string()),
 
-            // Interaction-based transitions
-            "interaction:request_approval" if current_phase != "review" => Some("pending_approval".to_string()),
+            // Progress (status updates from activity events or comments)
+            "interaction:status_update" if current_phase == "assigned" || current_phase == "initiated" || current_phase == "blocked" => {
+                Some("in_progress".to_string())
+            }
+
+            // Approval flow
+            "interaction:request_approval" if current_phase != "review" && current_phase != "pending_approval" => {
+                Some("pending_approval".to_string())
+            }
+
+            // Blockers
             "interaction:blocker" if current_phase != "blocked" => Some("blocked".to_string()),
+
+            // Escalation
             "interaction:escalation" => Some("escalated".to_string()),
+
+            // Recognition / acknowledgment after approval request can signal approval
+            "interaction:acknowledgment" if current_phase == "pending_approval" => {
+                Some("approved".to_string())
+            }
 
             _ => None,
         }
@@ -378,6 +371,7 @@ impl Default for TimelineReconstructor {
 /// Activity event from task/goal activity logs
 #[derive(Debug, Clone)]
 pub struct ActivityEvent {
+    pub id: String,
     pub timestamp: DateTime<Utc>,
     pub action: String,
     pub description: String,
@@ -416,18 +410,34 @@ mod tests {
         let reconstructor = TimelineReconstructor::new();
 
         assert_eq!(
-            reconstructor.detect_phase_transition("activity:assigned", "initiated"),
+            reconstructor.detect_phase_transition("interaction:assignment", "initiated"),
             Some("assigned".to_string())
         );
 
         assert_eq!(
-            reconstructor.detect_phase_transition("activity:started", "assigned"),
+            reconstructor.detect_phase_transition("interaction:status_update", "assigned"),
             Some("in_progress".to_string())
         );
 
         assert_eq!(
             reconstructor.detect_phase_transition("interaction:blocker", "in_progress"),
             Some("blocked".to_string())
+        );
+
+        assert_eq!(
+            reconstructor.detect_phase_transition("interaction:request_approval", "in_progress"),
+            Some("pending_approval".to_string())
+        );
+
+        assert_eq!(
+            reconstructor.detect_phase_transition("interaction:escalation", "in_progress"),
+            Some("escalated".to_string())
+        );
+
+        // No transition for unrecognized types
+        assert_eq!(
+            reconstructor.detect_phase_transition("interaction:other", "in_progress"),
+            None
         );
     }
 }

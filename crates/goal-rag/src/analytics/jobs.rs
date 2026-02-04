@@ -125,7 +125,6 @@ impl AnalyticsJobProcessor {
             entity_type: "task",
             entity_id: &job.entity_id,
             classifications: &classifications,
-            activity_events: &task_data.activity_events,
             entity_status: &task_data.status,
             opened_at: task_data.created_at,
             closed_at: task_data.completed_at,
@@ -200,6 +199,19 @@ impl AnalyticsJobProcessor {
                 sender_id: message.sender_id.clone(),
                 content: message.content.clone(),
                 created_at: message.created_at,
+            });
+        }
+
+        // Add activity events (task actions like assignments, status changes, etc.)
+        for event in &task_data.activity_events {
+            interactions.push(RawInteraction {
+                source_type: InteractionSource::ActivityLog,
+                source_id: event.id.clone(),
+                task_id: Some(task_data.task_id.clone()),
+                goal_id: task_data.goal_id.clone(),
+                sender_id: event.actor_id.clone(),
+                content: synthesize_activity_content(event),
+                created_at: event.timestamp,
             });
         }
 
@@ -369,6 +381,46 @@ pub struct AnalysisResult {
     pub classifications: Vec<InteractionClassification>,
     pub recommendations: Vec<EfficiencyRecommendation>,
     pub patterns_matched: Vec<WorkflowPattern>,
+}
+
+/// Synthesize human-readable content from an activity event for classification
+fn synthesize_activity_content(event: &ActivityEvent) -> String {
+    let actor = event.actor_name.as_deref().unwrap_or("Someone");
+    let changes = event.changes.as_ref();
+
+    match event.action.as_str() {
+        "assigned" | "assignment_changed" => {
+            if let Some(assignee) = changes.and_then(|c| c.get("assignee")).and_then(|v| v.as_str()) {
+                format!("Task assigned to {}", assignee)
+            } else {
+                format!("{} assigned the task", actor)
+            }
+        }
+        "status_changed" => {
+            let from = changes.and_then(|c| c.get("from")).and_then(|v| v.as_str()).unwrap_or("unknown");
+            let to = changes.and_then(|c| c.get("to")).and_then(|v| v.as_str()).unwrap_or("unknown");
+            format!("Status updated from {} to {}", from, to)
+        }
+        "started" | "in_progress" => format!("{} started working on the task", actor),
+        "completed" | "closed" | "done" => format!("Task completed by {}", actor),
+        "blocked" => format!("Task blocked by {}", actor),
+        "unblocked" | "resolved" => format!("Task unblocked by {}", actor),
+        "priority_changed" => {
+            let from = changes.and_then(|c| c.get("from")).and_then(|v| v.as_str()).unwrap_or("unknown");
+            let to = changes.and_then(|c| c.get("to")).and_then(|v| v.as_str()).unwrap_or("unknown");
+            format!("Priority changed from {} to {}", from, to)
+        }
+        "submitted" | "review_requested" => format!("{} submitted the task for review", actor),
+        "approved" | "sign_off" => format!("Task approved by {}", actor),
+        "escalated" => format!("Task escalated by {}", actor),
+        other => {
+            if let Some(c) = changes {
+                format!("Activity: {} - {}", other, serde_json::to_string(c).unwrap_or_default())
+            } else {
+                format!("Activity: {}", other)
+            }
+        }
+    }
 }
 
 #[cfg(test)]
